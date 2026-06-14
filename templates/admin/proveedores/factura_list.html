@@ -1,0 +1,83 @@
+{% extends 'base_admin.html' %}
+{% load custom_tags %}
+
+{% block title %}Facturas Recibidas{% endblock %}
+
+{% block breadcrumb %}
+  <li class="breadcrumb-item"><a href="{% url 'proveedores:proveedor_list' %}">Proveedores</a></li>
+  <li class="breadcrumb-item active">Facturas Recibidas</li>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h4 class="page-title">Facturas Recibidas</h4>
+  <a href="{% url 'proveedores:factura_create' %}" class="btn btn-sta rounded-pill px-4">
+    <i class="bi bi-plus-circle me-1"></i>Nueva factura
+  </a>
+</div>
+
+<div class="card-sta p-3 mb-4">
+  <form method="get" class="row g-2 align-items-end">
+    <div class="col-sm-4">
+      <input type="text" name="q" class="form-control form-control-sm" placeholder="Buscar N° factura o proveedor…" value="{{ request.GET.q }}">
+    </div>
+    <div class="col-sm-3">
+      <select name="estado" class="form-select form-select-sm">
+        <option value="">Todos los estados</option>
+        <option value="pendiente" {% if request.GET.estado == "pendiente" %}selected{% endif %}>Pendiente</option>
+        <option value="pagada" {% if request.GET.estado == "pagada" %}selected{% endif %}>Pagada</option>
+        <option value="vencida" {% if request.GET.estado == "vencida" %}selected{% endif %}>Vencida</option>
+        <option value="anulada" {% if request.GET.estado == "anulada" %}selected{% endif %}>Anulada</option>
+      </select>
+    </div>
+    <div class="col-auto">
+      <button type="submit" class="btn btn-sta btn-sm rounded-pill px-3"><i class="bi bi-search"></i></button>
+      <a href="{% url 'proveedores:factura_list' %}" class="btn btn-outline-secondary btn-sm rounded-pill px-3 ms-1"><i class="bi bi-x"></i></a>
+    </div>
+  </form>
+</div>
+
+<div class="card-sta p-0">
+  <div class="table-responsive">
+    <table class="table table-sta mb-0">
+      <thead>
+        <tr>
+          <th>N° Factura</th><th>Proveedor</th><th>Proyecto</th>
+          <th class="text-end">Neto</th><th class="text-end">IVA</th><th class="text-end">Total</th>
+          <th class="text-center">Estado</th><th class="text-center">Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in facturas %}
+        <tr>
+          <td class="fw-700 font-monospace">{{ f.numero }}</td>
+          <td>{{ f.proveedor.razon_social|truncatechars:25 }}</td>
+          <td class="small text-muted">{{ f.proyecto|default:"—" }}</td>
+          <td class="text-end small">{{ f.neto| moneda_chilena }}</td>
+          <td class="text-end small">{{ f.iva| moneda_chilena }}</td>
+          <td class="text-end fw-700">{{ f.total| moneda_chilena }}</td>
+          <td class="text-center"><span class="badge-{{ f.estado }}">{{ f.get_estado_display }}</span></td>
+          <td class="text-center">
+            <div class="btn-group btn-group-sm">
+              <a href="{% url 'proveedores:factura_detail' f.pk %}" class="btn btn-outline-secondary btn-sm" title="Ver"><i class="bi bi-eye"></i></a>
+              <a href="{% url 'proveedores:factura_update' f.pk %}" class="btn btn-outline-secondary btn-sm" title="Editar"><i class="bi bi-pencil"></i></a>
+            </div>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="8" class="text-center text-muted py-4">No hay facturas recibidas.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if is_paginated %}
+  <div class="d-flex justify-content-center py-3">
+    <nav><ul class="pagination pagination-sm mb-0">
+      {% if page_obj.has_previous %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">‹</a></li>{% endif %}
+      <li class="page-item disabled"><span class="page-link">{{ page_obj.number }}/{{ page_obj.paginator.num_pages }}</span></li>
+      {% if page_obj.has_next %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">›</a></li>{% endif %}
+    </ul></nav>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

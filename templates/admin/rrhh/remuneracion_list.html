@@ -1,0 +1,97 @@
+{% extends 'base_admin.html' %}
+{% load custom_tags %}
+
+{% block title %}Remuneraciones{% endblock %}
+
+{% block breadcrumb %}
+  <li class="breadcrumb-item"><a href="{% url 'rrhh:trabajador_list' %}">RRHH</a></li>
+  <li class="breadcrumb-item active">Remuneraciones</li>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h4 class="page-title">Remuneraciones</h4>
+  <div class="d-flex gap-2">
+    <a href="{% url 'rrhh:remuneracion_procesar' %}" class="btn btn-outline-primary rounded-pill px-4">
+      <i class="bi bi-calendar3-range me-1"></i>Procesar por período
+    </a>
+    <a href="{% url 'rrhh:remuneracion_create' %}" class="btn btn-sta rounded-pill px-4">
+      <i class="bi bi-plus-circle me-1"></i>Nueva remuneración
+    </a>
+  </div>
+</div>
+
+<div class="card-sta p-3 mb-4">
+  <form method="get" class="row g-2 align-items-end">
+    <div class="col-sm-4">
+      <input type="text" name="q" class="form-control form-control-sm" placeholder="Buscar trabajador…" value="{{ request.GET.q }}">
+    </div>
+    <div class="col-sm-2">
+      <input type="number" name="mes" class="form-control form-control-sm" placeholder="Mes" min="1" max="12" value="{{ request.GET.mes }}">
+    </div>
+    <div class="col-sm-2">
+      <input type="number" name="anio" class="form-control form-control-sm" placeholder="Año" value="{{ request.GET.anio }}">
+    </div>
+    <div class="col-sm-2">
+      <select name="estado" class="form-select form-select-sm">
+        <option value="">Estado</option>
+        <option value="borrador" {% if request.GET.estado == "borrador" %}selected{% endif %}>Borrador</option>
+        <option value="calculada" {% if request.GET.estado == "calculada" %}selected{% endif %}>Calculada</option>
+        <option value="pagada" {% if request.GET.estado == "pagada" %}selected{% endif %}>Pagada</option>
+      </select>
+    </div>
+    <div class="col-auto">
+      <button type="submit" class="btn btn-sta btn-sm rounded-pill px-3"><i class="bi bi-search"></i></button>
+      <a href="{% url 'rrhh:remuneracion_list' %}" class="btn btn-outline-secondary btn-sm rounded-pill px-3 ms-1"><i class="bi bi-x"></i></a>
+    </div>
+  </form>
+</div>
+
+<div class="card-sta p-0">
+  <div class="table-responsive">
+    <table class="table table-sta mb-0">
+      <thead>
+        <tr>
+          <th>Trabajador</th><th class="text-center">Período</th>
+          <th class="text-end">Bruto</th><th class="text-end">Descuentos</th>
+          <th class="text-end">Anticipo</th><th class="text-end">Líquido</th>
+          <th class="text-center">Estado</th><th class="text-center">Pago</th>
+          <th class="text-center">Acción</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for rem in remuneraciones %}
+        <tr>
+          <td class="fw-600">{{ rem.trabajador.nombre_completo }}</td>
+          <td class="text-center font-monospace small">{{ rem.periodo_mes|stringformat:"02d" }}/{{ rem.periodo_anio }}</td>
+          <td class="text-end small">{{ rem.sueldo_bruto|moneda_chilena }}</td>
+          <td class="text-end small text-danger">{{ rem.descuentos|moneda_chilena }}</td>
+          <td class="text-end small text-warning">{{ rem.anticipo_descontado|moneda_chilena }}</td>
+          <td class="text-end fw-700">{{ rem.liquido_pagar|moneda_chilena }}</td>
+          <td class="text-center"><span class="badge-{{ rem.estado }}">{{ rem.get_estado_display }}</span></td>
+          <td class="text-center small">{{ rem.fecha_pago|default:"—" }}</td>
+          <td class="text-center">
+            {% if rem.estado != 'pagado' %}
+            <a href="{% url 'rrhh:remuneracion_pagar' rem.pk %}" class="btn btn-success btn-sm rounded-pill px-3" title="Registrar pago">
+              <i class="bi bi-cash-coin"></i>
+            </a>
+            {% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="9" class="text-center text-muted py-4">No hay remuneraciones registradas.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if is_paginated %}
+  <div class="d-flex justify-content-center py-3">
+    <nav><ul class="pagination pagination-sm mb-0">
+      {% if page_obj.has_previous %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">‹</a></li>{% endif %}
+      <li class="page-item disabled"><span class="page-link">{{ page_obj.number }}/{{ page_obj.paginator.num_pages }}</span></li>
+      {% if page_obj.has_next %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">›</a></li>{% endif %}
+    </ul></nav>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

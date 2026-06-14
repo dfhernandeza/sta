@@ -1,0 +1,77 @@
+{% extends 'base_admin.html' %}
+{% load custom_tags %}
+
+{% block title %}Rendiciones de Gastos{% endblock %}
+
+{% block breadcrumb %}
+  <li class="breadcrumb-item"><a href="{% url 'proveedores:proveedor_list' %}">Proveedores</a></li>
+  <li class="breadcrumb-item active">Rendiciones de Gastos</li>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h4 class="page-title"><i class="bi bi-receipt-cutoff me-2"></i>Rendiciones de Gastos</h4>
+  <a href="{% url 'proveedores:rendicion_create' %}" class="btn btn-sta rounded-pill px-4">
+    <i class="bi bi-plus-circle me-1"></i>Nueva rendición
+  </a>
+</div>
+
+<div class="card-sta p-0">
+  <div class="table-responsive">
+    <table class="table table-sta mb-0">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Trabajador</th>
+          <th>Proyecto</th>
+          <th>Fecha</th>
+          <th>Motivo</th>
+          <th class="text-center">Estado</th>
+          <th class="text-end">Total</th>
+          <th class="text-center">Vence</th>
+          <th class="text-center">Acción</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rendiciones %}
+        <tr>
+          <td class="small font-monospace text-muted">{{ r.id }}</td>
+          <td class="fw-600">{{ r.trabajador.nombre_completo }}</td>
+          <td class="small">{{ r.proyecto|default:"—" }}</td>
+          <td class="small">{{ r.fecha }}</td>
+          <td class="small">{{ r.motivo_del_gasto|truncatechars:45 }}</td>
+          <td class="text-center"><span class="badge-{{ r.estado }}">{{ r.get_estado_display }}</span></td>
+          <td class="text-end fw-600">
+            {{ r.detalles.all|length }}
+            {% with total=r.detalles.all %}
+            {% endwith %}
+          </td>
+          <td class="text-center small">
+            {% for cxp in r.cuentas_pagar.all %}
+              <span class="badge-{{ cxp.estado }}">{{ cxp.fecha_vencimiento }}</span>
+            {% empty %}
+              <span class="text-muted">—</span>
+            {% endfor %}
+          </td>
+          <td class="text-center">
+            <a href="{% url 'proveedores:rendicion_detail' r.pk %}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-eye"></i></a>
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="8" class="text-center text-muted py-4">
+            <i class="bi bi-inbox display-6 d-block mb-2"></i>No hay rendiciones registradas.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% if is_paginated %}
+<div class="d-flex justify-content-center mt-3">
+  {% include 'partials/pagination.html' %}
+</div>
+{% endif %}
+{% endblock %}

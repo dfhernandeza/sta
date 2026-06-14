@@ -1,0 +1,88 @@
+{% extends 'base_web.html' %}
+{% load static %}
+
+{% block title %}Servicios | STA Muebles y Terminaciones{% endblock %}
+
+{% block content %}
+<div style="background:linear-gradient(135deg,var(--sta-navy),var(--sta-steel));padding:7rem 0 3.5rem;margin-top:70px;">
+  <div class="container text-white text-center">
+    <h1 class="fw-800 mb-2">Nuestros Servicios</h1>
+    <p class="opacity-75">Soluciones integrales en muebles y terminaciones para cada proyecto</p>
+  </div>
+</div>
+
+<section class="py-5">
+  <div class="container">
+    {% if servicios %}
+      <div class="row g-4">
+        {% for servicio in servicios %}
+        <div class="col-md-6 col-lg-4">
+          <div class="service-card h-100">
+            <div class="service-icon">
+              <i class="bi {{ servicio.icono|default:'bi-tools' }}"></i>
+            </div>
+            <h3>{{ servicio.titulo }}</h3>
+            <p class="text-muted">{{ servicio.descripcion }}</p>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <!-- Servicios por defecto si no hay datos en BD -->
+      <div class="row g-4">
+        {% for s in "123456" %}
+        <div class="col-md-6 col-lg-4">
+          <div class="service-card">
+            <div class="service-icon"><i class="bi bi-tools"></i></div>
+            <h3>Servicio {{ forloop.counter }}</h3>
+            <p class="text-muted">Descripción del servicio. Configure sus servicios desde el panel de administración.</p>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </div>
+</section>
+
+<!-- Por qué elegirnos -->
+<section class="py-5 about-values">
+  <div class="container">
+    <div class="text-center mb-5">
+      <div class="section-divider mx-auto"></div>
+      <h2 class="section-title">¿Por qué elegirnos?</h2>
+    </div>
+    <div class="row g-4 text-center">
+      <div class="col-md-4">
+        <div class="value-item">
+          <div class="value-icon"><i class="bi bi-award"></i></div>
+          <h4 class="fw-700 text-sta">Calidad Superior</h4>
+          <p class="text-muted">Utilizamos materiales de primera calidad para garantizar durabilidad y estética en cada producto.</p>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="value-item">
+          <div class="value-icon"><i class="bi bi-rulers"></i></div>
+          <h4 class="fw-700 text-sta">Medida Exacta</h4>
+          <p class="text-muted">Cada proyecto es diseñado y fabricado según las medidas y requerimientos específicos del cliente.</p>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="value-item">
+          <div class="value-icon"><i class="bi bi-headset"></i></div>
+          <h4 class="fw-700 text-sta">Soporte Total</h4>
+          <p class="text-muted">Acompañamos cada proyecto desde el diseño hasta la instalación y post-venta.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="py-5 text-center" style="background:linear-gradient(135deg,var(--sta-navy),var(--sta-steel));">
+  <div class="container text-white">
+    <h3 class="fw-700 mb-3">¿Listo para comenzar tu proyecto?</h3>
+    <a href="{% url 'web:contacto' %}" class="btn btn-light btn-lg px-5 fw-600 rounded-pill text-sta">
+      Solicitar cotización
+    </a>
+  </div>
+</section>
+{% endblock %}

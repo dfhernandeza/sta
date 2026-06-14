@@ -1,0 +1,150 @@
+{% extends 'base_admin.html' %}
+
+{% block title %}Plan de Cuentas{% endblock %}
+
+{% block breadcrumb %}
+  <li class="breadcrumb-item active">Plan de Cuentas</li>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h4 class="page-title">Plan de Cuentas</h4>
+    <p class="page-subtitle mb-0">Clasificación jerárquica de cuentas contables (4 niveles)</p>
+  </div>
+  <div>
+    <a href="{% url 'contabilidad:plan_create' %}" class="btn btn-sta rounded-pill px-4">
+      <i class="bi bi-plus-circle me-1"></i>Nueva cuenta
+    </a>
+  </div>
+</div>
+
+<!-- FILTROS -->
+<div class="card-sta p-3 mb-4">
+  <form method="get" class="row g-2 align-items-end">
+    <div class="col-sm-4">
+      <input type="text" name="q" class="form-control form-control-sm" placeholder="Buscar código o nombre…" value="{{ request.GET.q }}">
+    </div>
+    <div class="col-sm-3">
+      <select name="tipo" class="form-select form-select-sm">
+        <option value="">Todos los tipos</option>
+        {% for val, lbl in tipos %}
+          <option value="{{ val }}" {% if request.GET.tipo == val %}selected{% endif %}>{{ lbl }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-sm-2">
+      <select name="nivel" class="form-select form-select-sm">
+        <option value="">Todos los niveles</option>
+        {% for n in "1234" %}
+          <option value="{{ n }}" {% if request.GET.nivel == n %}selected{% endif %}>Nivel {{ n }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-auto">
+      <button type="submit" class="btn btn-sta btn-sm rounded-pill px-3">
+        <i class="bi bi-search"></i>
+      </button>
+      <a href="{% url 'contabilidad:plan_list' %}" class="btn btn-outline-secondary btn-sm rounded-pill px-3 ms-1">
+        <i class="bi bi-x"></i>
+      </a>
+    </div>
+  </form>
+</div>
+
+<!-- TABLA -->
+<div class="card-sta p-0">
+  <div class="table-responsive">
+    <table class="table table-sta mb-0">
+      <thead>
+        <tr>
+          <th>Código</th>
+          <th>Nombre</th>
+          <th>Tipo</th>
+          <th class="text-center">Nivel</th>
+          <th>Cuenta Padre</th>
+          <th class="text-center">Acepta Mov.</th>
+          <th class="text-center">Activa</th>
+          <th class="text-center">Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for cuenta in cuentas %}
+        <tr>
+          <td><span class="fw-700 font-monospace text-sta">{{ cuenta.codigo }}</span></td>
+          <td style="padding-left:{{ cuenta.nivel|add:"-1" }}rem;">
+            {% if cuenta.nivel > 1 %}<span class="text-muted me-1">{% for i in "..." %} {% endfor %}↳</span>{% endif %}
+            {{ cuenta.nombre }}
+          </td>
+          <td><span class="badge bg-secondary">{{ cuenta.get_tipo_display }}</span></td>
+          <td class="text-center">
+            <span class="badge {% if cuenta.nivel == 1 %}bg-primary{% elif cuenta.nivel == 2 %}bg-info text-dark{% elif cuenta.nivel == 3 %}bg-warning text-dark{% else %}bg-light text-dark{% endif %}">
+              N{{ cuenta.nivel }}
+            </span>
+          </td>
+          <td class="text-muted small">{{ cuenta.parent.codigo|default:"—" }}</td>
+          <td class="text-center">
+            {% if cuenta.acepta_movimientos %}
+              <i class="bi bi-check-circle-fill text-success"></i>
+            {% else %}
+              <i class="bi bi-dash-circle text-muted"></i>
+            {% endif %}
+          </td>
+          <td class="text-center">
+            {% if cuenta.activa %}
+              <span class="badge-estado activo">Activa</span>
+            {% else %}
+              <span class="badge-estado inactivo">Inactiva</span>
+            {% endif %}
+          </td>
+          <td class="text-center">
+            <div class="btn-group btn-group-sm">
+              <a href="{% url 'contabilidad:plan_update' cuenta.pk %}" class="btn btn-outline-secondary btn-sm" title="Editar">
+                <i class="bi bi-pencil"></i>
+              </a>
+              <a href="{% url 'contabilidad:plan_delete' cuenta.pk %}" class="btn btn-outline-danger btn-sm" title="Eliminar">
+                <i class="bi bi-trash"></i>
+              </a>
+            </div>
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="8" class="text-center text-muted py-4">
+            <i class="bi bi-journal-x fs-3 d-block mb-2 opacity-50"></i>
+            No hay cuentas registradas.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if is_paginated %}
+  <div class="d-flex justify-content-center py-3">
+    <nav>
+      <ul class="pagination pagination-sm mb-0">
+
+        {% if page_obj.has_previous %}
+          <li class="page-item">
+            <a class="page-link" href="?{{ request.GET.urlencode|cut:'page=' }}&page={{ page_obj.previous_page_number }}">‹</a>
+          </li>
+        {% endif %}
+
+        <li class="page-item disabled">
+          <span class="page-link">
+            {{ page_obj.number }}/{{ page_obj.paginator.num_pages }}
+          </span>
+        </li>
+
+        {% if page_obj.has_next %}
+          <li class="page-item">
+            <a class="page-link" href="?{{ request.GET.urlencode|cut:'page=' }}&page={{ page_obj.next_page_number }}">›</a>
+          </li>
+        {% endif %}
+
+      </ul>
+    </nav>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

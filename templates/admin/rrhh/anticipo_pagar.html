@@ -1,0 +1,102 @@
+{% extends 'base_admin.html' %}
+{% load custom_tags %}
+
+{% block title %}Registrar Pago Anticipo — {{ anticipo.trabajador.nombre_completo }}{% endblock %}
+
+{% block breadcrumb %}
+  <li class="breadcrumb-item"><a href="{% url 'rrhh:trabajador_list' %}">RRHH</a></li>
+  <li class="breadcrumb-item"><a href="{% url 'rrhh:anticipo_list' %}">Anticipos</a></li>
+  <li class="breadcrumb-item active">Registrar Pago</li>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h4 class="page-title">Registrar Pago de Anticipo Laboral</h4>
+  <a href="{% url 'rrhh:anticipo_list' %}" class="btn btn-outline-secondary rounded-pill px-4">
+    <i class="bi bi-arrow-left me-1"></i>Volver
+  </a>
+</div>
+
+<div class="row justify-content-center">
+  <div class="col-lg-7">
+
+    <!-- Resumen del anticipo -->
+    <div class="card-sta p-4 mb-4">
+      <h6 class="fw-700 text-sta mb-3"><i class="bi bi-person-badge me-2"></i>Anticipo a pagar</h6>
+      <div class="row g-2 small">
+        <div class="col-sm-5">
+          <span class="text-muted">Trabajador</span>
+          <div class="fw-600">{{ anticipo.trabajador.nombre_completo }}</div>
+          <div class="text-muted">{{ anticipo.trabajador.cargo }}</div>
+        </div>
+        <div class="col-sm-3">
+          <span class="text-muted">Fecha anticipo</span>
+          <div class="fw-600">{{ anticipo.fecha|date:"d/m/Y" }}</div>
+        </div>
+        <div class="col-sm-4 text-sm-end">
+          <span class="text-muted">Monto</span>
+          <div class="fw-700 fs-5 text-danger">{{ anticipo.monto|moneda_chilena }}</div>
+        </div>
+      </div>
+      {% if anticipo.descripcion %}
+      <div class="mt-2 small text-muted">{{ anticipo.descripcion }}</div>
+      {% endif %}
+    </div>
+
+    <!-- Formulario de pago -->
+    <div class="card-sta p-4">
+      <h6 class="fw-700 text-sta mb-3"><i class="bi bi-cash-coin me-2"></i>Datos del pago</h6>
+      <form method="post" novalidate autocomplete="off">
+        {% csrf_token %}
+        <div class="row g-3">
+
+          <div class="col-sm-6">
+            <label class="form-label fw-600">{{ form.fecha_pago.label }} <span class="text-danger">*</span></label>
+            {{ form.fecha_pago }}
+            {% if form.fecha_pago.errors %}<div class="invalid-feedback d-block">{{ form.fecha_pago.errors.0 }}</div>{% endif %}
+          </div>
+
+          <div class="col-sm-6 d-flex align-items-end">
+            <div class="alert alert-secondary mb-0 py-2 px-3 small w-100">
+              <i class="bi bi-info-circle me-1"></i>
+              Monto: <strong>{{ anticipo.monto|moneda_chilena }}</strong>
+            </div>
+          </div>
+
+          <div class="col-12">
+            <label class="form-label fw-600">{{ form.cuenta_bancaria.label }} <span class="text-danger">*</span></label>
+            {{ form.cuenta_bancaria }}
+            <div class="form-text">{{ form.cuenta_bancaria.help_text }}</div>
+            {% if form.cuenta_bancaria.errors %}<div class="invalid-feedback d-block">{{ form.cuenta_bancaria.errors.0 }}</div>{% endif %}
+          </div>
+
+          <div class="col-12">
+            <label class="form-label fw-600">{{ form.notas.label }}</label>
+            {{ form.notas }}
+          </div>
+
+          <div class="col-12 pt-2 border-top d-flex gap-2">
+            <button type="submit" class="btn btn-success px-5 rounded-pill">
+              <i class="bi bi-check2-circle me-1"></i>Confirmar pago
+            </button>
+            <a href="{% url 'rrhh:anticipo_list' %}" class="btn btn-outline-secondary rounded-pill px-4">
+              Cancelar
+            </a>
+          </div>
+
+        </div>
+      </form>
+    </div>
+
+    <!-- Nota informativa -->
+    <div class="alert alert-info mt-3 small">
+      <i class="bi bi-info-circle me-1"></i>
+      Al confirmar se creará un <strong>movimiento bancario de egreso</strong> y se generará
+      automáticamente un <strong>asiento contable en borrador</strong>
+      (Debe: Sueldos y Remuneraciones / Haber: Banco).
+      El estado del anticipo cambiará a <strong>Descontado</strong>.
+    </div>
+
+  </div>
+</div>
+{% endblock %}

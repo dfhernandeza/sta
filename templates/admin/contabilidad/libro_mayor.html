@@ -1,0 +1,100 @@
+{% extends 'base_admin.html' %}
+{% load custom_tags %}
+{% block title %}Libro Mayor{% endblock %}
+
+{% block breadcrumb %}
+  <li class="breadcrumb-item active">Libro Mayor</li>
+{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/css/tom-select.bootstrap5.min.css" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h4 class="page-title">Libro Mayor</h4>
+</div>
+
+<div class="card-sta p-3 mb-4">
+  <form method="get" class="row g-2 align-items-end">
+    <div class="col-sm-5">
+      <label class="form-label small mb-1">Cuenta contable</label>
+      <select name="cuenta" class="cuenta-select">
+        <option value="">— Seleccione cuenta —</option>
+        {% for c in cuentas %}
+          <option value="{{ c.pk }}" {% if request.GET.cuenta == c.pk|stringformat:"s" %}selected{% endif %}>{{ c.codigo }} – {{ c.nombre }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-sm-2">
+      <label class="form-label small mb-1">Desde</label>
+      <input type="date" name="desde" class="form-control form-control-sm" value="{{ request.GET.desde }}">
+    </div>
+    <div class="col-sm-2">
+      <label class="form-label small mb-1">Hasta</label>
+      <input type="date" name="hasta" class="form-control form-control-sm" value="{{ request.GET.hasta }}">
+    </div>
+    <div class="col-auto">
+      <button type="submit" class="btn btn-sta btn-sm rounded-pill px-3"><i class="bi bi-search"></i></button>
+      <a href="{% url 'contabilidad:libro_mayor' %}" class="btn btn-outline-secondary btn-sm rounded-pill px-3 ms-1"><i class="bi bi-x"></i></a>
+    </div>
+  </form>
+</div>
+
+{% if cuenta_sel %}
+<div class="card-sta p-0">
+  <div class="p-3 border-bottom">
+    <strong>{{ cuenta_sel.codigo }} – {{ cuenta_sel.nombre }}</strong>
+    <span class="badge bg-secondary ms-2">{{ cuenta_sel.get_tipo_display }}</span>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sta mb-0">
+      <thead>
+        <tr>
+          <th>Fecha</th>
+          <th>Asiento</th>
+          <th>Descripción</th>
+          <th class="text-end">Debe</th>
+          <th class="text-end">Haber</th>
+          <th class="text-end">Saldo</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in movimientos %}
+        <tr>
+          <td class="small">{{ row.linea.asiento.fecha }}</td>
+          <td class="small font-monospace">
+            <a href="{% url 'contabilidad:asiento_detail' row.linea.asiento.pk %}" class="text-decoration-none">
+              {{ row.linea.asiento.numero }}
+            </a>
+          </td>
+          <td class="small">{{ row.linea.descripcion|default:row.linea.asiento.descripcion|truncatechars:60 }}</td>
+          <td class="text-end small font-monospace">{% if row.linea.debe %}<span class="text-primary">{{ row.linea.debe|moneda_chilena }}</span>{% else %}—{% endif %}</td>
+          <td class="text-end small font-monospace">{% if row.linea.haber %}<span class="text-success">{{ row.linea.haber|moneda_chilena }}</span>{% else %}—{% endif %}</td>
+          <td class="text-end small font-monospace fw-700 {% if row.saldo < 0 %}text-danger{% endif %}">{{ row.saldo|moneda_chilena }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6" class="text-center text-muted py-4">Sin movimientos para esta cuenta en el período.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% elif request.GET.cuenta %}
+<div class="alert alert-info">No se encontraron movimientos.</div>
+{% else %}
+<div class="card-sta p-4 text-center text-muted">
+  <i class="bi bi-bar-chart-line fs-1 mb-2 d-block"></i>
+  Seleccione una cuenta contable para ver sus movimientos.
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/js/tom-select.complete.min.js"></script>
+<script>
+  document.querySelectorAll('.cuenta-select').forEach(el => {
+    new TomSelect(el, { maxItems: 1, searchField: ['text'] });
+  });
+</script>
+{% endblock %}

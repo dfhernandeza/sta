@@ -1,0 +1,90 @@
+{% extends 'base_admin.html' %}
+{% load custom_tags %}
+
+{% block title %}Cuentas por Pagar{% endblock %}
+
+{% block breadcrumb %}
+  <li class="breadcrumb-item"><a href="{% url 'proveedores:proveedor_list' %}">Proveedores</a></li>
+  <li class="breadcrumb-item active">Cuentas por Pagar</li>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h4 class="page-title">Cuentas por Pagar</h4>
+    <p class="page-subtitle mb-0">Total pendiente:
+      <span class="fw-700 text-danger">$ {{ total_pendiente|floatformat:0 }}</span>
+    </p>
+  </div>
+</div>
+
+<div class="card-sta p-3 mb-4">
+  <form method="get" class="row g-2 align-items-end">
+    <div class="col-sm-3">
+      <select name="estado" class="form-select form-select-sm">
+        <option value="">Todos los estados</option>
+        <option value="pendiente" {% if request.GET.estado == "pendiente" %}selected{% endif %}>Pendiente</option>
+        <option value="pagada" {% if request.GET.estado == "pagada" %}selected{% endif %}>Pagada</option>
+        <option value="vencida" {% if request.GET.estado == "vencida" %}selected{% endif %}>Vencida</option>
+      </select>
+    </div>
+    <div class="col-auto">
+      <button type="submit" class="btn btn-sta btn-sm rounded-pill px-3"><i class="bi bi-search"></i></button>
+      <a href="{% url 'proveedores:cxp_list' %}" class="btn btn-outline-secondary btn-sm rounded-pill px-3 ms-1"><i class="bi bi-x"></i></a>
+    </div>
+  </form>
+</div>
+
+<div class="card-sta p-0">
+  <div class="table-responsive">
+    <table class="table table-sta mb-0">
+      <thead>
+        <tr>
+          <th>Folio</th><th>Acreedor</th>
+          <th class="text-end">Monto</th><th class="text-end">Pagado</th>
+          <th class="text-end">Saldo</th><th class="text-center">Estado</th><th class="text-center">Acción</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for cxp in cuentas %}
+        <tr class="{% if cxp.estado == 'vencida' %}table-danger{% endif %}">
+          <td class="fw-700 font-monospace">
+            {% if cxp.factura %}
+            <a href="{% url 'proveedores:factura_detail' cxp.factura.pk %}" class="text-sta text-decoration-none">{{ cxp.factura.numero }}</a>
+            {% else %}
+            <a href="{% url 'proveedores:rendicion_detail' cxp.rendicion.pk %}" class="text-sta text-decoration-none">{{ cxp.rendicion.id }}</a>
+            {% endif %}
+          </td>
+          <td>
+            {% if cxp.factura %}
+              {% if cxp.factura.pago_por_trabajador %}
+              {{ cxp.factura.pago_por_trabajador.nombre_completo|truncatechars:30 }}
+              <span class="badge bg-info-subtle text-info-emphasis">Reembolso</span>
+              {% else %}
+              {{ cxp.factura.proveedor.razon_social|truncatechars:30 }}
+              {% endif %}
+            {% else %}
+            {{ cxp.rendicion.trabajador.nombre_completo|truncatechars:30 }}
+            {% endif %}
+          </td>
+          <td class="text-end">{{ cxp.monto|moneda_chilena }}</td>
+          <td class="text-end text-success">{{ cxp.monto_pagado|moneda_chilena }}</td>
+          <td class="text-end fw-700 text-danger">{{ cxp.saldo_pendiente|moneda_chilena }}</td>
+          <td class="text-center"><span class="badge-{{ cxp.estado }}">{{ cxp.get_estado_display }}</span></td>
+          <td class="text-center">
+            {% if cxp.estado != 'pagada' %}
+            <a href="{% url 'proveedores:cxp_pagar' cxp.pk %}"
+               class="btn btn-success btn-sm rounded-pill px-3" title="Registrar pago">
+              <i class="bi bi-cash-coin me-1"></i>Pagar
+            </a>
+            {% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="7" class="text-center text-muted py-4">No hay cuentas por pagar.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

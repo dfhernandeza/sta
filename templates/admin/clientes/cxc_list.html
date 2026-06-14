@@ -1,0 +1,73 @@
+{% extends 'base_admin.html' %}
+{% load custom_tags %}
+
+{% block title %}Cuentas por Cobrar{% endblock %}
+
+{% block breadcrumb %}
+  <li class="breadcrumb-item"><a href="{% url 'clientes:cliente_list' %}">Clientes</a></li>
+  <li class="breadcrumb-item active">Cuentas por Cobrar</li>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h4 class="page-title">Cuentas por Cobrar</h4>
+    <p class="page-subtitle mb-0">Total pendiente:
+      <span class="fw-700 text-danger">$ {{ total_pendiente|floatformat:0 }}</span>
+    </p>
+  </div>
+</div>
+
+<div class="card-sta p-3 mb-4">
+  <form method="get" class="row g-2 align-items-end">
+    <div class="col-sm-3">
+      <select name="estado" class="form-select form-select-sm">
+        <option value="">Todos los estados</option>
+        <option value="pendiente" {% if request.GET.estado == "pendiente" %}selected{% endif %}>Pendiente</option>
+        <option value="pagada" {% if request.GET.estado == "pagada" %}selected{% endif %}>Pagada</option>
+        <option value="vencida" {% if request.GET.estado == "vencida" %}selected{% endif %}>Vencida</option>
+      </select>
+    </div>
+    <div class="col-auto">
+      <button type="submit" class="btn btn-sta btn-sm rounded-pill px-3"><i class="bi bi-search"></i></button>
+      <a href="{% url 'clientes:cxc_list' %}" class="btn btn-outline-secondary btn-sm rounded-pill px-3 ms-1"><i class="bi bi-x"></i></a>
+    </div>
+  </form>
+</div>
+
+<div class="card-sta p-0">
+  <div class="table-responsive">
+    <table class="table table-sta mb-0">
+      <thead>
+        <tr>
+          <th>Factura</th><th>Cliente</th><th>Vencimiento</th>
+          <th class="text-end">Monto</th><th class="text-end">Pagado</th>
+          <th class="text-end">Saldo</th><th class="text-center">Estado</th><th class="text-center">Acción</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for cxc in cuentas %}
+        <tr class="{% if cxc.estado == 'vencida' %}table-danger{% endif %}">
+          <td class="fw-700">{{ cxc.factura.numero }}</td>
+          <td>{{ cxc.factura.cliente.razon_social|truncatechars:25 }}</td>
+          <td class="small">{{ cxc.factura.fecha_vencimiento|default:"—" }}</td>
+          <td class="text-end">{{ cxc.monto|moneda_chilena }}</td>
+          <td class="text-end text-success">{{ cxc.monto_pagado|moneda_chilena }}</td>
+          <td class="text-end fw-700 text-danger">{{ cxc.saldo_pendiente|moneda_chilena }}</td>
+          <td class="text-center"><span class="badge-{{ cxc.estado }}">{{ cxc.get_estado_display }}</span></td>
+          <td class="text-center">
+            {% if cxc.estado != 'pagada' %}
+            <a href="{% url 'clientes:cxc_pagar' cxc.pk %}" class="btn btn-success btn-sm rounded-pill px-3" title="Registrar cobro">
+              <i class="bi bi-cash-coin"></i>
+            </a>
+            {% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="8" class="text-center text-muted py-4">No hay cuentas por cobrar.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

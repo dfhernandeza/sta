@@ -1,0 +1,76 @@
+{% extends 'base_admin.html' %}
+{% load custom_tags %}
+
+{% block title %}Registro de Ventas{% endblock %}
+
+{% block breadcrumb %}
+  <li class="breadcrumb-item"><a href="{% url 'tributario:resumen' %}">Tributario</a></li>
+  <li class="breadcrumb-item active">Registro de Ventas</li>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h4 class="page-title">Registro de Ventas</h4>
+  <a href="{% url 'tributario:resumen' %}" class="btn btn-outline-secondary rounded-pill px-4">
+    <i class="bi bi-arrow-left me-1"></i>Volver
+  </a>
+</div>
+
+<div class="card-sta p-3 mb-4">
+  <form method="get" class="row g-2 align-items-end">
+    <div class="col-sm-4">
+      <input type="month" name="periodo" class="form-control form-control-sm" value="{{ request.GET.periodo }}">
+    </div>
+    <div class="col-auto">
+      <button type="submit" class="btn btn-sta btn-sm rounded-pill px-3"><i class="bi bi-search"></i></button>
+      <a href="{% url 'tributario:venta_list' %}" class="btn btn-outline-secondary btn-sm rounded-pill px-3 ms-1"><i class="bi bi-x"></i></a>
+    </div>
+  </form>
+</div>
+
+<div class="card-sta p-0">
+  <div class="table-responsive">
+    <table class="table table-sta mb-0">
+      <thead>
+        <tr>
+          <th>Período</th><th>Cliente</th><th>Factura</th>
+          <th class="text-end">Neto</th><th class="text-end">IVA Débito</th><th class="text-end">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for rv in registros %}
+        <tr>
+          <td class="font-monospace small">{{ rv.periodo_mes }} - {{ rv.periodo_anio }}</td>
+          <td class="small">{{ rv.cliente|default:"—" }}</td>
+          <td class="font-monospace small">{{ rv.factura|default:"—" }}</td>
+          <td class="text-end small">{{ rv.neto|moneda_chilena }}</td>
+          <td class="text-end small text-danger">{{ rv.iva_debito|moneda_chilena }}</td>
+          <td class="text-end fw-600">{{ rv.total|moneda_chilena }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6" class="text-center text-muted py-4">No hay registros de ventas.</td></tr>
+        {% endfor %}
+      </tbody>
+      {% if ventas %}
+      <tfoot class="fw-700">
+        <tr>
+          <td colspan="3" class="text-end">Total</td>
+          <td class="text-end">{{ total_neto|moneda_chilena }}</td>
+          <td class="text-end text-danger">{{ total_iva_debito|moneda_chilena }}</td>
+          <td class="text-end">{{ total_total|moneda_chilena }}</td>
+        </tr>
+      </tfoot>
+      {% endif %}
+    </table>
+  </div>
+  {% if is_paginated %}
+  <div class="d-flex justify-content-center py-3">
+    <nav><ul class="pagination pagination-sm mb-0">
+      {% if page_obj.has_previous %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">‹</a></li>{% endif %}
+      <li class="page-item disabled"><span class="page-link">{{ page_obj.number }}/{{ page_obj.paginator.num_pages }}</span></li>
+      {% if page_obj.has_next %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">›</a></li>{% endif %}
+    </ul></nav>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

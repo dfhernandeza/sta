@@ -1,0 +1,67 @@
+{% extends 'base_admin.html' %}
+
+{% block title %}Configuración Contable{% endblock %}
+
+{% block breadcrumb %}
+  <li class="breadcrumb-item active">Configuración Contable</li>
+{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/css/tom-select.bootstrap5.min.css" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h4 class="page-title">Configuración Contable</h4>
+</div>
+
+<div class="row justify-content-center">
+  <div class="col-lg-7">
+    <div class="card-sta p-4">
+      <p class="text-muted small mb-4">
+        Define las cuentas del Plan de Cuentas que se usarán automáticamente al generar asientos contables.
+        Estas cuentas son necesarias para el correcto funcionamiento del Libro Diario.
+      </p>
+      <form method="post">
+        {% csrf_token %}
+        {% for field in form %}
+        <div class="mb-4">
+          <label class="form-label fw-600">{{ field.label }}</label>
+          {% if field.help_text %}<div class="text-muted small mb-1">{{ field.help_text }}</div>{% endif %}
+          <select name="{{ field.html_name }}" id="{{ field.id_for_label }}" class="cuenta-select">
+            <option value="">— Sin asignar —</option>
+            {% for opt_val, opt_lbl in field.field.choices %}
+              {% if opt_val %}
+              <option value="{{ opt_val }}" {% if field.value|stringformat:"s" == opt_val|stringformat:"s" %}selected{% endif %}>{{ opt_lbl }}</option>
+              {% endif %}
+            {% endfor %}
+          </select>
+          {% if field.errors %}<div class="text-danger small mt-1">{{ field.errors.0 }}</div>{% endif %}
+        </div>
+        {% endfor %}
+        <div class="d-flex gap-2 mt-4">
+          <button type="submit" class="btn btn-sta rounded-pill px-4">
+            <i class="bi bi-floppy me-1"></i>Guardar configuración
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/js/tom-select.complete.min.js"></script>
+<script>
+  document.querySelectorAll('.cuenta-select').forEach(el => {
+    new TomSelect(el, {
+      maxItems: 1,
+      searchField: ['text'],
+      render: {
+        option: (d, e) => `<div class="small">${e(d.text)}</div>`,
+        item: (d, e) => `<div class="small">${e(d.text)}</div>`,
+      }
+    });
+  });
+</script>
+{% endblock %}

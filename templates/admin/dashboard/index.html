@@ -1,0 +1,195 @@
+{% extends 'base_admin.html' %}
+{% load static %}
+{% load custom_tags %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block breadcrumb %}
+  <li class="breadcrumb-item active">Dashboard</li>
+{% endblock %}
+
+{% block content %}
+
+<!-- KPI CARDS -->
+<div class="row g-4 mb-4">
+  <div class="col-sm-6 col-xl-3">
+    <div class="kpi-card">
+      <div class="kpi-icon" style="background:linear-gradient(135deg,var(--sta-navy),var(--sta-steel));">
+        <i class="bi bi-bank2"></i>
+      </div>
+      <div class="kpi-value">{{ saldo_total|moneda_chilena }}</div>
+      <div class="kpi-label">Saldo Bancario Total</div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-xl-3">
+    <div class="kpi-card">
+      <div class="kpi-icon" style="background:linear-gradient(135deg,#28a745,#20c997);">
+        <i class="bi bi-arrow-down-circle"></i>
+      </div>
+      <div class="kpi-value" style="color:#28a745;">{{ ingresos_mes|moneda_chilena }}</div>
+      <div class="kpi-label">Ingresos del Mes</div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-xl-3">
+    <div class="kpi-card">
+      <div class="kpi-icon" style="background:linear-gradient(135deg,#dc3545,#fd7e14);">
+        <i class="bi bi-arrow-up-circle"></i>
+      </div>
+      <div class="kpi-value" style="color:#dc3545;">{{ egresos_mes|moneda_chilena }}</div>
+      <div class="kpi-label">Egresos del Mes</div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-xl-3">
+    <div class="kpi-card">
+      <div class="kpi-icon" style="background:linear-gradient(135deg,#6f42c1,#e83e8c);">
+        <i class="bi bi-graph-up-arrow"></i>
+      </div>
+      <div class="kpi-value" style="color:{% if utilidad_mes >= 0 %}#28a745{% else %}#dc3545{% endif %};">
+        {{ utilidad_mes|moneda_chilena }}
+      </div>
+      <div class="kpi-label">Utilidad del Mes</div>
+    </div>
+  </div>
+</div>
+
+<!-- GRÁFICO + ALERTAS -->
+<div class="row g-4 mb-4">
+  <div class="col-xl-8">
+    <div class="card-sta p-4">
+      <h6 class="fw-700 mb-3 text-sta">
+        <i class="bi bi-bar-chart me-2"></i>Flujo de Caja — Últimos 6 Meses
+      </h6>
+      <canvas id="flujoCajaChart" height="110"></canvas>
+    </div>
+  </div>
+  <div class="col-xl-4">
+    <div class="card-sta p-4 h-100">
+      <h6 class="fw-700 mb-3 text-sta">
+        <i class="bi bi-bell me-2"></i>Resumen Rápido
+      </h6>
+      <ul class="list-group list-group-flush">
+        <li class="list-group-item d-flex justify-content-between px-0">
+          <span class="text-muted"><i class="bi bi-building me-2 text-sta"></i>Proyectos Activos</span>
+          <span class="badge bg-primary rounded-pill">{{ proyectos_activos }}</span>
+        </li>
+        <li class="list-group-item d-flex justify-content-between px-0">
+          <span class="text-muted"><i class="bi bi-cash-stack me-2 text-success"></i>CxC Pendiente</span>
+          <span class="fw-600">{{ total_cxc_pendiente|moneda_chilena }}</span>
+        </li>
+        <li class="list-group-item d-flex justify-content-between px-0">
+          <span class="text-muted"><i class="bi bi-credit-card me-2 text-danger"></i>CxP Pendiente</span>
+          <span class="fw-600">{{ total_cxp_pendiente|moneda_chilena }}</span>
+        </li>
+        {% if f29_pendientes %}
+        <li class="list-group-item d-flex justify-content-between px-0">
+          <span class="text-muted"><i class="bi bi-receipt me-2 text-warning"></i>F29 Pendientes</span>
+          <span class="badge bg-warning text-dark rounded-pill">{{ f29_pendientes|length }}</span>
+        </li>
+        {% endif %}
+      </ul>
+      <div class="mt-3">
+        <a href="{% url 'tesoreria:resumen' %}" class="btn btn-sta btn-sm w-100 rounded-pill mb-2">
+          <i class="bi bi-bank me-1"></i>Ver Tesorería
+        </a>
+        <a href="{% url 'tributario:resumen' %}" class="btn btn-outline-secondary btn-sm w-100 rounded-pill">
+          <i class="bi bi-receipt me-1"></i>Ver Tributario
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- CxC VENCIDAS -->
+{% if cxc_vencidas %}
+<div class="card-sta p-4 mb-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h6 class="fw-700 text-sta mb-0">
+      <i class="bi bi-exclamation-triangle-fill text-danger me-2"></i>
+      Cuentas por Cobrar Vencidas
+    </h6>
+    <a href="{% url 'clientes:cxc_list' %}" class="btn btn-outline-danger btn-sm rounded-pill">
+      Ver todas
+    </a>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sta mb-0">
+      <thead>
+        <tr>
+          <th>Factura</th>
+          <th>Cliente</th>
+          <th class="text-end">Monto</th>
+          <th class="text-end">Saldo</th>
+          <th>Vencimiento</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for cxc in cxc_vencidas %}
+        <tr>
+          <td><span class="fw-600">{{ cxc.factura.numero }}</span></td>
+          <td>{{ cxc.factura.cliente.razon_social|truncatechars:30 }}</td>
+          <td class="text-end">{{ cxc.monto|moneda_chilena }}</td>
+          <td class="text-end fw-600 text-danger">{{ cxc.saldo_pendiente|moneda_chilena }}</td>
+          <td>
+            <span class="badge-estado vencida">{{ cxc.factura.fecha_vencimiento }}</span>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const ctx = document.getElementById('flujoCajaChart').getContext('2d');
+new Chart(ctx, {
+  type: 'bar',
+  data: {
+    labels: {{ chart_labels|safe }},
+    datasets: [
+      {
+        label: 'Ingresos',
+        data: {{ chart_ingresos|safe }},
+        backgroundColor: 'rgba(40,167,69,0.7)',
+        borderColor: 'rgba(40,167,69,1)',
+        borderWidth: 1,
+        borderRadius: 4,
+      },
+      {
+        label: 'Egresos',
+        data: {{ chart_egresos|safe }},
+        backgroundColor: 'rgba(220,53,69,0.7)',
+        borderColor: 'rgba(220,53,69,1)',
+        borderWidth: 1,
+        borderRadius: 4,
+      }
+    ]
+  },
+  options: {
+    responsive: true,
+    interaction: { intersect: false, mode: 'index' },
+    plugins: {
+      legend: { position: 'top', labels: { font: { size: 12 } } },
+      tooltip: {
+        callbacks: {
+          label: function(ctx) {
+            return ctx.dataset.label + ': $ ' + ctx.raw.toLocaleString('es-CL');
+          }
+        }
+      }
+    },
+    scales: {
+      y: {
+        beginAtZero: true,
+        ticks: {
+          callback: val => '$ ' + val.toLocaleString('es-CL')
+        }
+      }
+    }
+  }
+});
+</script>
+{% endblock %}

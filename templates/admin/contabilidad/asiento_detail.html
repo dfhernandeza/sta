@@ -1,0 +1,147 @@
+{% extends 'base_admin.html' %}
+{% load custom_tags %}
+{% block title %}{{ asiento.numero }}{% endblock %}
+
+{% block breadcrumb %}
+  <li class="breadcrumb-item"><a href="{% url 'contabilidad:diario_list' %}">Libro Diario</a></li>
+  <li class="breadcrumb-item active">{{ asiento.numero }}</li>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h4 class="page-title font-monospace">{{ asiento.numero }}</h4>
+    <p class="page-subtitle mb-0">{{ asiento.descripcion }}</p>
+  </div>
+  <div class="d-flex gap-2 align-items-center">
+    {% if asiento.estado == 'borrador' %}
+      <span class="badge bg-secondary fs-6">Borrador</span>
+      <a href="{% url 'contabilidad:asiento_update' asiento.pk %}" class="btn btn-outline-secondary rounded-pill px-3">
+        <i class="bi bi-pencil me-1"></i>Editar
+      </a>
+      <form method="post" action="{% url 'contabilidad:asiento_confirmar' asiento.pk %}" class="d-inline">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-success rounded-pill px-4"
+          onclick="return confirm('¿Confirmar asiento? Esta acción no se puede deshacer.')">
+          <i class="bi bi-check-circle me-1"></i>Confirmar
+        </button>
+      </form>
+    {% elif asiento.estado == 'confirmado' %}
+      <span class="badge bg-success fs-6">Confirmado</span>
+    {% else %}
+      <span class="badge bg-danger fs-6">Anulado</span>
+    {% endif %}
+
+    {% if asiento.estado != 'anulado' %}
+      <form method="post" action="{% url 'contabilidad:asiento_anular' asiento.pk %}" class="d-inline">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-outline-danger rounded-pill px-3"
+          onclick="return confirm('¿Anular este asiento?')">
+          <i class="bi bi-x-circle me-1"></i>Anular
+        </button>
+      </form>
+    {% endif %}
+    <a href="{% url 'contabilidad:diario_list' %}" class="btn btn-outline-secondary rounded-pill px-3">
+      <i class="bi bi-arrow-left me-1"></i>Volver
+    </a>
+  </div>
+</div>
+
+<div class="row g-4">
+  <!-- Cabecera del asiento -->
+  <div class="col-lg-4">
+    <div class="card-sta p-4">
+      <h6 class="fw-700 text-sta mb-3"><i class="bi bi-info-circle me-2"></i>Datos del Asiento</h6>
+      <dl class="row mb-0">
+        <dt class="col-sm-5 text-muted small">N° Asiento</dt>
+        <dd class="col-sm-7 font-monospace fw-700">{{ asiento.numero }}</dd>
+        <dt class="col-sm-5 text-muted small">Fecha</dt>
+        <dd class="col-sm-7 small">{{ asiento.fecha }}</dd>
+        <dt class="col-sm-5 text-muted small">Tipo</dt>
+        <dd class="col-sm-7 small">{{ asiento.get_tipo_display }}</dd>
+        <dt class="col-sm-5 text-muted small">Estado</dt>
+        <dd class="col-sm-7">
+          {% if asiento.estado == 'borrador' %}<span class="badge bg-secondary">Borrador</span>
+          {% elif asiento.estado == 'confirmado' %}<span class="badge bg-success">Confirmado</span>
+          {% else %}<span class="badge bg-danger">Anulado</span>{% endif %}
+        </dd>
+        {% if asiento.creado_por %}
+        <dt class="col-sm-5 text-muted small">Creado por</dt>
+        <dd class="col-sm-7 small">{{ asiento.creado_por.get_full_name|default:asiento.creado_por.username }}</dd>
+        {% endif %}
+      </dl>
+
+      {% if asiento.factura_emitida %}
+      <hr class="my-3">
+      <div class="small text-muted mb-1">Factura Emitida</div>
+      <a href="{% url 'clientes:factura_detail' asiento.factura_emitida.pk %}" class="fw-600 text-decoration-none">
+        {{ asiento.factura_emitida.numero }} – {{ asiento.factura_emitida.cliente.razon_social }}
+      </a>
+      {% endif %}
+      {% if asiento.factura_recibida %}
+      <hr class="my-3">
+      <div class="small text-muted mb-1">Factura Recibida</div>
+      <a href="{% url 'proveedores:factura_detail' asiento.factura_recibida.pk %}" class="fw-600 text-decoration-none">
+        {{ asiento.factura_recibida.numero }} – {{ asiento.factura_recibida.proveedor.razon_social }}
+      </a>
+      {% endif %}
+      {% if asiento.movimiento_bancario %}
+      <hr class="my-3">
+      <div class="small text-muted mb-1">Movimiento Bancario</div>
+      <span class="fw-600">{{ asiento.movimiento_bancario }}</span>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Tabla de líneas -->
+  <div class="col-lg-8">
+    <div class="card-sta p-4">
+      <h6 class="fw-700 text-sta mb-3"><i class="bi bi-table me-2"></i>Partidas</h6>
+      <table class="table table-bordered mb-0" style="table-layout:fixed;">
+        <colgroup>
+          <col style="width:22%">
+          <col>
+          <col style="width:16%">
+          <col style="width:16%">
+        </colgroup>
+        <thead class="table-light">
+          <tr>
+            <th>Cuenta</th>
+            <th>Descripción</th>
+            <th class="text-end">Debe</th>
+            <th class="text-end">Haber</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for linea in asiento.lineas.all %}
+          <tr>
+            <td class="small font-monospace">{{ linea.cuenta.codigo }}<br><span class="text-muted">{{ linea.cuenta.nombre|truncatechars:28 }}</span></td>
+            <td class="small">{{ linea.descripcion|default:"—" }}</td>
+            <td class="text-end small font-monospace">{% if linea.debe %}<span class="text-primary">{{ linea.debe|moneda_chilena }}</span>{% else %}—{% endif %}</td>
+            <td class="text-end small font-monospace">{% if linea.haber %}<span class="text-success">{{ linea.haber|moneda_chilena }}</span>{% else %}—{% endif %}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="4" class="text-center text-muted py-3">Sin líneas.</td></tr>
+          {% endfor %}
+        </tbody>
+        <tfoot class="table-active fw-700">
+          <tr>
+            <td colspan="2" class="text-end fw-700">Totales</td>
+            <td class="text-end font-monospace text-primary">{{ asiento.total_debe|moneda_chilena }}</td>
+            <td class="text-end font-monospace text-success">{{ asiento.total_haber|moneda_chilena }}</td>
+          </tr>
+          <tr>
+            <td colspan="4" class="text-center small">
+              {% if asiento.esta_cuadrado %}
+                <span class="text-success"><i class="bi bi-check-circle-fill me-1"></i>Asiento cuadrado</span>
+              {% else %}
+                <span class="text-danger"><i class="bi bi-exclamation-triangle-fill me-1"></i>Asiento no cuadrado — diferencia: {{ asiento.total_debe|add:asiento.total_haber|moneda_chilena }}</span>
+              {% endif %}
+            </td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

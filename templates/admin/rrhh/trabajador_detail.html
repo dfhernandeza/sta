@@ -1,0 +1,109 @@
+{% extends 'base_admin.html' %}
+{% load custom_tags %}
+
+{% block title %}{{ trabajador.nombre_completo }}{% endblock %}
+
+{% block breadcrumb %}
+  <li class="breadcrumb-item"><a href="{% url 'rrhh:trabajador_list' %}">RRHH</a></li>
+  <li class="breadcrumb-item active">{{ trabajador.nombre_completo }}</li>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h4 class="page-title">{{ trabajador.nombre_completo }}</h4>
+    <p class="page-subtitle mb-0">
+      RUT: <span class="font-monospace">{{ trabajador.rut }}</span>
+      &nbsp;·&nbsp;<span class="badge-{{ trabajador.estado }}">{{ trabajador.get_estado_display }}</span>
+    </p>
+  </div>
+  <div class="d-flex gap-2">
+    <a href="{% url 'rrhh:trabajador_update' trabajador.pk %}" class="btn btn-sta rounded-pill px-4">
+      <i class="bi bi-pencil me-1"></i>Editar
+    </a>
+  </div>
+</div>
+
+<div class="row g-4">
+  <!-- Datos personales -->
+  <div class="col-lg-4">
+    <div class="card-sta p-4">
+      <h6 class="fw-700 text-sta mb-3"><i class="bi bi-person-badge me-2"></i>Información</h6>
+      <dl class="row mb-0">
+        <dt class="col-sm-5 text-muted small">Cargo</dt>
+        <dd class="col-sm-7 small">{{ trabajador.cargo|default:"—" }}</dd>
+        <dt class="col-sm-5 text-muted small">Ingreso</dt>
+        <dd class="col-sm-7 small">{{ trabajador.fecha_ingreso|default:"—" }}</dd>
+        <dt class="col-sm-5 text-muted small">Sueldo Base</dt>
+        <dd class="col-sm-7 small fw-600">{{ trabajador.sueldo_base|moneda_chilena }}</dd>
+        <dt class="col-sm-5 text-muted small">AFP</dt>
+        <dd class="col-sm-7 small">{{ trabajador.afp|default:"—" }}</dd>
+        <dt class="col-sm-5 text-muted small">Isapre</dt>
+        <dd class="col-sm-7 small">{{ trabajador.isapre|default:"—" }}</dd>
+        <dt class="col-sm-5 text-muted small">Estado</dt>
+        <dd class="col-sm-7"><span class="badge-{{ trabajador.estado }}">{{ trabajador.get_estado_display }}</span></dd>
+      </dl>
+    </div>
+  </div>
+
+  <!-- Remuneraciones recientes -->
+  <div class="col-lg-8">
+    <div class="card-sta p-4 mb-4">
+      <div class="d-flex justify-content-between mb-3">
+        <h6 class="fw-700 text-sta mb-0"><i class="bi bi-cash-coin me-2"></i>Últimas Remuneraciones</h6>
+        <a href="{% url 'rrhh:remuneracion_list' %}?trabajador={{ trabajador.pk }}" class="btn btn-outline-secondary btn-sm rounded-pill px-3">Ver todas</a>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sta mb-0 table-sm">
+          <thead>
+            <tr>
+              <th>Período</th><th class="text-end">Bruto</th><th class="text-end">Líquido</th>
+              <th class="text-center">Estado</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for rem in trabajador.remuneraciones.all|slice:":6" %}
+            <tr>
+              <td class="small font-monospace">{{ rem.periodo_mes|stringformat:"02d" }}/{{ rem.periodo_anio }}</td>
+              <td class="text-end small">{{ rem.sueldo_bruto|moneda_chilena }}</td>
+              <td class="text-end fw-600">{{ rem.liquido_pagar|moneda_chilena }}</td>
+              <td class="text-center"><span class="badge-{{ rem.estado }}">{{ rem.get_estado_display }}</span></td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="4" class="text-center text-muted py-3">Sin remuneraciones</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Anticipos laborales -->
+    <div class="card-sta p-4">
+      <div class="d-flex justify-content-between mb-3">
+        <h6 class="fw-700 text-sta mb-0"><i class="bi bi-cash me-2"></i>Anticipos</h6>
+        <a href="{% url 'rrhh:anticipo_create' %}" class="btn btn-sta btn-sm rounded-pill px-3">
+          <i class="bi bi-plus"></i>
+        </a>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sta mb-0 table-sm">
+          <thead>
+            <tr><th>Fecha</th><th class="text-end">Monto</th><th class="text-center">Estado</th></tr>
+          </thead>
+          <tbody>
+            {% for a in trabajador.anticipos.all|slice:":5" %}
+            <tr>
+              <td class="small">{{ a.fecha }}</td>
+              <td class="text-end fw-600">{{ a.monto|moneda_chilena }}</td>
+              <td class="text-center"><span class="badge-{{ a.estado }}">{{ a.get_estado_display }}</span></td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="3" class="text-center text-muted py-3">Sin anticipos</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

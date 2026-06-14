@@ -1,0 +1,53 @@
+{% extends 'base_admin.html' %}
+
+{% block title %}Nuevo Anticipo a Proveedor{% endblock %}
+
+{% block breadcrumb %}
+  <li class="breadcrumb-item"><a href="{% url 'proveedores:proveedor_list' %}">Proveedores</a></li>
+  <li class="breadcrumb-item"><a href="{% url 'proveedores:anticipo_list' %}">Anticipos</a></li>
+  <li class="breadcrumb-item active">Nuevo</li>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h4 class="page-title">Nuevo Anticipo a Proveedor</h4>
+  <a href="{% url 'proveedores:anticipo_list' %}" class="btn btn-outline-secondary rounded-pill px-4">
+    <i class="bi bi-arrow-left me-1"></i>Volver
+  </a>
+</div>
+<div class="row justify-content-center">
+  <div class="col-lg-6">
+    <div class="card-sta p-4">
+      <form method="post" novalidate>
+        {% csrf_token %}
+        <div class="row g-3">
+          <div class="col-12">
+            <label class="form-label fw-600">Proveedor <span class="text-danger">*</span></label>
+            {{ form.proveedor }}
+            {% if form.proveedor.errors %}<div class="invalid-feedback d-block">{{ form.proveedor.errors.0 }}</div>{% endif %}
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label fw-600">Fecha <span class="text-danger">*</span></label>
+            {{ form.fecha }}
+            {% if form.fecha.errors %}<div class="invalid-feedback d-block">{{ form.fecha.errors.0 }}</div>{% endif %}
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label fw-600">Monto <span class="text-danger">*</span></label>
+            {{ form.monto }}
+            {% if form.monto.errors %}<div class="invalid-feedback d-block">{{ form.monto.errors.0 }}</div>{% endif %}
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label fw-600">Estado</label>
+            {{ form.estado }}
+          </div>
+          <div class="col-12 pt-2 border-top">
+            <button type="submit" class="btn btn-sta px-5 rounded-pill">
+              <i class="bi bi-save me-1"></i>Registrar anticipo
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

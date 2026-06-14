@@ -1,0 +1,73 @@
+{% extends 'base_admin.html' %}
+{% load custom_tags %}
+{% block title %}Formulario F29{% endblock %}
+
+{% block breadcrumb %}
+  <li class="breadcrumb-item"><a href="{% url 'tributario:resumen' %}">Tributario</a></li>
+  <li class="breadcrumb-item active">F29</li>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h4 class="page-title">Formulario F29</h4>
+  <a href="{% url 'tributario:f29_create' %}" class="btn btn-sta rounded-pill px-4">
+    <i class="bi bi-plus-circle me-1"></i>Nuevo F29
+  </a>
+</div>
+
+<div class="card-sta p-0">
+  <div class="table-responsive">
+    <table class="table table-sta mb-0">
+      <thead>
+        <tr>
+          <th>Período</th><th>Folio</th>
+          <th class="text-end">IVA a Pagar</th>
+          <th class="text-end">PPM</th>
+          <th class="text-end">Retenciones</th>
+          <th class="text-end">Total</th>
+          <th class="text-center">Estado</th>
+          <th>Presentación</th>
+          <th class="text-center">Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in f29s %}
+        <tr>
+          <td class="font-monospace fw-600">{{ f.periodo_mes|stringformat:"02d" }}/{{ f.periodo_anio }}</td>
+          <td class="font-monospace small">{{ f.folio|default:"—" }}</td>
+          <td class="text-end small">{{ f.iva_pagar|moneda_chilena }}</td>
+          <td class="text-end small">{{ f.ppm_pagar|moneda_chilena }}</td>
+          <td class="text-end small">{{ f.retenciones|moneda_chilena }}</td>
+          <td class="text-end fw-700">{{ f.total_pagar|moneda_chilena }}</td>
+          <td class="text-center"><span class="badge-{{ f.estado }}">{{ f.get_estado_display }}</span></td>
+          <td class="small">{{ f.fecha_presentacion|default:"—" }}</td>
+          <td class="text-center">
+            <div class="btn-group btn-group-sm">
+              <a href="{% url 'tributario:f29_update' f.pk %}" class="btn btn-outline-secondary btn-sm" title="Editar">
+                <i class="bi bi-pencil"></i>
+              </a>
+              {% if f.estado != 'pagado' %}
+              <a href="{% url 'tributario:f29_pagar' f.pk %}" class="btn btn-success btn-sm" title="Registrar pago">
+                <i class="bi bi-cash-coin"></i>
+              </a>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="9" class="text-center text-muted py-4">No hay declaraciones F29.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if is_paginated %}
+  <div class="d-flex justify-content-center py-3">
+    <nav><ul class="pagination pagination-sm mb-0">
+      {% if page_obj.has_previous %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">‹</a></li>{% endif %}
+      <li class="page-item disabled"><span class="page-link">{{ page_obj.number }}/{{ page_obj.paginator.num_pages }}</span></li>
+      {% if page_obj.has_next %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">›</a></li>{% endif %}
+    </ul></nav>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

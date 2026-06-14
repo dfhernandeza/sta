@@ -1,0 +1,120 @@
+{% extends 'base_admin.html' %}
+{% load custom_tags %}
+{% block title %}Movimientos Bancarios{% endblock %}
+
+{% block breadcrumb %}
+  <li class="breadcrumb-item"><a href="{% url 'tesoreria:resumen' %}">Tesorería</a></li>
+  <li class="breadcrumb-item active">Movimientos</li>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h4 class="page-title">Movimientos Bancarios</h4>
+  <a href="{% url 'tesoreria:movimiento_create' %}" class="btn btn-sta rounded-pill px-4">
+    <i class="bi bi-plus-circle me-1"></i>Nuevo movimiento
+  </a>
+</div>
+
+<!-- FILTROS -->
+<div class="card-sta p-3 mb-4">
+  <form method="get" class="row g-2 align-items-end">
+    <div class="col-sm-3">
+      <select name="cuenta" class="form-select form-select-sm">
+        <option value="">Todas las cuentas</option>
+        {% for c in cuentas %}
+          <option value="{{ c.pk }}" {% if request.GET.cuenta == c.pk|stringformat:"s" %}selected{% endif %}>
+            {{ c.banco.nombre }} – {{ c.numero }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-sm-2">
+      <select name="tipo" class="form-select form-select-sm">
+        <option value="">Todos</option>
+        <option value="ingreso" {% if request.GET.tipo == "ingreso" %}selected{% endif %}>Ingresos</option>
+        <option value="egreso" {% if request.GET.tipo == "egreso" %}selected{% endif %}>Egresos</option>
+      </select>
+    </div>
+    <div class="col-sm-2">
+      <input type="date" name="desde" class="form-control form-control-sm" value="{{ request.GET.desde }}" placeholder="Desde">
+    </div>
+    <div class="col-sm-2">
+      <input type="date" name="hasta" class="form-control form-control-sm" value="{{ request.GET.hasta }}" placeholder="Hasta">
+    </div>
+    <div class="col-auto">
+      <button type="submit" class="btn btn-sta btn-sm rounded-pill px-3"><i class="bi bi-search"></i></button>
+      <a href="{% url 'tesoreria:movimiento_list' %}" class="btn btn-outline-secondary btn-sm rounded-pill px-3 ms-1"><i class="bi bi-x"></i></a>
+    </div>
+  </form>
+</div>
+
+<div class="card-sta p-0">
+  <div class="table-responsive">
+    <table class="table table-sta mb-0">
+      <thead>
+        <tr>
+          <th>Fecha</th><th>Cuenta</th><th>Descripción</th><th>Documento</th>
+          <th class="text-center">Tipo</th><th class="text-end">Monto</th>
+          <th class="text-center">Conciliado</th><th class="text-center">Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for m in movimientos %}
+        <tr>
+          <td class="small">{{ m.fecha }}</td>
+          <td class="small">{{ m.cuenta.banco.nombre }}</td>
+          <td>{{ m.descripcion|truncatechars:45 }}</td>
+          <td class="small text-muted">{{ m.documento|default:"—" }}</td>
+          <td class="text-center">
+            {% if m.tipo == 'ingreso' %}
+              <span class="badge-estado activo"><i class="bi bi-arrow-down-left"></i> Ingreso</span>
+            {% else %}
+              <span class="badge-estado vencida"><i class="bi bi-arrow-up-right"></i> Egreso</span>
+            {% endif %}
+          </td>
+          <td class="text-end fw-700 {% if m.tipo == 'ingreso' %}text-success{% else %}text-danger{% endif %}">
+            {{ m.monto|moneda_chilena }}
+          </td>
+          <td class="text-center">
+            {% if m.conciliado %}<i class="bi bi-check-circle-fill text-success"></i>
+            {% else %}<i class="bi bi-circle text-muted"></i>{% endif %}
+          </td>
+          <td class="text-center">
+            <div class="btn-group btn-group-sm">
+              <a href="{% url 'tesoreria:movimiento_update' m.pk %}" class="btn btn-outline-secondary btn-sm" title="Editar">
+                <i class="bi bi-pencil"></i>
+              </a>
+              {% with asiento=m.asientos.all|dictsort:"numero"|last %}
+                {% if asiento and asiento.estado != 'anulado' %}
+                  <a href="{% url 'contabilidad:asiento_detail' asiento.pk %}" class="btn btn-outline-success btn-sm" title="Ver asiento {{ asiento.numero }}">
+                    <i class="bi bi-journal-check"></i>
+                  </a>
+                {% else %}
+                  <form method="post" action="{% url 'tesoreria:movimiento_asiento' m.pk %}" class="d-inline">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-outline-primary btn-sm" title="Generar asiento contable">
+                      <i class="bi bi-journal-plus"></i>
+                    </button>
+                  </form>
+                {% endif %}
+              {% endwith %}
+            </div>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="8" class="text-center text-muted py-4">No hay movimientos registrados.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if is_paginated %}
+  <div class="d-flex justify-content-center py-3">
+    <nav><ul class="pagination pagination-sm mb-0">
+      {% if page_obj.has_previous %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">‹</a></li>{% endif %}
+      <li class="page-item disabled"><span class="page-link">{{ page_obj.number }}/{{ page_obj.paginator.num_pages }}</span></li>
+      {% if page_obj.has_next %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">›</a></li>{% endif %}
+    </ul></nav>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

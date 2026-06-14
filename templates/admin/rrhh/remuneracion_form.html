@@ -1,0 +1,187 @@
+{% extends 'base_admin.html' %}
+
+{% block title %}{% if form.instance.pk %}Editar{% else %}Nueva{% endif %} Remuneración{% endblock %}
+
+{% block breadcrumb %}
+  <li class="breadcrumb-item"><a href="{% url 'rrhh:trabajador_list' %}">RRHH</a></li>
+  <li class="breadcrumb-item"><a href="{% url 'rrhh:remuneracion_list' %}">Remuneraciones</a></li>
+  <li class="breadcrumb-item active">{% if form.instance.pk %}Editar{% else %}Nueva{% endif %}</li>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h4 class="page-title">{% if form.instance.pk %}Editar Remuneración{% else %}Nueva Remuneración{% endif %}</h4>
+  <a href="{% url 'rrhh:remuneracion_list' %}" class="btn btn-outline-secondary rounded-pill px-4">
+    <i class="bi bi-arrow-left me-1"></i>Volver
+  </a>
+</div>
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+    <div class="card-sta p-4">
+      <form method="post" novalidate>
+        {% csrf_token %}
+        <div class="row g-3">
+
+          {# Trabajador #}
+          <div class="col-12">
+            <label class="form-label fw-600">Trabajador <span class="text-danger">*</span></label>
+            {{ form.trabajador }}
+            {% if form.trabajador.errors %}<div class="invalid-feedback d-block">{{ form.trabajador.errors.0 }}</div>{% endif %}
+            <div id="info-trabajador" class="small text-muted mt-1" style="display:none;">
+              <i class="bi bi-info-circle me-1"></i>
+              AFP: <strong id="lbl-afp">—</strong> |
+              Salud: <strong id="lbl-isapre">—</strong> |
+              Anticipo pendiente: <strong id="lbl-anticipo">—</strong>
+            </div>
+          </div>
+
+          {# Período #}
+          <div class="col-sm-3">
+            <label class="form-label fw-600">Mes <span class="text-danger">*</span></label>
+            {{ form.periodo_mes }}
+            {% if form.periodo_mes.errors %}<div class="invalid-feedback d-block">{{ form.periodo_mes.errors.0 }}</div>{% endif %}
+          </div>
+          <div class="col-sm-3">
+            <label class="form-label fw-600">Año <span class="text-danger">*</span></label>
+            {{ form.periodo_anio }}
+            {% if form.periodo_anio.errors %}<div class="invalid-feedback d-block">{{ form.periodo_anio.errors.0 }}</div>{% endif %}
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label fw-600">Estado</label>
+            {{ form.estado }}
+          </div>
+
+          {# Haberes #}
+          <div class="col-12"><hr class="my-1"><p class="fw-600 text-muted small mb-0">Haberes</p></div>
+          <div class="col-sm-4">
+            <label class="form-label fw-600">Sueldo Base</label>
+            {{ form.sueldo_base }}
+          </div>
+          <div class="col-sm-4">
+            <label class="form-label fw-600">Horas Extra</label>
+            {{ form.horas_extra }}
+          </div>
+          <div class="col-sm-4">
+            <label class="form-label fw-600">Bono</label>
+            {{ form.bono }}
+          </div>
+          <div class="col-sm-4">
+            <label class="form-label fw-600">Sueldo Bruto <span class="badge bg-secondary ms-1" title="Calculado automáticamente">auto</span></label>
+            {{ form.sueldo_bruto }}
+          </div>
+
+          {# Descuentos #}
+          <div class="col-12"><hr class="my-1"><p class="fw-600 text-muted small mb-0">Descuentos</p></div>
+          <div class="col-sm-4">
+            <label class="form-label fw-600">Descuento AFP <span class="badge bg-secondary ms-1" title="Calculado según AFP del trabajador">auto</span></label>
+            {{ form.descuento_afp }}
+          </div>
+          <div class="col-sm-4">
+            <label class="form-label fw-600">Descuento Salud <span class="badge bg-secondary ms-1" title="7% legal mínimo">auto</span></label>
+            {{ form.descuento_salud }}
+          </div>
+          <div class="col-sm-4">
+            <label class="form-label fw-600">Otros Descuentos</label>
+            {{ form.otros_descuentos }}
+          </div>
+          <div class="col-sm-4">
+            <label class="form-label fw-600">Anticipo descontado</label>
+            {{ form.anticipo_descontado }}
+          </div>
+          <div class="col-sm-4">
+            <label class="form-label fw-600">Líquido a pagar <span class="badge bg-success ms-1" title="Calculado automáticamente">auto</span></label>
+            {{ form.liquido_pagar }}
+          </div>
+          <div class="col-sm-4">
+            <label class="form-label fw-600">Fecha de pago</label>
+            {{ form.fecha_pago }}
+          </div>
+
+          <div class="col-12 pt-2 border-top">
+            <button type="submit" class="btn btn-sta px-5 rounded-pill">
+              <i class="bi bi-save me-1"></i>
+              {% if form.instance.pk %}Guardar cambios{% else %}Registrar remuneración{% endif %}
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const AFP_TASAS = {{ afp_tasas_json|safe }};
+const TASA_SALUD = {{ tasa_salud|stringformat:"f" }};
+
+function v(id) { return parseFloat(document.getElementById(id)?.value) || 0; }
+function setVal(id, val) {
+  const el = document.getElementById(id);
+  if (el) el.value = Math.round(val);
+}
+
+function recalcular() {
+  const base  = v('id_sueldo_base');
+  const extra = v('id_horas_extra');
+  const bono  = v('id_bono');
+  const bruto = base + extra + bono;
+  setVal('id_sueldo_bruto', bruto);
+
+  const tasaAFP = window._tasaAFP ?? 0.1144;
+  const afp     = Math.round(bruto * tasaAFP);
+  const salud   = Math.round(bruto * TASA_SALUD);
+  setVal('id_descuento_afp', afp);
+  setVal('id_descuento_salud', salud);
+
+  const otros     = v('id_otros_descuentos');
+  const anticipo  = v('id_anticipo_descontado');
+  const liquido   = Math.max(bruto - afp - salud - otros - anticipo, 0);
+  setVal('id_liquido_pagar', liquido);
+}
+
+function recalcularLiquido() {
+  const bruto    = v('id_sueldo_bruto');
+  const afp      = v('id_descuento_afp');
+  const salud    = v('id_descuento_salud');
+  const otros    = v('id_otros_descuentos');
+  const anticipo = v('id_anticipo_descontado');
+  setVal('id_liquido_pagar', Math.max(bruto - afp - salud - otros - anticipo, 0));
+}
+
+// Al cambiar trabajador: cargar datos vía API
+document.getElementById('id_trabajador')?.addEventListener('change', function () {
+  const pk = this.value;
+  if (!pk) return;
+  fetch(`{% url 'rrhh:trabajador_datos_api' pk=0 %}`.replace('/0/', `/${pk}/`))
+    .then(r => r.json())
+    .then(d => {
+      window._tasaAFP = d.tasa_afp;
+      setVal('id_sueldo_base', d.sueldo_base);
+      setVal('id_horas_extra', 0);
+      setVal('id_bono', 0);
+      setVal('id_anticipo_descontado', d.anticipo_pendiente);
+
+      // Info badge
+      const info = document.getElementById('info-trabajador');
+      info.style.display = '';
+      document.getElementById('lbl-afp').textContent     = d.afp || '—';
+      document.getElementById('lbl-isapre').textContent  = d.isapre || '—';
+      document.getElementById('lbl-anticipo').textContent = '$ ' + d.anticipo_pendiente.toLocaleString('es-CL');
+
+      recalcular();
+    })
+    .catch(() => {});
+});
+
+// Recalcular al cambiar haberes
+['id_sueldo_base','id_horas_extra','id_bono'].forEach(id =>
+  document.getElementById(id)?.addEventListener('input', recalcular)
+);
+
+// Recalcular líquido al cambiar descuentos manuales
+['id_descuento_afp','id_descuento_salud','id_otros_descuentos','id_anticipo_descontado'].forEach(id =>
+  document.getElementById(id)?.addEventListener('input', recalcularLiquido)
+);
+</script>
+{% endblock %}

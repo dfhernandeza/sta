@@ -1,0 +1,209 @@
+{% extends 'base_admin.html' %}
+
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block breadcrumb %}
+  <li class="breadcrumb-item"><a href="{% url 'contabilidad:diario_list' %}">Libro Diario</a></li>
+  <li class="breadcrumb-item active">{% if asiento %}{{ asiento.numero }}{% else %}Nuevo{% endif %}</li>
+{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/css/tom-select.bootstrap5.min.css" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h4 class="page-title">{{ titulo }}</h4>
+  <a href="{% url 'contabilidad:diario_list' %}" class="btn btn-outline-secondary rounded-pill px-3">
+    <i class="bi bi-arrow-left me-1"></i>Volver
+  </a>
+</div>
+
+<form method="post" id="asientoForm">
+  {% csrf_token %}
+  <div class="row g-4">
+    <!-- Cabecera -->
+    <div class="col-lg-5">
+      <div class="card-sta p-4">
+        <h6 class="fw-700 text-sta mb-3">Datos del Asiento</h6>
+        {% for field in form %}
+        <div class="mb-3">
+          <label class="form-label small fw-600">{{ field.label }}</label>
+          {{ field }}
+          {% if field.errors %}<div class="invalid-feedback d-block">{{ field.errors.0 }}</div>{% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Líneas -->
+    <div class="col-lg-7">
+      <div class="card-sta p-4">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h6 class="fw-700 text-sta mb-0">Partidas (Debe / Haber)</h6>
+          <button type="button" class="btn btn-sta btn-sm rounded-pill px-3" id="btnAddLinea">
+            <i class="bi bi-plus me-1"></i>Agregar línea
+          </button>
+        </div>
+
+        {{ formset.management_form }}
+        <div id="lineas-container">
+          {% for lform in formset %}
+          <div class="linea-row border rounded p-3 mb-2">
+            {% for hidden in lform.hidden_fields %}{{ hidden }}{% endfor %}
+            <div class="row g-2">
+              <div class="col-12">
+                <label class="form-label small mb-1">Cuenta</label>
+                <select name="{{ lform.cuenta.html_name }}" class="cuenta-select" id="{{ lform.cuenta.id_for_label }}">
+                  <option value="">— Seleccione cuenta —</option>
+                  {% for c in cuentas %}
+                  <option value="{{ c.pk }}"
+                    {% if lform.cuenta.value|stringformat:"s" == c.pk|stringformat:"s" %}selected{% endif %}>
+                    {{ c.codigo }} – {{ c.nombre }}
+                  </option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-12">
+                {{ lform.descripcion }}
+              </div>
+              <div class="col-5">
+                <label class="form-label small mb-1">Debe</label>
+                {{ lform.debe }}
+              </div>
+              <div class="col-5">
+                <label class="form-label small mb-1">Haber</label>
+                {{ lform.haber }}
+              </div>
+              <div class="col-2 d-flex align-items-end">
+                {% if lform.DELETE %}
+                  <label class="btn btn-outline-danger btn-sm w-100" title="Eliminar">
+                    <span class="visually-hidden">{{ lform.DELETE }}</span>
+                    <i class="bi bi-trash3"></i>
+                  </label>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+
+        <!-- Template para nuevas líneas -->
+        <template id="lineaTemplate">
+          <div class="linea-row border rounded p-3 mb-2">
+            <div class="row g-2">
+              <div class="col-12">
+                <label class="form-label small mb-1">Cuenta</label>
+                <select name="lineas-__prefix__-cuenta" class="cuenta-select">
+                  <option value="">— Seleccione cuenta —</option>
+                  {% for c in cuentas %}
+                  <option value="{{ c.pk }}">{{ c.codigo }} – {{ c.nombre }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-12">
+                <input type="text" name="lineas-__prefix__-descripcion" class="form-control form-control-sm" placeholder="Descripción (opcional)">
+              </div>
+              <div class="col-5">
+                <label class="form-label small mb-1">Debe</label>
+                <input type="number" name="lineas-__prefix__-debe" value="0" step="0.01" min="0" class="form-control form-control-sm text-end">
+              </div>
+              <div class="col-5">
+                <label class="form-label small mb-1">Haber</label>
+                <input type="number" name="lineas-__prefix__-haber" value="0" step="0.01" min="0" class="form-control form-control-sm text-end">
+              </div>
+              <div class="col-2 d-flex align-items-end">
+                <button type="button" class="btn btn-outline-danger btn-sm w-100 btn-remove-linea"><i class="bi bi-trash3"></i></button>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- Totales en vivo -->
+        <div class="d-flex justify-content-end gap-4 mt-3 pt-3 border-top">
+          <div class="text-center">
+            <div class="text-muted small">Total Debe</div>
+            <div class="fw-700 font-monospace text-primary" id="totalDebe">$ 0</div>
+          </div>
+          <div class="text-center">
+            <div class="text-muted small">Total Haber</div>
+            <div class="fw-700 font-monospace text-success" id="totalHaber">$ 0</div>
+          </div>
+          <div class="text-center">
+            <div class="text-muted small">Diferencia</div>
+            <div class="fw-700 font-monospace" id="totalDif">$ 0</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mt-4 d-flex gap-2">
+    <button type="submit" class="btn btn-sta rounded-pill px-4">
+      <i class="bi bi-floppy me-1"></i>Guardar asiento
+    </button>
+    <a href="{% url 'contabilidad:diario_list' %}" class="btn btn-outline-secondary rounded-pill px-4">Cancelar</a>
+  </div>
+</form>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/js/tom-select.complete.min.js"></script>
+<script>
+  let totalForms = parseInt(document.querySelector('[name="lineas-TOTAL_FORMS"]').value);
+
+  function initTomSelect(el) {
+    new TomSelect(el, {
+      maxItems: 1,
+      searchField: ['text'],
+      render: {
+        option: (data, escape) => `<div class="small">${escape(data.text)}</div>`,
+        item: (data, escape) => `<div class="small">${escape(data.text)}</div>`,
+      }
+    });
+  }
+
+  // Init existing selects
+  document.querySelectorAll('.cuenta-select').forEach(initTomSelect);
+
+  document.getElementById('btnAddLinea').addEventListener('click', () => {
+    const tmpl = document.getElementById('lineaTemplate').innerHTML;
+    const html = tmpl.replace(/__prefix__/g, totalForms);
+    const div = document.createElement('div');
+    div.innerHTML = html;
+    const row = div.firstElementChild;
+    document.getElementById('lineas-container').appendChild(row);
+    // Init TomSelect on the new select
+    const sel = row.querySelector('.cuenta-select');
+    if (sel) initTomSelect(sel);
+    // Remove button handler
+    row.querySelector('.btn-remove-linea')?.addEventListener('click', () => {
+      row.remove();
+      recalc();
+    });
+    totalForms++;
+    document.querySelector('[name="lineas-TOTAL_FORMS"]').value = totalForms;
+    recalc();
+  });
+
+  function recalc() {
+    let debe = 0, haber = 0;
+    document.querySelectorAll('.linea-row').forEach(row => {
+      const delCb = row.querySelector('input[type=checkbox][name$="-DELETE"]');
+      if (delCb && delCb.checked) return;
+      debe += parseFloat(row.querySelector('input[name$="-debe"]')?.value || 0);
+      haber += parseFloat(row.querySelector('input[name$="-haber"]')?.value || 0);
+    });
+    const fmt = v => '$ ' + Math.round(v).toLocaleString('es-CL');
+    document.getElementById('totalDebe').textContent = fmt(debe);
+    document.getElementById('totalHaber').textContent = fmt(haber);
+    const dif = debe - haber;
+    const difEl = document.getElementById('totalDif');
+    difEl.textContent = fmt(Math.abs(dif));
+    difEl.className = 'fw-700 font-monospace ' + (dif === 0 ? 'text-success' : 'text-danger');
+  }
+
+  document.getElementById('lineas-container').addEventListener('input', recalc);
+  recalc();
+</script>
+{% endblock %}

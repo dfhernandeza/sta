@@ -1,0 +1,533 @@
+{% extends 'base_admin.html' %}
+
+{% block title %}{% if form.instance.pk %}Editar{% else %}Nueva{% endif %} Factura Recibida{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/css/tom-select.bootstrap5.min.css" rel="stylesheet"/>
+<link href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css" rel="stylesheet"/>
+<style>
+  #detalle-table { table-layout: fixed; width: 100%; }
+  #detalle-table td, #detalle-table th { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; }
+  #detalle-table td:last-child, #detalle-table th:last-child { overflow: visible; text-overflow: clip; white-space: nowrap; }
+  #detalle-table .btn-link { text-decoration: none; }
+</style>
+{% endblock %}
+
+{% block breadcrumb %}
+  <li class="breadcrumb-item"><a href="{% url 'proveedores:proveedor_list' %}">Proveedores</a></li>
+  <li class="breadcrumb-item"><a href="{% url 'proveedores:factura_list' %}">Facturas Recibidas</a></li>
+  <li class="breadcrumb-item active">{% if form.instance.pk %}Editar{% else %}Nueva{% endif %}</li>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h4 class="page-title">{% if form.instance.pk %}Editar Factura N° {{ form.instance.numero }}{% else %}Nueva Factura Recibida{% endif %}</h4>
+  <a href="{% url 'proveedores:factura_list' %}" class="btn btn-outline-secondary rounded-pill px-4">
+    <i class="bi bi-arrow-left me-1"></i>Volver
+  </a>
+</div>
+
+<div class="row justify-content-center">
+  <div class="col-lg-10">
+    <div class="card-sta p-4">
+      <form method="post" autoComplete="off" novalidate>
+        {% csrf_token %}
+        <div class="row g-3">
+
+          <div class="col-sm-4">
+            <label class="form-label fw-600">N° Factura <span class="text-danger">*</span></label>
+            {{ form.numero }}
+            {% if form.numero.errors %}<div class="invalid-feedback d-block">{{ form.numero.errors.0 }}</div>{% endif %}
+          </div>
+          <div class="col-sm-8">
+            <label class="form-label fw-600">Proveedor <span class="text-danger">*</span></label>
+            {{ form.proveedor }}
+            {% if form.proveedor.errors %}<div class="invalid-feedback d-block">{{ form.proveedor.errors.0 }}</div>{% endif %}
+          </div>
+          <div class="col-sm-4">
+            <label class="form-label fw-600">Fecha Emisión <span class="text-danger">*</span></label>
+            {{ form.fecha_emision }}
+            {% if form.fecha_emision.errors %}<div class="invalid-feedback d-block">{{ form.fecha_emision.errors.0 }}</div>{% endif %}
+          </div>
+          <div class="col-sm-4">
+            <label class="form-label fw-600">Fecha Vencimiento</label>
+            {{ form.fecha_vencimiento }}
+          </div>
+          <div class="col-sm-4">
+            <label class="form-label fw-600">Estado</label>
+            {{ form.estado }}
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label fw-600">Proyecto</label>
+            {{ form.proyecto }}
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label fw-600">Pagada por trabajador</label>
+            {{ form.pago_por_trabajador }}
+            <div class="form-text">Si se selecciona, la CxP se tratará como reembolso al trabajador.</div>
+          </div>
+          <div class="col-sm-12">
+            <label class="form-label fw-600">Observaciones</label>
+            {{ form.observaciones }}
+          </div>
+          <div class="col-sm-3">
+            <label class="form-label fw-600">Neto Afecto <span class="text-danger">*</span></label>
+            {{ form.neto }}
+            {% if form.neto.errors %}<div class="invalid-feedback d-block">{{ form.neto.errors.0 }}</div>{% endif %}
+          </div>
+          <div class="col-sm-3">
+            <label class="form-label fw-600">Exento</label>
+            {{ form.exento }}
+          </div>
+          <div class="col-sm-3">
+            <label class="form-label fw-600">IVA</label>
+            {{ form.iva }}
+          </div>
+          <div class="col-sm-3">
+            <label class="form-label fw-600">Total</label>
+            {{ form.total }}
+          </div>
+
+          <!-- ═══ Líneas de detalle ═══ -->
+          <div class="col-12 pt-3 border-top">
+            <div class="d-flex align-items-center justify-content-between mb-3">
+              <h6 class="fw-700 text-sta mb-0">
+                <i class="bi bi-list-ul me-1"></i>Líneas de detalle
+              </h6>
+              <button type="button" id="btn-agregar-detalle"
+                      class="btn btn-sm btn-outline-primary rounded-pill px-3">
+                <i class="bi bi-plus-lg me-1"></i>Agregar línea
+              </button>
+            </div>
+
+            <div class="table-responsive">
+              <table class="table table-sm table-hover mb-0 d-none" id="detalle-table">
+                <colgroup>
+                  <col style="width:20%"><col style="width:18%"><col style="width:16%"><col style="width:10%">
+                  <col style="width:12%"><col style="width:12%"><col style="width:6%"><col style="width:6%">
+                </colgroup>
+                <thead class="table-light">
+                  <tr>
+                    <th>Descripción</th>
+                    <th>Cuenta contable</th>
+                    <th>Centro de Costo</th>
+                    <th>Cantidad</th>
+                    <th class="text-end">Precio Unitario</th>
+                    <th class="text-end">Subtotal</th>
+                    <th class="text-center">Exento de IVA</th>
+                    <th class="text-center">Acción</th>
+                  </tr>
+                </thead>
+                <tbody id="detalle-tbody"></tbody>
+                <tfoot class="fw-700">
+                  <tr>
+                    <td colspan="4" class="text-end">Total</td>
+                    <td class="text-end" id="detalle-total">$ 0</td>
+                    <td class="text-center" id="detalle-exento-iva">$ 0</td>
+                    <td colspan="2"></td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+
+            <div id="detalle-empty-msg"
+                 class="text-center text-muted py-3 small border rounded bg-light">
+              <i class="bi bi-inbox me-1"></i>Sin líneas. Use el botón para agregar.
+            </div>
+
+            {% if detalle_formset.non_form_errors %}
+            <div class="alert alert-danger py-2 small mt-2">{{ detalle_formset.non_form_errors }}</div>
+            {% endif %}
+          </div>
+
+          <!-- Guardar -->
+          <div class="col-12 pt-2 border-top">
+            <button type="submit" class="btn btn-sta px-5 rounded-pill">
+              <i class="bi bi-save me-1"></i>
+              {% if form.instance.pk %}Guardar cambios{% else %}Registrar factura{% endif %}
+            </button>
+          </div>
+
+        </div>{# /row #}
+
+        <!-- Formset oculto enviado con el POST -->
+        <div id="formset-hidden" style="display:none">
+          {{ detalle_formset.management_form }}
+          {% for df in detalle_formset %}
+          <div>{{ df.id }}{{ df.descripcion }}{{ df.cantidad }}{{ df.precio_unitario }}{{ df.cuenta_contable }}{{ df.centro_costo }}{{ df.exento_iva }}{{ df.DELETE }}</div>
+          {% endfor %}
+        </div>
+
+        <!-- Template vacío para clonar con JS (Django lo renderiza con __prefix__) -->
+        <template id="empty-detalle-template">{{ detalle_formset.empty_form.id }}{{ detalle_formset.empty_form.descripcion }}{{ detalle_formset.empty_form.cantidad }}{{ detalle_formset.empty_form.precio_unitario }}{{ detalle_formset.empty_form.cuenta_contable }}{{ detalle_formset.empty_form.centro_costo }}{{ detalle_formset.empty_form.exento_iva }}{{ detalle_formset.empty_form.DELETE }}</template>
+
+        <!-- Fuente de opciones para los TomSelect del modal -->
+        <div id="cuenta-options-source" style="display:none">{{ detalle_formset.empty_form.cuenta_contable }}</div>
+        <div id="centro-options-source" style="display:none">{{ detalle_formset.empty_form.centro_costo }}</div>
+
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: agregar / editar línea -->
+<div class="modal fade" id="modalDetalle" tabindex="-1"
+     aria-labelledby="modalDetalleLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" style="max-width:460px">
+    <div class="modal-content">
+      <div class="modal-header"
+           style="background:var(--sta-navy,#3D4E6B);color:white">
+        <h6 class="modal-title mb-0" id="modalDetalleLabel">
+          <i class="bi bi-pencil-square me-2"></i><span id="modal-titulo">Agregar línea</span>
+        </h6>
+        <button type="button" class="btn-close btn-close-white"
+                data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label fw-600" for="modal-descripcion">
+            Descripción <span class="text-danger">*</span>
+          </label>
+          <input type="text" id="modal-descripcion" class="form-control"
+                 maxlength="300" placeholder="Descripción del ítem…">
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-600" for="modal-cuenta">Cuenta contable</label>
+          <select id="modal-cuenta" class="form-select">
+            
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-600" for="modal-centro">Centro de Costo</label>
+          <select id="modal-centro" class="form-select">
+            <option value="">— Sin centro —</option>
+          </select>
+        </div>
+        <div class="row g-2 mb-3">
+          <div class="col-5">
+            <label class="form-label fw-600" for="modal-cantidad">Cantidad <span class="text-danger">*</span></label>
+            <input type="number" id="modal-cantidad" class="form-control"
+                   step="0.01" min="0" placeholder="">
+          </div>
+          <div class="col-7">
+            <label class="form-label fw-600" for="modal-precio">Precio unit. <span class="text-danger">*</span></label>
+            <div class="input-group">
+              <span class="input-group-text">$</span>
+              <input type="number" id="modal-precio" class="form-control"
+                     step="1" min="0" placeholder="">
+            </div>
+          </div>
+          <div class="col-12">
+            <div class="form-check">
+              <input type="checkbox" id="modal-exento-iva" class="form-check-input">
+              <label class="form-check-label" for="modal-exento-iva">Exento de IVA</label>
+            </div>
+          </div>
+        </div>
+        <div class="alert alert-light py-2 mb-2 small d-flex justify-content-between">
+          <span>Subtotal:</span>
+          <strong id="modal-subtotal">$ 0</strong>
+        </div>
+        <div id="modal-error" class="text-danger small mt-1" role="alert"></div>
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button"
+                class="btn btn-outline-secondary rounded-pill px-4"
+                data-bs-dismiss="modal">Cancelar</button>
+        <button type="button"
+                class="btn btn-sta rounded-pill px-4"
+                id="btn-confirmar-detalle">
+          <i class="bi bi-plus-lg me-1" id="modal-btn-icon"></i>
+          <span id="modal-btn-text">Agregar</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/js/tom-select.complete.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/l10n/es.js"></script>
+<script>
+'use strict';
+
+/* ── utilidades ── */
+const escHtml   = s => { const d = document.createElement('div'); d.textContent = s ?? ''; return d.innerHTML; };
+const fmt      = v => { const n = parseFloat(v); return isNaN(n) ? '—' : n.toLocaleString('es-CL', {maximumFractionDigits:0}); };
+const totalEl   = () => document.getElementById('id_detalles-TOTAL_FORMS');
+const getField  = (i, f) => {
+  const el = document.querySelector(`[name="detalles-${i}-${f}"]`);
+  if (!el) return '';
+  return el.type === 'checkbox' ? (el.checked ? 'on' : '') : el.value;
+};
+const setField  = (i, f, v) => {
+  const el = document.querySelector(`[name="detalles-${i}-${f}"]`);
+  if (!el) return;
+  if (el.type === 'checkbox') {
+    el.checked = v === true || v === 'on' || v === 'true' || v === 1 || v === '1';
+  } else {
+    el.value = v;
+  }
+};
+const cuentaTxt = v => v ? (document.querySelector(`#cuenta-options-source option[value="${CSS.escape(v)}"]`)?.textContent ?? '') : '';
+const centroTxt = v => v ? (document.querySelector(`#centro-options-source option[value="${CSS.escape(v)}"]`)?.textContent ?? '') : '';
+const subtotal = (qty, price) => { const s = parseFloat(qty) * parseFloat(price); return isNaN(s) ? 0 : s; };
+
+/* ── actualizar pie de tabla ── */
+function updateTotal() {
+  const total = parseInt(totalEl().value) || 0;
+  let sum = 0;
+  for (let i = 0; i < total; i++) {
+    // Solo sumamos los que no estén marcados como exentos de IVA
+    if (document.querySelector(`[name="detalles-${i}-exento_iva"]`)?.checked) continue;
+    if (document.querySelector(`[name="detalles-${i}-DELETE"]`)?.checked) continue;
+    if (!document.getElementById(`drow-${i}`)) continue;
+    sum += subtotal(getField(i, 'cantidad'), getField(i, 'precio_unitario'));
+    
+  }
+  document.getElementById('detalle-total').textContent = '$ ' + fmt(sum);
+}
+
+
+/* ── render fila display ── */
+function renderRow(i) {
+  const desc  = getField(i, 'descripcion');
+  const qty   = getField(i, 'cantidad');
+  const price = getField(i, 'precio_unitario');
+  const cv    = getField(i, 'cuenta_contable');
+  const cc    = getField(i, 'centro_costo');
+  const sub   = subtotal(qty, price);
+  const exento = getField(i, 'exento_iva') === 'on';
+  return `<tr id="drow-${i}">
+    <td title="${escHtml(desc)}">${escHtml(desc)}</td>
+    <td title="${escHtml(cuentaTxt(cv))}"><small class="text-muted">${escHtml(cuentaTxt(cv)) || '<em>—</em>'}</small></td>
+    <td title="${escHtml(centroTxt(cc))}"><small class="text-muted">${escHtml(centroTxt(cc)) || '<em>—</em>'}</small></td>
+    <td class="text-end">${fmt(qty)}</td>
+    <td class="text-end">$ ${fmt(price)}</td>
+    <td class="text-end fw-500">$ ${fmt(sub)}</td>
+    <td class="text-center">${exento ? 'Sí' : 'No'}</td>
+    <td class="text-center text-nowrap">
+      <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1 me-1"
+              onclick="editarDetalle(${i})" title="Editar">
+        <i class="bi bi-pencil"></i>
+      </button>
+      <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1"
+              onclick="eliminarDetalle(${i})" title="Eliminar">
+        <i class="bi bi-trash3"></i>
+      </button>
+    </td>
+  </tr>`;
+}
+
+/* ── visibilidad tabla / mensaje vacío ── */
+function syncUI() {
+  const n = document.getElementById('detalle-tbody').querySelectorAll('tr').length;
+  document.getElementById('detalle-table').classList.toggle('d-none', n === 0);
+  document.getElementById('detalle-empty-msg').classList.toggle('d-none', n > 0);
+}
+
+/* ── estado modal ── */
+let editIdx = null;
+let modalTS = null;
+let centroTS = null;
+const $modal = () => document.getElementById('modalDetalle');
+
+function abrirModal(titulo, btnTxt, btnIcon) {
+  document.getElementById('modal-titulo').textContent = titulo;
+  document.getElementById('modal-btn-text').textContent = btnTxt;
+  document.getElementById('modal-btn-icon').className = `bi ${btnIcon} me-1`;
+  document.getElementById('modal-error').textContent = '';
+  bootstrap.Modal.getOrCreateInstance($modal()).show();
+  $modal().addEventListener('shown.bs.modal',
+    () => document.getElementById('modal-descripcion').focus(), { once: true });
+}
+
+/* ── init ── */
+document.addEventListener('DOMContentLoaded', () => {
+
+  /* Flatpickr en campos de fecha */
+  const fpOpts = {
+    locale: 'es',
+    dateFormat: 'Y-m-d',
+    altInput: true,
+    altFormat: 'd/m/Y',
+    allowInput: true,
+  };
+  flatpickr('#id_fecha_emision',    fpOpts);
+  flatpickr('#id_fecha_vencimiento', { ...fpOpts, allowInput: true });
+
+
+
+  /* TomSelect en proveedor y proyecto */
+  new TomSelect('#id_proveedor', {
+    allowEmptyOption: true,
+    placeholder: 'Buscar proveedor…',
+    sortField: { field: 'text', direction: 'asc' },
+  });
+  new TomSelect('#id_proyecto', {
+    allowEmptyOption: true,
+    placeholder: 'Buscar proyecto…',
+    sortField: { field: 'text', direction: 'asc' },
+  });
+  if (document.querySelector('#id_pago_por_trabajador')) {
+    new TomSelect('#id_pago_por_trabajador', {
+      allowEmptyOption: true,
+      placeholder: 'Seleccionar trabajador…',
+      sortField: { field: 'text', direction: 'asc' },
+    });
+  }
+
+  /* copiar opciones al select del modal e iniciar TomSelect */
+  document.querySelectorAll('#cuenta-options-source option').forEach(o =>
+    document.getElementById('modal-cuenta').appendChild(o.cloneNode(true)));
+
+  modalTS = new TomSelect('#modal-cuenta', {
+    maxOptions: null,
+    allowEmptyOption: true,
+    placeholder: 'Buscar cuenta contable…',
+    sortField: { field: 'text', direction: 'asc' },
+  });
+
+  document.querySelectorAll('#centro-options-source option').forEach(o =>
+    document.getElementById('modal-centro').appendChild(o.cloneNode(true)));
+
+  centroTS = new TomSelect('#modal-centro', {
+    maxOptions: null,
+    allowEmptyOption: true,
+    placeholder: 'Buscar centro de costo…',
+    sortField: { field: 'text', direction: 'asc' },
+  });
+
+  /* poblar tabla desde los hidden forms ya existentes */
+  const total = parseInt(totalEl().value) || 0;
+  const tbody = document.getElementById('detalle-tbody');
+  for (let i = 0; i < total; i++) {
+    if (document.querySelector(`[name="detalles-${i}-DELETE"]`)?.checked) continue;
+    tbody.insertAdjacentHTML('beforeend', renderRow(i));
+  }
+  syncUI();
+
+  /* botón agregar */
+  document.getElementById('btn-agregar-detalle').addEventListener('click', () => {
+    editIdx = null;
+    document.getElementById('modal-descripcion').value = '';
+    document.getElementById('modal-cantidad').value = '';
+    document.getElementById('modal-precio').value = '';
+    modalTS?.clear(true);
+    centroTS?.clear(true);
+    abrirModal('Agregar línea', 'Agregar', 'bi-plus-lg');
+  });
+
+  /* Enter en campos del modal */
+  ['modal-descripcion', 'modal-cantidad', 'modal-precio', 'modal-cuenta'].forEach(id =>
+    document.getElementById(id).addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); confirmarDetalle(); }
+    }));
+
+  document.getElementById('btn-confirmar-detalle')
+          .addEventListener('click', confirmarDetalle);
+
+
+
+  function actualizarSubtotalModal() {
+  const qty   = parseFloat(document.getElementById('modal-cantidad').value) || 0;
+  const price = parseFloat(document.getElementById('modal-precio').value) || 0;
+  document.getElementById('modal-subtotal').textContent = '$ ' + fmt(qty * price);
+}
+
+  /* live subtotal en modal */
+  ['modal-cantidad', 'modal-precio'].forEach(id =>
+    document.getElementById(id).addEventListener('input', actualizarSubtotalModal));
+});
+
+/* ── editar fila ── */
+function editarDetalle(i) {
+  editIdx = i;
+  document.getElementById('modal-descripcion').value = getField(i, 'descripcion');
+  document.getElementById('modal-cantidad').value    = getField(i, 'cantidad');
+  document.getElementById('modal-precio').value      = getField(i, 'precio_unitario');
+  document.getElementById('modal-exento-iva').checked = getField(i, 'exento_iva') === 'on';
+  const cv = getField(i, 'cuenta_contable');
+  cv ? modalTS?.setValue(cv, true) : modalTS?.clear(true);
+  const cc = getField(i, 'centro_costo');
+  cc ? centroTS?.setValue(cc, true) : centroTS?.clear(true);
+  const qty   = parseFloat(getField(i, 'cantidad')) || 0;
+  const price = parseFloat(getField(i, 'precio_unitario')) || 0;
+  document.getElementById('modal-subtotal').textContent = '$ ' + fmt(qty * price);
+  abrirModal('Editar línea', 'Guardar', 'bi-check-lg');
+}
+
+/* ── eliminar fila ── */
+function eliminarDetalle(i) {
+  const delEl = document.querySelector(`[name="detalles-${i}-DELETE"]`);
+  if (delEl) delEl.checked = true;
+  document.getElementById(`drow-${i}`)?.remove();
+  syncUI();
+}
+
+/* ── confirmar modal ── */
+function confirmarDetalle() {
+  const desc     = document.getElementById('modal-descripcion').value.trim();
+  const cv       = document.getElementById('modal-cuenta').value;
+  const cc       = document.getElementById('modal-centro').value;
+  const cantidad = document.getElementById('modal-cantidad').value;
+  const precio   = document.getElementById('modal-precio').value;
+  const exento   = document.getElementById('modal-exento-iva').checked;
+  const errEl    = document.getElementById('modal-error');
+
+  if (!desc)                            { errEl.textContent = 'La descripción es obligatoria.'; return; }
+  if (!cantidad || parseFloat(cantidad) < 0) { errEl.textContent = 'Ingrese una cantidad válida (≥ 0).'; return; }
+  if (!precio || parseFloat(precio) < 0) { errEl.textContent = 'Ingrese un precio válido (≥ 0).'; return; }
+  errEl.textContent = '';
+
+  if (editIdx !== null) {
+    setField(editIdx, 'descripcion',     desc);
+    setField(editIdx, 'cuenta_contable', cv);
+    setField(editIdx, 'centro_costo',    cc);
+    setField(editIdx, 'cantidad',        cantidad);
+    setField(editIdx, 'precio_unitario', precio);
+    setField(editIdx, 'exento_iva',      exento);
+    const row = document.getElementById(`drow-${editIdx}`);
+    if (row) row.outerHTML = renderRow(editIdx);
+  } else {
+    const idx  = parseInt(totalEl().value);
+    const html = document.getElementById('empty-detalle-template').innerHTML
+                   .replace(/__prefix__/g, String(idx));
+    document.getElementById('formset-hidden').insertAdjacentHTML('beforeend', html);
+    totalEl().value = idx + 1;
+    setField(idx, 'descripcion',     desc);
+    setField(idx, 'cuenta_contable', cv);
+    setField(idx, 'centro_costo',    cc);
+    setField(idx, 'cantidad',        cantidad);
+    setField(idx, 'precio_unitario', precio);
+    setField(idx, 'exento_iva',      exento);
+    document.getElementById('detalle-tbody').insertAdjacentHTML('beforeend', renderRow(idx));
+  }
+
+
+  // Actualizamos id_neto (afecto), id_exento, id_iva e id_total
+  let netoAfecto = 0, exentoTotal = 0;
+  const total = parseInt(totalEl().value) || 0;
+  for (let i = 0; i < total; i++) {
+    if (document.querySelector(`[name="detalles-${i}-DELETE"]`)?.checked) continue;
+    const qty   = parseFloat(getField(i, 'cantidad')) || 0;
+    const price = parseFloat(getField(i, 'precio_unitario')) || 0;
+    const isExento = document.querySelector(`[name="detalles-${i}-exento_iva"]`)?.checked;
+    if (isExento) exentoTotal += qty * price;
+    else          netoAfecto  += qty * price;
+  }
+  document.getElementById('id_neto').value   = netoAfecto.toFixed(0);
+  document.getElementById('id_exento').value = exentoTotal.toFixed(0);
+  document.getElementById('id_iva').value    = (netoAfecto * 0.19).toFixed(0);
+  document.getElementById('id_total').value  = (netoAfecto * 1.19 + exentoTotal).toFixed(0);
+
+  // Actualizamos el total del pie de tabla
+  updateTotal();
+
+  syncUI();
+  bootstrap.Modal.getInstance($modal()).hide();
+}
+</script>
+{% endblock %}

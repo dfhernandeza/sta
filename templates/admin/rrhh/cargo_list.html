@@ -1,0 +1,63 @@
+{% extends 'base_admin.html' %}
+{% load custom_tags %}
+
+{% block title %}Cargos de Trabajadores{% endblock %}
+
+{% block breadcrumb %}
+  <li class="breadcrumb-item active">RRHH</li>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h4 class="page-title">Cargos de Trabajadores</h4>
+  <a href="{% url 'rrhh:cargo_create' %}" class="btn btn-sta rounded-pill px-4">
+    <i class="bi bi-plus-circle me-1"></i>Nuevo cargo
+  </a>
+</div>
+
+
+<div class="card-sta p-0">
+  <div class="table-responsive">
+    <table class="table table-sta mb-0">
+      <thead>
+        <tr>
+            <th>Nombre del Cargo</th>
+            <th class="text-center">Número de Trabajadores</th>
+            <th class="text-center">Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in cargos %}
+        <tr>
+          <td class="font-monospace small">{{ c.nombre }}</td>
+          <td class="fw-600 text-center">
+            <a href="{% url 'rrhh:cargo_detail' c.pk %}" class="text-sta text-decoration-none">{{ c.trabajadores.count }}</a>
+          </td>
+          <td class="text-center">
+            <div class="btn-group btn-group-sm">
+              <a href="{% url 'rrhh:cargo_detail' c.pk %}" class="btn btn-outline-secondary btn-sm" title="Ver">
+                <i class="bi bi-eye"></i>
+              </a>
+              <a href="{% url 'rrhh:cargo_update' c.pk %}" class="btn btn-outline-secondary btn-sm" title="Editar">
+                <i class="bi bi-pencil"></i>
+              </a>
+            </div>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="7" class="text-center text-muted py-4">No hay cargos registrados.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if is_paginated %}
+  <div class="d-flex justify-content-center py-3">
+    <nav><ul class="pagination pagination-sm mb-0">
+      {% if page_obj.has_previous %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}">‹</a></li>{% endif %}
+      <li class="page-item disabled"><span class="page-link">{{ page_obj.number }}/{{ page_obj.paginator.num_pages }}</span></li>
+      {% if page_obj.has_next %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}">›</a></li>{% endif %}
+    </ul></nav>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,362 @@
+{% extends 'base_admin.html' %}
+
+{% block title %}Nueva Rendición de Gastos{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/css/tom-select.bootstrap5.min.css" rel="stylesheet"/>
+<link href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css" rel="stylesheet"/>
+{% endblock %}
+
+{% block breadcrumb %}
+  <li class="breadcrumb-item"><a href="{% url 'proveedores:proveedor_list' %}">Proveedores</a></li>
+  <li class="breadcrumb-item"><a href="{% url 'proveedores:rendicion_list' %}">Rendiciones</a></li>
+  <li class="breadcrumb-item active">Nueva</li>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h4 class="page-title"><i class="bi bi-receipt-cutoff me-2"></i>Nueva Rendición de Gastos</h4>
+  <a href="{% url 'proveedores:rendicion_list' %}" class="btn btn-outline-secondary rounded-pill px-4">
+    <i class="bi bi-arrow-left me-1"></i>Volver
+  </a>
+</div>
+
+<div class="row justify-content-center">
+  <div class="col-lg-10">
+    <div class="card-sta p-4">
+      <form method="post" novalidate>
+        {% csrf_token %}
+        <div class="row g-3 mb-4">
+
+          <div class="col-sm-5">
+            <label class="form-label fw-600">Trabajador <span class="text-danger">*</span></label>
+            {{ form.trabajador }}
+            {% if form.trabajador.errors %}<div class="invalid-feedback d-block">{{ form.trabajador.errors.0 }}</div>{% endif %}
+          </div>
+          <div class="col-sm-4">
+            <label class="form-label fw-600">Proyecto</label>
+            {{ form.proyecto }}
+          </div>
+          <div class="col-sm-3">
+            <label class="form-label fw-600">Fecha rendición <span class="text-danger">*</span></label>
+            {{ form.fecha }}
+            {% if form.fecha.errors %}<div class="invalid-feedback d-block">{{ form.fecha.errors.0 }}</div>{% endif %}
+          </div>
+          <div class="col-12">
+            <label class="form-label fw-600">Motivo del gasto <span class="text-danger">*</span></label>
+            {{ form.motivo_del_gasto }}
+            {% if form.motivo_del_gasto.errors %}<div class="invalid-feedback d-block">{{ form.motivo_del_gasto.errors.0 }}</div>{% endif %}
+          </div>
+
+          <div class="col-12">
+            <div class="alert alert-info py-2 small mb-0">
+              <i class="bi bi-info-circle me-1"></i>
+              El reembolso se programará para el <strong>viernes de la semana siguiente</strong> a la fecha de rendición.
+              Las rendiciones se revisan los lunes y se pagan los viernes.
+            </div>
+          </div>
+        </div>
+
+        <!-- ═══ Líneas de gasto ═══ -->
+        <div class="border-top pt-3">
+          <div class="d-flex align-items-center justify-content-between mb-3">
+            <h6 class="fw-700 text-sta mb-0">
+              <i class="bi bi-list-check me-1"></i>Gastos / Comprobantes
+            </h6>
+            <button type="button" id="btn-agregar-gasto"
+                    class="btn btn-sm btn-outline-primary rounded-pill px-3">
+              <i class="bi bi-plus-lg me-1"></i>Agregar gasto
+            </button>
+          </div>
+
+          <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0 d-none" id="gasto-table">
+              <thead class="table-light">
+                <tr>
+                  <th style="width:11%">Fecha</th>
+                  <th style="width:10%">N° Boleta</th>
+                  <th style="width:22%">Descripción</th>
+                  <th style="width:17%">Proveedor</th>
+                  <th style="width:14%">C. Costo</th>
+                  <th style="width:14%">Cuenta contable</th>
+                  <th style="width:8%" class="text-end">Monto</th>
+                  <th style="width:4%" class="text-center">Acc.</th>
+                </tr>
+              </thead>
+              <tbody id="gasto-tbody"></tbody>
+              <tfoot class="fw-700">
+                <tr>
+                  <td colspan="6" class="text-end">Total</td>
+                  <td class="text-end" id="gasto-total">$ 0</td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+
+          <div id="gasto-empty-msg"
+               class="text-center text-muted py-3 small border rounded bg-light">
+            <i class="bi bi-inbox me-1"></i>Sin gastos. Use el botón para agregar.
+          </div>
+        </div>
+
+        <!-- Guardar -->
+        <div class="col-12 pt-3 border-top mt-3">
+          <button type="submit" class="btn btn-sta px-5 rounded-pill">
+            <i class="bi bi-save me-1"></i>Registrar rendición
+          </button>
+        </div>
+
+        <!-- Formset oculto -->
+        <div id="formset-hidden" style="display:none">
+          {{ detalle_formset.management_form }}
+          {% for df in detalle_formset %}
+          <div>{{ df.id }}{{ df.fecha_gasto }}{{ df.n_boleta_factura }}{{ df.descripcion }}{{ df.monto }}{{ df.centro_costo }}{{ df.cuenta_contable }}{{ df.proveedor }}{{ df.DELETE }}</div>
+          {% endfor %}
+        </div>
+        <template id="empty-gasto-template">{{ detalle_formset.empty_form.id }}{{ detalle_formset.empty_form.fecha_gasto }}{{ detalle_formset.empty_form.n_boleta_factura }}{{ detalle_formset.empty_form.descripcion }}{{ detalle_formset.empty_form.monto }}{{ detalle_formset.empty_form.centro_costo }}{{ detalle_formset.empty_form.cuenta_contable }}{{ detalle_formset.empty_form.proveedor }}{{ detalle_formset.empty_form.DELETE }}</template>
+        <div id="cuenta-options-source" style="display:none">{{ detalle_formset.empty_form.cuenta_contable }}</div>
+        <div id="centro-options-source" style="display:none">{{ detalle_formset.empty_form.centro_costo }}</div>
+        <div id="proveedor-options-source" style="display:none">{{ detalle_formset.empty_form.proveedor }}</div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: agregar gasto -->
+<div class="modal fade" id="modalGasto" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" style="max-width:500px">
+    <div class="modal-content">
+      <div class="modal-header" style="background:var(--sta-navy,#3D4E6B);color:white">
+        <h6 class="modal-title mb-0">
+          <i class="bi bi-receipt me-2"></i><span id="modal-titulo">Agregar gasto</span>
+        </h6>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-2 mb-3">
+          <div class="col-6">
+            <label class="form-label fw-600">Fecha del gasto <span class="text-danger">*</span></label>
+            <input type="date" id="modal-fecha" class="form-control">
+          </div>
+          <div class="col-6">
+            <label class="form-label fw-600">N° Boleta / Factura</label>
+            <input type="text" id="modal-boleta" class="form-control" maxlength="100">
+          </div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-600">Descripción <span class="text-danger">*</span></label>
+          <input type="text" id="modal-descripcion" class="form-control" maxlength="300">
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-600">Proveedor</label>
+          <select id="modal-proveedor" class="form-select"></select>
+        </div>
+        <div class="row g-2 mb-3">
+          <div class="col-6">
+            <label class="form-label fw-600">Centro de Costo</label>
+            <select id="modal-centro" class="form-select"></select>
+          </div>
+          <div class="col-6">
+            <label class="form-label fw-600">Cuenta contable</label>
+            <select id="modal-cuenta" class="form-select"></select>
+          </div>
+        </div>
+        <div class="mb-2">
+          <label class="form-label fw-600">Monto <span class="text-danger">*</span></label>
+          <div class="input-group">
+            <span class="input-group-text">$</span>
+            <input type="number" id="modal-monto" class="form-control" step="1" min="0">
+          </div>
+        </div>
+        <div id="modal-error" class="text-danger small mt-1"></div>
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-outline-secondary rounded-pill px-4" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-sta rounded-pill px-4" id="btn-confirmar-gasto">
+          <i class="bi bi-plus-lg me-1" id="modal-btn-icon"></i>
+          <span id="modal-btn-text">Agregar</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/js/tom-select.complete.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/l10n/es.js"></script>
+<script>
+'use strict';
+
+const escHtml  = s => { const d = document.createElement('div'); d.textContent = s ?? ''; return d.innerHTML; };
+const fmt      = v => { const n = parseFloat(v); return isNaN(n) ? '—' : n.toLocaleString('es-CL', {maximumFractionDigits:0}); };
+const totalEl  = () => document.querySelector('[name="detalles-TOTAL_FORMS"]');
+const getField = (i, f) => document.querySelector(`[name="detalles-${i}-${f}"]`)?.value ?? '';
+const setField = (i, f, v) => { const el = document.querySelector(`[name="detalles-${i}-${f}"]`); if (el) el.value = v; };
+const optTxt   = (srcId, v) => v ? (document.querySelector(`#${srcId} option[value="${CSS.escape(v)}"]`)?.textContent?.trim() ?? '') : '';
+
+let editIdx = null;
+let tsProveedorModal = null, tsCentroModal = null, tsCuentaModal = null;
+
+function updateTotal() {
+  const n = parseInt(totalEl()?.value) || 0;
+  let sum = 0;
+  for (let i = 0; i < n; i++) {
+    if (document.querySelector(`[name="detalles-${i}-DELETE"]`)?.checked) continue;
+    if (!document.getElementById(`grow-${i}`)) continue;
+    sum += parseFloat(getField(i, 'monto')) || 0;
+  }
+  document.getElementById('gasto-total').textContent = '$ ' + fmt(sum);
+}
+
+function renderRow(i) {
+  const fecha = getField(i, 'fecha_gasto');
+  const boleta = getField(i, 'n_boleta_factura');
+  const desc = getField(i, 'descripcion');
+  const monto = getField(i, 'monto');
+  const pv = getField(i, 'proveedor');
+  const cv = getField(i, 'cuenta_contable');
+  const cc = getField(i, 'centro_costo');
+  return `<tr id="grow-${i}">
+    <td class="small">${escHtml(fecha)}</td>
+    <td class="small font-monospace">${escHtml(boleta) || '<em class="text-muted">—</em>'}</td>
+    <td title="${escHtml(desc)}">${escHtml(desc)}</td>
+    <td class="small text-muted" title="${escHtml(optTxt('proveedor-options-source',pv))}">${escHtml(optTxt('proveedor-options-source',pv)) || '—'}</td>
+    <td class="small text-muted">${escHtml(optTxt('centro-options-source',cc)) || '—'}</td>
+    <td class="small text-muted" title="${escHtml(optTxt('cuenta-options-source',cv))}">${escHtml(optTxt('cuenta-options-source',cv)) || '—'}</td>
+    <td class="text-end fw-600">$ ${fmt(monto)}</td>
+    <td class="text-center text-nowrap">
+      <button type="button" class="btn btn-sm btn-link p-0 me-1 text-secondary" onclick="editarGasto(${i})" title="Editar"><i class="bi bi-pencil"></i></button>
+      <button type="button" class="btn btn-sm btn-link p-0 text-danger" onclick="eliminarGasto(${i})" title="Eliminar"><i class="bi bi-trash3"></i></button>
+    </td>
+  </tr>`;
+}
+
+function syncUI() {
+  const n = document.getElementById('gasto-tbody').querySelectorAll('tr').length;
+  document.getElementById('gasto-table').classList.toggle('d-none', n === 0);
+  document.getElementById('gasto-empty-msg').classList.toggle('d-none', n > 0);
+}
+
+function abrirModal(titulo, btnTxt, btnIcon) {
+  document.getElementById('modal-titulo').textContent = titulo;
+  document.getElementById('modal-btn-text').textContent = btnTxt;
+  document.getElementById('modal-btn-icon').className = `bi ${btnIcon} me-1`;
+  document.getElementById('modal-error').textContent = '';
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('modalGasto')).show();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const fpOpts = { locale:'es', dateFormat:'Y-m-d', altInput:true, altFormat:'d/m/Y', allowInput:true };
+  flatpickr('#id_fecha', { ...fpOpts, defaultDate: 'today' });
+
+  new TomSelect('#id_trabajador', { allowEmptyOption:true, placeholder:'Buscar trabajador…', sortField:{field:'text',direction:'asc'} });
+  new TomSelect('#id_proyecto',   { allowEmptyOption:true, placeholder:'Buscar proyecto…',   sortField:{field:'text',direction:'asc'} });
+
+  // Modal TomSelects — copiar opciones desde fuentes ocultas
+  document.querySelectorAll('#proveedor-options-source option').forEach(o =>
+    document.getElementById('modal-proveedor').appendChild(o.cloneNode(true)));
+  tsProveedorModal = new TomSelect('#modal-proveedor', { allowEmptyOption:true, placeholder:'Buscar proveedor…', sortField:{field:'text',direction:'asc'} });
+
+  document.querySelectorAll('#centro-options-source option').forEach(o =>
+    document.getElementById('modal-centro').appendChild(o.cloneNode(true)));
+  tsCentroModal = new TomSelect('#modal-centro', { allowEmptyOption:true, placeholder:'Sin centro…', sortField:{field:'text',direction:'asc'} });
+
+  document.querySelectorAll('#cuenta-options-source option').forEach(o =>
+    document.getElementById('modal-cuenta').appendChild(o.cloneNode(true)));
+  tsCuentaModal = new TomSelect('#modal-cuenta', { allowEmptyOption:true, placeholder:'Buscar cuenta…', sortField:{field:'text',direction:'asc'} });
+
+  // Poblar filas existentes (edición futura)
+  const total = parseInt(totalEl()?.value) || 0;
+  const tbody = document.getElementById('gasto-tbody');
+  for (let i = 0; i < total; i++) {
+    if (document.querySelector(`[name="detalles-${i}-DELETE"]`)?.checked) continue;
+    tbody.insertAdjacentHTML('beforeend', renderRow(i));
+  }
+  syncUI();
+
+  document.getElementById('btn-agregar-gasto').addEventListener('click', () => {
+    editIdx = null;
+    document.getElementById('modal-fecha').value = new Date().toISOString().slice(0,10);
+    document.getElementById('modal-boleta').value = '';
+    document.getElementById('modal-descripcion').value = '';
+    document.getElementById('modal-monto').value = '';
+    tsProveedorModal?.clear(true);
+    tsCentroModal?.clear(true);
+    tsCuentaModal?.clear(true);
+    abrirModal('Agregar gasto', 'Agregar', 'bi-plus-lg');
+  });
+
+  document.getElementById('btn-confirmar-gasto').addEventListener('click', confirmarGasto);
+});
+
+function editarGasto(i) {
+  editIdx = i;
+  document.getElementById('modal-fecha').value       = getField(i, 'fecha_gasto');
+  document.getElementById('modal-boleta').value      = getField(i, 'n_boleta_factura');
+  document.getElementById('modal-descripcion').value = getField(i, 'descripcion');
+  document.getElementById('modal-monto').value       = getField(i, 'monto');
+  const pv = getField(i, 'proveedor');
+  pv ? tsProveedorModal?.setValue(pv, true) : tsProveedorModal?.clear(true);
+  const cc = getField(i, 'centro_costo');
+  cc ? tsCentroModal?.setValue(cc, true) : tsCentroModal?.clear(true);
+  const cv = getField(i, 'cuenta_contable');
+  cv ? tsCuentaModal?.setValue(cv, true) : tsCuentaModal?.clear(true);
+  abrirModal('Editar gasto', 'Guardar', 'bi-check-lg');
+}
+
+function eliminarGasto(i) {
+  const delEl = document.querySelector(`[name="detalles-${i}-DELETE"]`);
+  if (delEl) delEl.checked = true;
+  document.getElementById(`grow-${i}`)?.remove();
+  syncUI(); updateTotal();
+}
+
+function confirmarGasto() {
+  const fecha  = document.getElementById('modal-fecha').value;
+  const boleta = document.getElementById('modal-boleta').value.trim();
+  const desc   = document.getElementById('modal-descripcion').value.trim();
+  const monto  = document.getElementById('modal-monto').value;
+  const pv     = document.getElementById('modal-proveedor').value;
+  const cc     = document.getElementById('modal-centro').value;
+  const cv     = document.getElementById('modal-cuenta').value;
+  const errEl  = document.getElementById('modal-error');
+
+  if (!fecha)                         { errEl.textContent = 'La fecha es obligatoria.'; return; }
+  if (!desc)                          { errEl.textContent = 'La descripción es obligatoria.'; return; }
+  if (!monto || parseFloat(monto) <= 0) { errEl.textContent = 'El monto debe ser mayor a 0.'; return; }
+  errEl.textContent = '';
+
+  if (editIdx !== null) {
+    setField(editIdx, 'fecha_gasto',      fecha);
+    setField(editIdx, 'n_boleta_factura', boleta);
+    setField(editIdx, 'descripcion',      desc);
+    setField(editIdx, 'monto',            monto);
+    setField(editIdx, 'proveedor',        pv);
+    setField(editIdx, 'centro_costo',     cc);
+    setField(editIdx, 'cuenta_contable',  cv);
+    const row = document.getElementById(`grow-${editIdx}`);
+    if (row) row.outerHTML = renderRow(editIdx);
+  } else {
+    const idx  = parseInt(totalEl().value);
+    const html = document.getElementById('empty-gasto-template').innerHTML
+                   .replace(/__prefix__/g, String(idx));
+    document.getElementById('formset-hidden').insertAdjacentHTML('beforeend', html);
+    totalEl().value = idx + 1;
+    setField(idx, 'fecha_gasto',      fecha);
+    setField(idx, 'n_boleta_factura', boleta);
+    setField(idx, 'descripcion',      desc);
+    setField(idx, 'monto',            monto);
+    setField(idx, 'proveedor',        pv);
+    setField(idx, 'centro_costo',     cc);
+    setField(idx, 'cuenta_contable',  cv);
+    document.getElementById('gasto-tbody').insertAdjacentHTML('beforeend', renderRow(idx));
+  }
+
+  updateTotal(); syncUI();
+  bootstrap.Modal.getInstance(document.getElementById('modalGasto')).hide();
+}
+</script>
+{% endblock %}

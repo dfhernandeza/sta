@@ -1,0 +1,54 @@
+{% extends 'base_admin.html' %}
+{% load custom_tags %}
+{% block title %}Cuentas Bancarias{% endblock %}
+
+{% block breadcrumb %}
+  <li class="breadcrumb-item"><a href="{% url 'tesoreria:resumen' %}">Tesorería</a></li>
+  <li class="breadcrumb-item active">Cuentas Bancarias</li>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h4 class="page-title">Cuentas Bancarias</h4>
+  <a href="{% url 'tesoreria:cuenta_create' %}" class="btn btn-sta rounded-pill px-4">
+    <i class="bi bi-plus-circle me-1"></i>Nueva cuenta
+  </a>
+</div>
+<div class="card-sta p-0">
+  <div class="table-responsive">
+    <table class="table table-sta mb-0">
+      <thead>
+        <tr>
+          <th>Banco</th><th>Número</th><th>Tipo</th>
+          <th class="text-end">Saldo Inicial</th>
+          <th class="text-end">Saldo Actual</th>
+          <th class="text-center">Estado</th>
+          <th class="text-center">Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for cuenta in cuentas %}
+        <tr>
+          <td class="fw-600">{{ cuenta.banco.nombre }}</td>
+          <td class="font-monospace">{{ cuenta.numero }}</td>
+          <td>{{ cuenta.get_tipo_display }}</td>
+          <td class="text-end">{{ cuenta.saldo_inicial|moneda_chilena }}</td>
+          <td class="text-end fw-700 text-sta">{{ cuenta.saldo_actual|moneda_chilena }}</td>
+          <td class="text-center">
+            {% if cuenta.activa %}<span class="badge-estado activo">Activa</span>
+            {% else %}<span class="badge-estado inactivo">Inactiva</span>{% endif %}
+          </td>
+          <td class="text-center">
+            <a href="{% url 'tesoreria:cuenta_update' cuenta.pk %}" class="btn btn-outline-secondary btn-sm">
+              <i class="bi bi-pencil"></i>
+            </a>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="7" class="text-center text-muted py-4">No hay cuentas bancarias.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

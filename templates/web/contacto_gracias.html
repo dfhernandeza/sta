@@ -1,0 +1,30 @@
+{% extends 'base_web.html' %}
+
+{% block title %}Mensaje Enviado | STA Muebles y Terminaciones{% endblock %}
+
+{% block content %}
+<div style="min-height:80vh;display:flex;align-items:center;padding-top:70px;">
+  <div class="container">
+    <div class="row justify-content-center">
+      <div class="col-md-6 text-center py-5">
+        <div class="mb-4" style="width:80px;height:80px;border-radius:50%;background:linear-gradient(135deg,var(--sta-navy),var(--sta-steel));color:white;font-size:2.5rem;display:flex;align-items:center;justify-content:center;margin:0 auto;">
+          <i class="bi bi-check2"></i>
+        </div>
+        <h2 class="fw-800 text-sta mb-3">¡Mensaje enviado!</h2>
+        <p class="text-muted mb-4">
+          Gracias por contactarnos. Hemos recibido tu mensaje y nos pondremos en contacto contigo
+          a la brevedad posible.
+        </p>
+        <div class="d-flex gap-3 justify-content-center">
+          <a href="{% url 'web:index' %}" class="btn btn-sta px-4 rounded-pill">
+            <i class="bi bi-house me-1"></i> Inicio
+          </a>
+          <a href="{% url 'web:proyectos' %}" class="btn btn-outline-secondary px-4 rounded-pill">
+            Ver proyectos
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

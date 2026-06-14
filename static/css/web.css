@@ -1,0 +1,295 @@
+/* =============================================
+   STA - SITIO WEB PÚBLICO
+   ============================================= */
+
+/* ---- NAVBAR ---- */
+.navbar-sta {
+  background: var(--sta-navy) !important;
+  padding: 0.85rem 0;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+}
+.navbar-sta .navbar-brand img {
+  height: 42px;
+}
+.navbar-sta .nav-link {
+  color: rgba(255,255,255,0.85) !important;
+  font-weight: 500;
+  padding: 0.5rem 1rem !important;
+  transition: color 0.2s ease;
+  font-size: 0.9rem;
+}
+.navbar-sta .nav-link:hover,
+.navbar-sta .nav-link.active {
+  color: var(--sta-light) !important;
+}
+.navbar-sta .btn-contacto {
+  background: var(--sta-light);
+  color: var(--sta-navy) !important;
+  border-radius: 50px;
+  padding: 0.4rem 1.25rem !important;
+  font-weight: 700;
+  transition: all 0.2s ease;
+}
+.navbar-sta .btn-contacto:hover {
+  background: var(--sta-white);
+}
+
+/* ---- HERO ---- */
+.hero-section {
+  background: linear-gradient(135deg, var(--sta-navy) 0%, var(--sta-steel) 60%, var(--sta-light) 100%);
+  min-height: 85vh;
+  display: flex;
+  align-items: center;
+  position: relative;
+  overflow: hidden;
+  padding: 6rem 0 4rem;
+}
+.hero-section::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+}
+.hero-section .hero-content {
+  position: relative;
+  z-index: 1;
+}
+.hero-title {
+  font-size: clamp(2rem, 5vw, 3.5rem);
+  font-weight: 800;
+  color: var(--sta-white);
+  line-height: 1.15;
+  margin-bottom: 1.25rem;
+}
+.hero-title span {
+  color: var(--sta-light);
+}
+.hero-subtitle {
+  font-size: clamp(1rem, 2vw, 1.2rem);
+  color: rgba(255,255,255,0.85);
+  margin-bottom: 2rem;
+  max-width: 560px;
+}
+
+/* ---- SECCIONES ---- */
+.section-title {
+  font-size: clamp(1.6rem, 3vw, 2.2rem);
+  font-weight: 800;
+  color: var(--sta-navy);
+  margin-bottom: 0.5rem;
+}
+.section-subtitle {
+  color: var(--sta-steel);
+  font-size: 1rem;
+  margin-bottom: 3rem;
+}
+.section-divider {
+  width: 60px;
+  height: 4px;
+  background: linear-gradient(90deg, var(--sta-navy), var(--sta-light));
+  border-radius: 2px;
+  margin-bottom: 1rem;
+}
+
+/* ---- TARJETAS DE PROYECTO (PORTAFOLIO) ---- */
+.project-card {
+  border: none;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(61,78,107,0.1);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+.project-card:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 12px 30px rgba(61,78,107,0.2);
+}
+.project-card .card-img-top {
+  height: 220px;
+  object-fit: cover;
+  transition: transform 0.4s ease;
+}
+.project-card:hover .card-img-top {
+  transform: scale(1.05);
+}
+.project-card .card-img-wrapper {
+  overflow: hidden;
+}
+.project-card .card-body {
+  padding: 1.25rem;
+}
+.project-card .badge-categoria {
+  background: var(--sta-light);
+  color: var(--sta-navy);
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 50px;
+  padding: 0.25rem 0.75rem;
+}
+
+/* ---- TARJETAS DE SERVICIO ---- */
+.service-card {
+  background: var(--sta-white);
+  border-radius: 12px;
+  padding: 2rem 1.5rem;
+  text-align: center;
+  box-shadow: 0 2px 12px rgba(61,78,107,0.08);
+  border: 1px solid var(--sta-border);
+  transition: all 0.3s ease;
+  height: 100%;
+}
+.service-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(61,78,107,0.15);
+  border-color: var(--sta-steel);
+}
+.service-icon {
+  width: 70px;
+  height: 70px;
+  border-radius: 20px;
+  background: linear-gradient(135deg, var(--sta-navy), var(--sta-steel));
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.75rem;
+  margin: 0 auto 1.25rem;
+}
+.service-card h3 {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--sta-navy);
+  margin-bottom: 0.75rem;
+}
+
+/* ---- EQUIPO ---- */
+.team-card {
+  text-align: center;
+  padding: 1.5rem;
+  border-radius: 12px;
+  background: var(--sta-white);
+  box-shadow: 0 2px 12px rgba(61,78,107,0.08);
+  border: 1px solid var(--sta-border);
+  transition: transform 0.3s ease;
+}
+.team-card:hover {
+  transform: translateY(-4px);
+}
+.team-card .team-photo {
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 4px solid var(--sta-light);
+  margin-bottom: 1rem;
+}
+.team-card .team-photo-placeholder {
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  background: var(--sta-navy);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2.5rem;
+  font-weight: 700;
+  margin: 0 auto 1rem;
+}
+
+/* ---- CONTACTO ---- */
+.contact-info-card {
+  background: var(--sta-navy);
+  color: var(--sta-white);
+  border-radius: 12px;
+  padding: 2rem;
+}
+.contact-info-card h3 {
+  color: var(--sta-light);
+}
+.contact-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+.contact-item i {
+  font-size: 1.25rem;
+  color: var(--sta-light);
+  margin-top: 0.1rem;
+}
+
+/* ---- FOOTER ---- */
+.footer-sta {
+  background: var(--sta-navy);
+  color: rgba(255,255,255,0.75);
+  padding: 3rem 0 1.5rem;
+}
+.footer-sta .footer-brand img {
+  height: 50px;
+  margin-bottom: 1rem;
+}
+.footer-sta h5 {
+  color: var(--sta-white);
+  font-weight: 700;
+  margin-bottom: 1rem;
+}
+.footer-sta a {
+  color: rgba(255,255,255,0.65);
+  text-decoration: none;
+  transition: color 0.2s;
+  font-size: 0.9rem;
+}
+.footer-sta a:hover {
+  color: var(--sta-light);
+}
+.footer-sta .footer-bottom {
+  border-top: 1px solid rgba(255,255,255,0.1);
+  padding-top: 1.25rem;
+  margin-top: 2rem;
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+/* ---- FILTROS DE PORTAFOLIO ---- */
+.filter-btn {
+  border: 2px solid var(--sta-navy);
+  color: var(--sta-navy);
+  background: transparent;
+  border-radius: 50px;
+  padding: 0.4rem 1.25rem;
+  font-weight: 600;
+  font-size: 0.875rem;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+.filter-btn:hover,
+.filter-btn.active {
+  background: var(--sta-navy);
+  color: white;
+}
+
+/* ---- PÁGINA NOSOTROS ---- */
+.about-values {
+  background: var(--sta-bg);
+  padding: 4rem 0;
+}
+.value-item {
+  text-align: center;
+  padding: 1.5rem;
+}
+.value-icon {
+  font-size: 2.5rem;
+  color: var(--sta-navy);
+  margin-bottom: 1rem;
+}
+
+/* ---- RESPONSIVE GENERAL ---- */
+@media (max-width: 768px) {
+  .hero-section {
+    min-height: 70vh;
+    padding: 5rem 0 3rem;
+  }
+  .section-title {
+    font-size: 1.5rem;
+  }
+}

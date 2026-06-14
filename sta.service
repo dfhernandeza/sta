@@ -1,0 +1,20 @@
+[Unit]
+Description=STA Muebles y Terminaciones - Gunicorn daemon
+After=network.target
+
+[Service]
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/sta
+EnvironmentFile=/var/www/sta/.env
+ExecStart=/var/www/sta/venv/bin/gunicorn \
+          -c /var/www/sta/gunicorn.conf.py \
+          sta_project.wsgi:application
+ExecReload=/bin/kill -s HUP $MAINPID
+KillMode=mixed
+TimeoutStopSec=5
+PrivateTmp=true
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

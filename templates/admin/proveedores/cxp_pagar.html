@@ -1,0 +1,147 @@
+{% extends 'base_admin.html' %}
+{% load custom_tags %}
+
+{% block title %}
+  {% if cxp.factura %}
+    Registrar Pago — {{ cxp.factura.numero }}
+  {% else %}
+    Registrar Pago — Rendición {{ cxp.rendicion.id }}
+  {% endif %}
+{% endblock %}
+
+{% block breadcrumb %}
+  <li class="breadcrumb-item"><a href="{% url 'proveedores:proveedor_list' %}">Proveedores</a></li>
+  <li class="breadcrumb-item"><a href="{% url 'proveedores:cxp_list' %}">Cuentas por Pagar</a></li>
+  <li class="breadcrumb-item active">Registrar Pago</li>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h4 class="page-title">Registrar Pago</h4>
+  <a href="{% url 'proveedores:cxp_list' %}" class="btn btn-outline-secondary rounded-pill px-4">
+    <i class="bi bi-arrow-left me-1"></i>Volver
+  </a>
+</div>
+
+<div class="row justify-content-center">
+  <div class="col-lg-7">
+
+    <!-- Resumen de la CxP -->
+    <div class="card-sta p-4 mb-4">
+      <h6 class="fw-700 text-sta mb-3"><i class="bi bi-file-earmark-text me-2"></i>{% if cxp.factura %}Factura a pagar{% else %}Rendición a pagar{% endif %}</h6>
+      <div class="row g-2 small">
+        <div class="col-sm-4">
+          {% if cxp.factura %}
+            {% if cxp.factura.pago_por_trabajador %}
+            <span class="text-muted">Trabajador</span>
+            <div class="fw-600">{{ cxp.factura.pago_por_trabajador.nombre_completo }}</div>
+            {% else %}
+            <span class="text-muted">Proveedor</span>
+            <div class="fw-600">{{ cxp.factura.proveedor.razon_social }}</div>
+            {% endif %}
+          {% else %}
+          <span class="text-muted">Trabajador</span>
+          <div class="fw-600">{{ cxp.rendicion.trabajador.nombre_completo }}</div>
+          {% endif %}
+        </div>
+        <div class="col-sm-3">
+          {% if cxp.factura %}
+          <span class="text-muted">N° Factura</span>
+          {% else %}
+          <span class="text-muted">N° Rendición</span>
+          {% endif %}
+          <div class="fw-600 font-monospace">
+            {% if cxp.factura %}
+            <a href="{% url 'proveedores:factura_detail' cxp.factura.pk %}" class="text-sta">{{ cxp.factura.numero }}</a>
+            {% else %}
+            <a href="{% url 'proveedores:rendicion_detail' cxp.rendicion.pk %}" class="text-sta">{{ cxp.rendicion.id }}</a>
+            {% endif %}
+          </div>
+        </div>
+        <div class="col-sm-2">
+          <span class="text-muted">Vencimiento</span>
+          <div class="fw-600 {% if cxp.estado == 'vencida' %}text-danger{% endif %}">
+            {{ cxp.fecha_vencimiento|date:"d/m/Y" }}
+          </div>
+        </div>
+        <div class="col-sm-3 text-sm-end">
+          <span class="text-muted">Saldo pendiente</span>
+          <div class="fw-700 fs-5 text-danger">{{ cxp.saldo_pendiente|moneda_chilena }}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Formulario de pago -->
+    <div class="card-sta p-4">
+      <h6 class="fw-700 text-sta mb-3"><i class="bi bi-cash-coin me-2"></i>Datos del pago</h6>
+      <form method="post" novalidate autocomplete="off">
+        {% csrf_token %}
+        <div class="row g-3">
+
+          <div class="col-sm-6">
+            <label class="form-label fw-600">{{ form.fecha_pago.label }} <span class="text-danger">*</span></label>
+            {{ form.fecha_pago }}
+            {% if form.fecha_pago.errors %}<div class="invalid-feedback d-block">{{ form.fecha_pago.errors.0 }}</div>{% endif %}
+          </div>
+
+          <div class="col-sm-6">
+            <label class="form-label fw-600">{{ form.monto_pagado.label }} <span class="text-danger">*</span></label>
+            <div class="input-group">
+              <span class="input-group-text">$</span>
+              {{ form.monto_pagado }}
+            </div>
+            {% if form.monto_pagado.errors %}<div class="invalid-feedback d-block">{{ form.monto_pagado.errors.0 }}</div>{% endif %}
+          </div>
+
+          <div class="col-12">
+            <label class="form-label fw-600">{{ form.cuenta_bancaria.label }} <span class="text-danger">*</span></label>
+            {{ form.cuenta_bancaria }}
+            <div class="form-text">{{ form.cuenta_bancaria.help_text }}</div>
+            {% if form.cuenta_bancaria.errors %}<div class="invalid-feedback d-block">{{ form.cuenta_bancaria.errors.0 }}</div>{% endif %}
+          </div>
+
+          <div class="col-sm-6">
+            <label class="form-label fw-600">{{ form.medio_pago.label }} <span class="text-danger">*</span></label>
+            {{ form.medio_pago }}
+            {% if form.medio_pago.errors %}<div class="invalid-feedback d-block">{{ form.medio_pago.errors.0 }}</div>{% endif %}
+          </div>
+
+          <div class="col-sm-6">
+            <label class="form-label fw-600">{{ form.numero_documento.label }}</label>
+            {{ form.numero_documento }}
+          </div>
+
+          <div class="col-12">
+            <label class="form-label fw-600">{{ form.notas.label }}</label>
+            {{ form.notas }}
+          </div>
+
+          <div class="col-12 pt-2 border-top d-flex gap-2">
+            <button type="submit" class="btn btn-success px-5 rounded-pill">
+              <i class="bi bi-check2-circle me-1"></i>Confirmar pago
+            </button>
+            <a href="{% url 'proveedores:cxp_list' %}" class="btn btn-outline-secondary rounded-pill px-4">
+              Cancelar
+            </a>
+          </div>
+
+        </div>
+      </form>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/l10n/es.js"></script>
+<link href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css" rel="stylesheet"/>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  flatpickr('[name="fecha_pago"]', {
+    locale: 'es', dateFormat: 'Y-m-d', altInput: true, altFormat: 'd/m/Y', allowInput: true,
+  });
+});
+</script>
+{% endblock %}

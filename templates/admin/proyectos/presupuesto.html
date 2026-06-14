@@ -1,0 +1,63 @@
+{% extends 'base_admin.html' %}
+{% load custom_tags %}
+{% block title %}Presupuesto — {{ proyecto.nombre }}{% endblock %}
+
+{% block breadcrumb %}
+  <li class="breadcrumb-item"><a href="{% url 'proyectos:proyecto_list' %}">Proyectos</a></li>
+  <li class="breadcrumb-item"><a href="{% url 'proyectos:proyecto_detail' proyecto.pk %}">{{ proyecto.nombre }}</a></li>
+  <li class="breadcrumb-item active">Presupuesto</li>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h4 class="page-title">Presupuesto</h4>
+    <p class="page-subtitle mb-0">{{ proyecto.codigo }} — {{ proyecto.nombre }}</p>
+  </div>
+  <a href="{% url 'proyectos:proyecto_detail' proyecto.pk %}" class="btn btn-outline-secondary rounded-pill px-4">
+    <i class="bi bi-arrow-left me-1"></i>Volver al proyecto
+  </a>
+</div>
+
+<div class="card-sta p-0">
+  <div class="table-responsive">
+    <table class="table table-sta mb-0">
+      <thead>
+        <tr>
+          <th>Ítem</th>
+          <th class="text-end">Presupuestado</th>
+          <th class="text-end">Real</th>
+          <th class="text-end">Variación</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in presupuesto %}
+        <tr>
+          <td class="fw-600">{{ item.item }}</td>
+          <td class="text-end">{{ item.monto_presupuestado|moneda_chilena }}</td>
+          <td class="text-end">{{ item.monto_real|moneda_chilena }}</td>
+          <td class="text-end fw-600 {% if item.variacion < 0 %}text-danger{% else %}text-success{% endif %}">
+            {% if item.variacion < 0 %}<i class="bi bi-arrow-up-circle me-1"></i>{% else %}<i class="bi bi-arrow-down-circle me-1"></i>{% endif %}
+            {{ item.variacion|moneda_chilena }}
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="4" class="text-center text-muted py-4">No hay ítems de presupuesto.</td></tr>
+        {% endfor %}
+      </tbody>
+      {% if presupuesto %}
+      <tfoot class="fw-700">
+        <tr>
+          <td>Total</td>
+          <td class="text-end">{{ total_presupuestado|moneda_chilena }}</td>
+          <td class="text-end">{{ total_real|moneda_chilena }}</td>
+          <td class="text-end {% if total_variacion < 0 %}text-danger{% else %}text-success{% endif %}">
+            {{ total_variacion|moneda_chilena }}
+          </td>
+        </tr>
+      </tfoot>
+      {% endif %}
+    </table>
+  </div>
+</div>
+{% endblock %}

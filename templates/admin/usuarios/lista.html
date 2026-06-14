@@ -1,0 +1,63 @@
+{% extends 'base_admin.html' %}
+
+{% block title %}Usuarios{% endblock %}
+
+{% block breadcrumb %}
+  <li class="breadcrumb-item active">Usuarios</li>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h4 class="page-title">Usuarios del Sistema</h4>
+  <a href="{% url 'accounts:usuario_create' %}" class="btn btn-sta rounded-pill px-4">
+    <i class="bi bi-plus-circle me-1"></i>Nuevo usuario
+  </a>
+</div>
+
+<div class="card-sta p-0">
+  <div class="table-responsive">
+    <table class="table table-sta mb-0">
+      <thead>
+        <tr>
+          <th>Usuario</th><th>Nombre</th><th>Email</th>
+          <th class="text-center">Rol</th><th class="text-center">Estado</th><th class="text-center">Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in usuarios %}
+        <tr>
+          <td class="font-monospace fw-600">{{ u.username }}</td>
+          <td>{{ u.get_full_name|default:u.nombre_display }}</td>
+          <td class="small">{{ u.email|default:"—" }}</td>
+          <td class="text-center">
+            <span class="badge bg-secondary rounded-pill px-3">{{ u.get_rol_display }}</span>
+          </td>
+          <td class="text-center">
+            {% if u.is_active %}<span class="badge-estado activo">Activo</span>
+            {% else %}<span class="badge-estado inactivo">Inactivo</span>{% endif %}
+          </td>
+          <td class="text-center">
+            <div class="btn-group btn-group-sm">
+              <a href="{% url 'accounts:usuario_edit' u.pk %}" class="btn btn-outline-secondary btn-sm" title="Editar">
+                <i class="bi bi-pencil"></i>
+              </a>
+            </div>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6" class="text-center text-muted py-4">No hay usuarios registrados.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if is_paginated %}
+  <div class="d-flex justify-content-center py-3">
+    <nav><ul class="pagination pagination-sm mb-0">
+      {% if page_obj.has_previous %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">‹</a></li>{% endif %}
+      <li class="page-item disabled"><span class="page-link">{{ page_obj.number }}/{{ page_obj.paginator.num_pages }}</span></li>
+      {% if page_obj.has_next %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">›</a></li>{% endif %}
+    </ul></nav>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

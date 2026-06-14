@@ -1,0 +1,137 @@
+{% extends 'base_web.html' %}
+{% load static %}
+
+{% block title %}Nosotros | STA Muebles y Terminaciones{% endblock %}
+
+{% block content %}
+<div style="background:linear-gradient(135deg,var(--sta-navy),var(--sta-steel));padding:7rem 0 3.5rem;margin-top:70px;">
+  <div class="container text-white text-center">
+    <h1 class="fw-800 mb-2">Quiénes Somos</h1>
+    <p class="opacity-75">Más de 15 años fabricando muebles y terminaciones de calidad en Chile</p>
+  </div>
+</div>
+
+<!-- HISTORIA -->
+<section class="py-5">
+  <div class="container">
+    <div class="row align-items-center g-5">
+      <div class="col-lg-6">
+        <div class="section-divider"></div>
+        <h2 class="section-title">Nuestra Historia</h2>
+        <p class="text-muted">
+          STA Muebles y Terminaciones nació con la misión de ofrecer soluciones de alta calidad
+          en fabricación de muebles a medida y terminaciones de interiores para proyectos
+          residenciales y comerciales en todo Chile.
+        </p>
+        <p class="text-muted">
+          Con más de 15 años de experiencia, hemos consolidado un equipo de profesionales
+          dedicados a transformar cada idea en un producto de excelencia, combinando diseño,
+          funcionalidad y durabilidad.
+        </p>
+        <div class="row g-3 mt-2">
+          <div class="col-6">
+            <div class="p-3 rounded text-center" style="background:var(--sta-bg);">
+              <div class="fw-800 fs-3 text-sta">+15</div>
+              <small class="text-muted">Años de experiencia</small>
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="p-3 rounded text-center" style="background:var(--sta-bg);">
+              <div class="fw-800 fs-3 text-sta">+500</div>
+              <small class="text-muted">Proyectos terminados</small>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-lg-6">
+        <div class="rounded-3 overflow-hidden" style="background:linear-gradient(135deg,var(--sta-navy),var(--sta-steel));height:350px;display:flex;align-items:center;justify-content:center;">
+          <i class="bi bi-building text-white opacity-25" style="font-size:8rem;"></i>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- VALORES -->
+<section class="about-values">
+  <div class="container">
+    <div class="text-center mb-5">
+      <div class="section-divider mx-auto"></div>
+      <h2 class="section-title">Nuestros Valores</h2>
+    </div>
+    <div class="row g-4">
+      <div class="col-md-6 col-lg-3">
+        <div class="value-item">
+          <div class="value-icon"><i class="bi bi-patch-check"></i></div>
+          <h5 class="fw-700 text-sta">Calidad</h5>
+          <p class="text-muted small">Compromiso con la excelencia en cada producto y servicio.</p>
+        </div>
+      </div>
+      <div class="col-md-6 col-lg-3">
+        <div class="value-item">
+          <div class="value-icon"><i class="bi bi-clock-history"></i></div>
+          <h5 class="fw-700 text-sta">Puntualidad</h5>
+          <p class="text-muted small">Cumplimos los plazos acordados con nuestros clientes.</p>
+        </div>
+      </div>
+      <div class="col-md-6 col-lg-3">
+        <div class="value-item">
+          <div class="value-icon"><i class="bi bi-lightbulb"></i></div>
+          <h5 class="fw-700 text-sta">Innovación</h5>
+          <p class="text-muted small">Incorporamos diseños modernos y técnicas actualizadas.</p>
+        </div>
+      </div>
+      <div class="col-md-6 col-lg-3">
+        <div class="value-item">
+          <div class="value-icon"><i class="bi bi-handshake"></i></div>
+          <h5 class="fw-700 text-sta">Confianza</h5>
+          <p class="text-muted small">Relaciones transparentes y honestas con clientes y proveedores.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- EQUIPO -->
+{% if equipo %}
+<section class="py-5">
+  <div class="container">
+    <div class="text-center mb-5">
+      <div class="section-divider mx-auto"></div>
+      <h2 class="section-title">Nuestro Equipo</h2>
+      <p class="section-subtitle">Las personas detrás de cada proyecto</p>
+    </div>
+    <div class="row g-4 justify-content-center">
+      {% for miembro in equipo %}
+      <div class="col-sm-6 col-md-4 col-lg-3">
+        <div class="team-card">
+          {% if miembro.foto %}
+            <img src="{{ miembro.foto.url }}" alt="{{ miembro.nombre }}" class="team-photo">
+          {% else %}
+            <div class="team-photo-placeholder mx-auto">{{ miembro.nombre|slice:":1" }}</div>
+          {% endif %}
+          <h5 class="fw-700 text-sta mb-1">{{ miembro.nombre }}</h5>
+          <p class="text-muted small mb-2">{{ miembro.cargo }}</p>
+          {% if miembro.descripcion %}
+            <p class="text-muted" style="font-size:.85rem;">{{ miembro.descripcion }}</p>
+          {% endif %}
+          {% if miembro.linkedin %}
+            <a href="{{ miembro.linkedin }}" target="_blank" class="text-sta"><i class="bi bi-linkedin fs-5"></i></a>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+{% endif %}
+
+<section class="py-5 text-center" style="background:linear-gradient(135deg,var(--sta-navy),var(--sta-steel));">
+  <div class="container text-white">
+    <h3 class="fw-700 mb-3">¿Quieres trabajar con nosotros?</h3>
+    <a href="{% url 'web:contacto' %}" class="btn btn-light btn-lg px-5 fw-600 rounded-pill text-sta">
+      Contáctanos
+    </a>
+  </div>
+</section>
+{% endblock %}

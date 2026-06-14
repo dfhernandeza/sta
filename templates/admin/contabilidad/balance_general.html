@@ -1,0 +1,114 @@
+{% extends 'base_admin.html' %}
+{% load custom_tags %}
+{% block title %}Balance General{% endblock %}
+
+{% block breadcrumb %}
+  <li class="breadcrumb-item active">Balance General</li>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h4 class="page-title">Balance General</h4>
+</div>
+
+<div class="card-sta p-3 mb-4">
+  <form method="get" class="row g-2 align-items-end">
+    <div class="col-auto">
+      <label class="form-label small mb-1">Al cierre de</label>
+      <input type="date" name="hasta" class="form-control form-control-sm" value="{{ request.GET.hasta }}">
+    </div>
+    <div class="col-auto">
+      <button type="submit" class="btn btn-sta btn-sm rounded-pill px-3"><i class="bi bi-search"></i></button>
+      <a href="{% url 'contabilidad:balance_general' %}" class="btn btn-outline-secondary btn-sm rounded-pill px-3 ms-1"><i class="bi bi-x"></i></a>
+    </div>
+  </form>
+</div>
+
+<div class="row g-4">
+  <!-- Activos -->
+  <div class="col-lg-4">
+    <div class="card-sta p-4 h-100">
+      <h6 class="fw-700 text-sta mb-3">Activos</h6>
+      <table class="table table-sm mb-0">
+        <tbody>
+          {% for row in activos %}
+          <tr>
+            <td class="small">{{ row.cuenta.codigo }} {{ row.cuenta.nombre }}</td>
+            <td class="text-end small font-monospace">{{ row.saldo|moneda_chilena }}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="2" class="text-muted small">Sin cuentas activo.</td></tr>
+          {% endfor %}
+        </tbody>
+        <tfoot class="table-light fw-700">
+          <tr>
+            <td>Total Activos</td>
+            <td class="text-end font-monospace">{{ total_activo|moneda_chilena }}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+
+  <!-- Pasivos -->
+  <div class="col-lg-4">
+    <div class="card-sta p-4 h-100">
+      <h6 class="fw-700 text-sta mb-3">Pasivos</h6>
+      <table class="table table-sm mb-0">
+        <tbody>
+          {% for row in pasivos %}
+          <tr>
+            <td class="small">{{ row.cuenta.codigo }} {{ row.cuenta.nombre }}</td>
+            <td class="text-end small font-monospace">{{ row.saldo|moneda_chilena }}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="2" class="text-muted small">Sin cuentas pasivo.</td></tr>
+          {% endfor %}
+        </tbody>
+        <tfoot class="table-light fw-700">
+          <tr>
+            <td>Total Pasivos</td>
+            <td class="text-end font-monospace">{{ total_pasivo|moneda_chilena }}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+
+  <!-- Patrimonio -->
+  <div class="col-lg-4">
+    <div class="card-sta p-4 h-100">
+      <h6 class="fw-700 text-sta mb-3">Patrimonio</h6>
+      <table class="table table-sm mb-0">
+        <tbody>
+          {% for row in patrimonio %}
+          <tr>
+            <td class="small">{{ row.cuenta.codigo }} {{ row.cuenta.nombre }}</td>
+            <td class="text-end small font-monospace">{{ row.saldo|moneda_chilena }}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="2" class="text-muted small">Sin cuentas patrimonio.</td></tr>
+          {% endfor %}
+        </tbody>
+        <tfoot class="table-light fw-700">
+          <tr>
+            <td>Total Patrimonio</td>
+            <td class="text-end font-monospace">{{ total_patrimonio|moneda_chilena }}</td>
+          </tr>
+        </tfoot>
+      </table>
+      <div class="border-top mt-3 pt-3 fw-700">
+        <div class="d-flex justify-content-between">
+          <span>Pasivo + Patrimonio</span>
+          <span class="font-monospace">{{ total_pasivo_patrimonio|moneda_chilena }}</span>
+        </div>
+        {% if total_activo == total_pasivo_patrimonio %}
+        <div class="text-success small mt-1"><i class="bi bi-check-circle-fill me-1"></i>Balance cuadrado</div>
+        {% elif total_activo > 0 %}
+        <div class="text-danger small mt-1"><i class="bi bi-exclamation-triangle-fill me-1"></i>Diferencia detectada</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

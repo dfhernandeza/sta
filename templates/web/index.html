@@ -1,0 +1,140 @@
+{% extends 'base_web.html' %}
+{% load static %}
+
+{% block title %}STA Muebles y Terminaciones - Inicio{% endblock %}
+
+{% block content %}
+
+<!-- HERO -->
+<section class="hero-section">
+  <div class="container">
+    <div class="row align-items-center">
+      <div class="col-lg-7 hero-content" data-aos="fade-right">
+        <h1 class="hero-title">
+          Muebles y Terminaciones<br>
+          <span>de alta calidad</span>
+        </h1>
+        <p class="hero-subtitle">
+          Diseñamos y fabricamos muebles a medida, cocinas, closets y terminaciones
+          para proyectos residenciales y comerciales en todo Chile.
+        </p>
+        <div class="d-flex gap-3 flex-wrap">
+          <a href="{% url 'web:proyectos' %}" class="btn btn-light btn-lg px-4 fw-600 rounded-pill">
+            Ver Proyectos
+          </a>
+          <a href="{% url 'web:contacto' %}" class="btn btn-outline-light btn-lg px-4 fw-600 rounded-pill">
+            Cotizar ahora <i class="bi bi-arrow-right ms-1"></i>
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- STATS -->
+<section class="py-5 bg-white border-bottom">
+  <div class="container">
+    <div class="row text-center g-4">
+      <div class="col-6 col-md-3">
+        <div class="fw-800 fs-1 text-sta">+500</div>
+        <div class="text-muted small">Proyectos Realizados</div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="fw-800 fs-1 text-sta">+15</div>
+        <div class="text-muted small">Años de Experiencia</div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="fw-800 fs-1 text-sta">+300</div>
+        <div class="text-muted small">Clientes Satisfechos</div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="fw-800 fs-1 text-sta">100%</div>
+        <div class="text-muted small">Comprometidos</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SERVICIOS -->
+{% if servicios %}
+<section class="py-6 py-md-5 mt-5">
+  <div class="container">
+    <div class="text-center mb-5">
+      <div class="section-divider mx-auto"></div>
+      <h2 class="section-title">Nuestros Servicios</h2>
+      <p class="section-subtitle">Soluciones integrales en muebles y terminaciones</p>
+    </div>
+    <div class="row g-4">
+      {% for servicio in servicios %}
+      <div class="col-md-6 col-lg-4">
+        <div class="service-card">
+          <div class="service-icon">
+            <i class="bi {{ servicio.icono|default:'bi-tools' }}"></i>
+          </div>
+          <h3>{{ servicio.titulo }}</h3>
+          <p class="text-muted small mb-0">{{ servicio.descripcion|truncatewords:20 }}</p>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="text-center mt-4">
+      <a href="{% url 'web:servicios' %}" class="btn btn-sta btn-lg px-5 rounded-pill">
+        Ver todos los servicios
+      </a>
+    </div>
+  </div>
+</section>
+{% endif %}
+
+<!-- PROYECTOS DESTACADOS -->
+{% if proyectos_destacados %}
+<section class="py-5 mt-3" style="background:var(--sta-bg);">
+  <div class="container">
+    <div class="text-center mb-5">
+      <div class="section-divider mx-auto"></div>
+      <h2 class="section-title">Proyectos Destacados</h2>
+      <p class="section-subtitle">Una selección de nuestros mejores trabajos</p>
+    </div>
+    <div class="row g-4">
+      {% for p in proyectos_destacados %}
+      <div class="col-md-6 col-lg-4">
+        <div class="project-card card h-100">
+          <div class="card-img-wrapper">
+            {% if p.imagen_principal %}
+              <img src="{{ p.imagen_principal.url }}" alt="{{ p.titulo }}" class="card-img-top">
+            {% else %}
+              <div class="card-img-top d-flex align-items-center justify-content-center" style="height:220px;background:linear-gradient(135deg,var(--sta-navy),var(--sta-steel));">
+                <i class="bi bi-image text-white" style="font-size:3rem;opacity:.5;"></i>
+              </div>
+            {% endif %}
+          </div>
+          <div class="card-body">
+            <span class="badge-categoria">{{ p.get_categoria_display }}</span>
+            <h5 class="mt-2 fw-700">{{ p.titulo }}</h5>
+            <p class="text-muted small">{{ p.descripcion|truncatewords:15 }}</p>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="text-center mt-4">
+      <a href="{% url 'web:proyectos' %}" class="btn btn-sta btn-lg px-5 rounded-pill">
+        Ver todos los proyectos
+      </a>
+    </div>
+  </div>
+</section>
+{% endif %}
+
+<!-- CTA CONTACTO -->
+<section class="py-5" style="background:linear-gradient(135deg,var(--sta-navy),var(--sta-steel));">
+  <div class="container text-center text-white">
+    <h2 class="fw-800 mb-3" style="font-size:2rem;">¿Tienes un proyecto en mente?</h2>
+    <p class="mb-4 opacity-75">Cuéntanos tu idea y te ayudamos a hacerla realidad con calidad y precisión.</p>
+    <a href="{% url 'web:contacto' %}" class="btn btn-light btn-lg px-5 fw-600 rounded-pill text-sta">
+      Solicitar cotización gratis
+    </a>
+  </div>
+</section>
+
+{% endblock %}

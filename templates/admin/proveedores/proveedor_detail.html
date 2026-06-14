@@ -1,0 +1,126 @@
+{% extends 'base_admin.html' %}
+
+{% block title %}{{ proveedor.razon_social }}{% endblock %}
+
+{% block breadcrumb %}
+  <li class="breadcrumb-item"><a href="{% url 'proveedores:proveedor_list' %}">Proveedores</a></li>
+  <li class="breadcrumb-item active">{{ proveedor.razon_social }}</li>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h4 class="page-title">{{ proveedor.razon_social }}</h4>
+    <p class="page-subtitle mb-0">RUT: <span class="font-monospace">{{ proveedor.rut }}</span></p>
+  </div>
+  <div class="d-flex gap-2">
+    <a href="{% url 'proveedores:proveedor_update' proveedor.pk %}" class="btn btn-sta rounded-pill px-4">
+      <i class="bi bi-pencil me-1"></i>Editar
+    </a>
+    <a href="{% url 'proveedores:factura_create' %}" class="btn btn-outline-secondary rounded-pill px-4">
+      <i class="bi bi-file-earmark-plus me-1"></i>Nueva factura
+    </a>
+  </div>
+</div>
+
+<div class="row g-4">
+  <!-- Datos generales -->
+  <div class="col-lg-4">
+    <div class="card-sta p-4">
+      <h6 class="fw-700 text-sta mb-3"><i class="bi bi-info-circle me-2"></i>Información</h6>
+      <dl class="row mb-0">
+        <dt class="col-sm-4 text-muted small">Giro</dt>
+        <dd class="col-sm-8 small">{{ proveedor.giro|default:"—" }}</dd>
+        <dt class="col-sm-4 text-muted small">Email</dt>
+        <dd class="col-sm-8 small">{{ proveedor.email|default:"—" }}</dd>
+        <dt class="col-sm-4 text-muted small">Teléfono</dt>
+        <dd class="col-sm-8 small">{{ proveedor.telefono|default:"—" }}</dd>
+        <dt class="col-sm-4 text-muted small">Contacto</dt>
+        <dd class="col-sm-8 small">{{ proveedor.contacto|default:"—" }}</dd>
+        <dt class="col-sm-4 text-muted small">Dirección</dt>
+        <dd class="col-sm-8 small">{{ proveedor.direccion|default:"—" }}</dd>
+        <dt class="col-sm-4 text-muted small">Estado</dt>
+        <dd class="col-sm-8">
+          {% if proveedor.activo %}<span class="badge-estado activo">Activo</span>
+          {% else %}<span class="badge-estado inactivo">Inactivo</span>{% endif %}
+        </dd>
+      </dl>
+      {% if proveedor.banco %}
+      <hr>
+      <h6 class="fw-700 text-sta mb-2 small"><i class="bi bi-bank me-1"></i>Datos Bancarios</h6>
+      <dl class="row mb-0">
+        <dt class="col-sm-4 text-muted small">Banco</dt>
+        <dd class="col-sm-8 small">{{ proveedor.banco }}</dd>
+        <dt class="col-sm-4 text-muted small">Tipo</dt>
+        <dd class="col-sm-8 small">{{ proveedor.tipo_cuenta|default:"—" }}</dd>
+        <dt class="col-sm-4 text-muted small">N° Cuenta</dt>
+        <dd class="col-sm-8 small font-monospace">{{ proveedor.numero_cuenta|default:"—" }}</dd>
+      </dl>
+      {% endif %}
+      {% if proveedor.notas %}
+        <hr>
+        <p class="small text-muted mb-0">{{ proveedor.notas }}</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Facturas recibidas -->
+  <div class="col-lg-8">
+    <div class="card-sta p-4 mb-4">
+      <div class="d-flex justify-content-between mb-3">
+        <h6 class="fw-700 text-sta mb-0"><i class="bi bi-file-earmark-minus me-2"></i>Facturas Recibidas</h6>
+        <a href="{% url 'proveedores:factura_list' %}?proveedor={{ proveedor.pk }}" class="btn btn-outline-secondary btn-sm rounded-pill px-3">Ver todas</a>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sta mb-0 table-sm">
+          <thead>
+            <tr>
+              <th>N°</th><th>Proyecto</th><th class="text-end">Total</th><th class="text-center">Estado</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for f in proveedor.facturas.all|slice:":10" %}
+            <tr>
+              <td class="fw-600 font-monospace"><a href="{% url 'proveedores:factura_detail' f.pk %}" class="text-sta text-decoration-none">{{ f.numero }}</a></td>
+              <td class="small">{{ f.proyecto|default:"—" }}</td>
+              <td class="text-end fw-600">$ {{ f.total|floatformat:0 }}</td>
+              <td class="text-center"><span class="badge-{{ f.estado }}">{{ f.get_estado_display }}</span></td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="4" class="text-center text-muted py-3">Sin facturas</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Anticipos -->
+    <div class="card-sta p-4">
+      <div class="d-flex justify-content-between mb-3">
+        <h6 class="fw-700 text-sta mb-0"><i class="bi bi-cash me-2"></i>Anticipos</h6>
+        <a href="{% url 'proveedores:anticipo_create' %}" class="btn btn-sta btn-sm rounded-pill px-3">
+          <i class="bi bi-plus"></i>
+        </a>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sta mb-0 table-sm">
+          <thead>
+            <tr><th>Fecha</th><th class="text-end">Monto</th><th class="text-center">Estado</th></tr>
+          </thead>
+          <tbody>
+            {% for a in proveedor.anticipos.all|slice:":5" %}
+            <tr>
+              <td class="small">{{ a.fecha }}</td>
+              <td class="text-end fw-600">$ {{ a.monto|floatformat:0 }}</td>
+              <td class="text-center"><span class="badge-{{ a.estado }}">{{ a.get_estado_display }}</span></td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="3" class="text-center text-muted py-3">Sin anticipos</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

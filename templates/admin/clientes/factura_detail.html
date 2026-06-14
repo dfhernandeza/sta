@@ -1,0 +1,106 @@
+{% extends 'base_admin.html' %}
+{% load custom_tags %}
+
+{% block title %}Factura {{ factura.numero }}{% endblock %}
+
+{% block breadcrumb %}
+  <li class="breadcrumb-item"><a href="{% url 'clientes:factura_list' %}">Facturas</a></li>
+  <li class="breadcrumb-item active">{{ factura.numero }}</li>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h4 class="page-title">Factura N° {{ factura.numero }}</h4>
+    <p class="page-subtitle mb-0">{{ factura.cliente.razon_social }}</p>
+  </div>
+  <div class="d-flex gap-2">
+    <span class="badge-{{ factura.estado }} align-self-center fs-6">{{ factura.get_estado_display }}</span>
+    <a href="{% url 'clientes:factura_update' factura.pk %}" class="btn btn-sta rounded-pill px-4">
+      <i class="bi bi-pencil me-1"></i>Editar
+    </a>
+  </div>
+</div>
+
+<div class="row g-4">
+  <div class="col-lg-7">
+    <div class="card-sta p-4">
+      <div class="row g-3 mb-4">
+        <div class="col-6">
+          <div class="text-muted small">Cliente</div>
+          <div class="fw-600">{{ factura.cliente.razon_social }}</div>
+          <div class="small text-muted">RUT: {{ factura.cliente.rut }}</div>
+        </div>
+        <div class="col-6">
+          <div class="text-muted small">Fechas</div>
+          <div class="small">Emisión: <span class="fw-600">{{ factura.fecha_emision }}</span></div>
+          <div class="small">Vencimiento: <span class="fw-600">{{ factura.fecha_vencimiento|default:"—" }}</span></div>
+        </div>
+        {% if factura.proyecto %}
+        <div class="col-12">
+          <div class="text-muted small">Proyecto</div>
+          <div class="fw-600">{{ factura.proyecto }}</div>
+        </div>
+        {% endif %}
+      </div>
+      <table class="table table-bordered mb-0">
+        <tbody>
+          <tr><td class="text-muted">Neto</td><td class="text-end fw-600">{{ factura.neto|moneda_chilena }}</td></tr>
+          <tr><td class="text-muted">IVA (19%)</td><td class="text-end">{{ factura.iva|moneda_chilena }}</td></tr>
+          <tr class="table-active">
+            <td class="fw-700">Total</td>
+            <td class="text-end fw-800 fs-5 text-sta">{{ factura.total|moneda_chilena }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="col-lg-5">
+    {% if factura.cuenta_por_cobrar %}
+    <div class="card-sta p-4">
+      <h6 class="fw-700 text-sta mb-3"><i class="bi bi-cash-stack me-2"></i>Cuenta por Cobrar</h6>
+      <dl class="row mb-3">
+        <dt class="col-6 text-muted small">Monto</dt>
+        <dd class="col-6 fw-600">{{ factura.cuenta_por_cobrar.monto|moneda_chilena }}</dd>
+        <dt class="col-6 text-muted small">Pagado</dt>
+        <dd class="col-6 text-success fw-600">{{ factura.cuenta_por_cobrar.monto_pagado|moneda_chilena }}</dd>
+        <dt class="col-6 text-muted small">Saldo</dt>
+        <dd class="col-6 text-danger fw-700">{{ factura.cuenta_por_cobrar.saldo_pendiente|moneda_chilena }}</dd>
+        <dt class="col-6 text-muted small">Estado</dt>
+        <dd class="col-6"><span class="badge-{{ factura.cuenta_por_cobrar.estado }}">{{ factura.cuenta_por_cobrar.get_estado_display }}</span></dd>
+      </dl>
+      {% if factura.cuenta_por_cobrar.estado != 'pagada' %}
+      <form method="post" action="{% url 'clientes:cxc_pagar' factura.cuenta_por_cobrar.pk %}">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-success btn-sm rounded-pill w-100">
+          <i class="bi bi-check-circle me-1"></i>Marcar como pagada
+        </button>
+      </form>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- Asiento contable -->
+    <div class="card-sta p-4 mt-4">
+      <h6 class="fw-700 text-sta mb-3"><i class="bi bi-journal-text me-2"></i>Asiento Contable</h6>
+      {% with asiento=factura.asientos.all|dictsort:"numero"|last %}
+        {% if asiento and asiento.estado != 'anulado' %}
+          <div class="mb-2 small">
+            Asiento generado: <a href="{% url 'contabilidad:asiento_detail' asiento.pk %}" class="fw-700">{{ asiento.numero }}</a>
+            &nbsp;
+            {% if asiento.estado == 'borrador' %}<span class="badge bg-secondary">Borrador</span>
+            {% elif asiento.estado == 'confirmado' %}<span class="badge bg-success">Confirmado</span>{% endif %}
+          </div>
+        {% else %}
+          <form method="post" action="{% url 'clientes:factura_asiento' factura.pk %}">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-outline-primary btn-sm rounded-pill w-100">
+              <i class="bi bi-journal-plus me-1"></i>Generar asiento contable
+            </button>
+          </form>
+        {% endif %}
+      {% endwith %}
+    </div>
+  </div>
+</div>
+{% endblock %}

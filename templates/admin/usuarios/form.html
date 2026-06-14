@@ -1,0 +1,73 @@
+{% extends 'base_admin.html' %}
+
+{% block title %}{% if form.instance.pk %}Editar{% else %}Nuevo{% endif %} Usuario{% endblock %}
+
+{% block breadcrumb %}
+  <li class="breadcrumb-item"><a href="{% url 'accounts:usuario_list' %}">Usuarios</a></li>
+  <li class="breadcrumb-item active">{% if form.instance.pk %}Editar{% else %}Nuevo{% endif %}</li>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h4 class="page-title">{% if form.instance.pk %}Editar: {{ form.instance.username }}{% else %}Nuevo Usuario{% endif %}</h4>
+  <a href="{% url 'accounts:usuario_list' %}" class="btn btn-outline-secondary rounded-pill px-4">
+    <i class="bi bi-arrow-left me-1"></i>Volver
+  </a>
+</div>
+<div class="row justify-content-center">
+  <div class="col-lg-7">
+    <div class="card-sta p-4">
+      <form method="post" novalidate>
+        {% csrf_token %}
+        <div class="row g-3">
+          <div class="col-sm-6">
+            <label class="form-label fw-600">Nombre de usuario <span class="text-danger">*</span></label>
+            {{ form.username }}
+            {% if form.username.errors %}<div class="invalid-feedback d-block">{{ form.username.errors.0 }}</div>{% endif %}
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label fw-600">Rol</label>
+            {{ form.rol }}
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label fw-600">Nombre</label>
+            {{ form.first_name }}
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label fw-600">Apellido</label>
+            {{ form.last_name }}
+          </div>
+          <div class="col-12">
+            <label class="form-label fw-600">Email</label>
+            {{ form.email }}
+          </div>
+          {% if not form.instance.pk %}
+          <div class="col-sm-6">
+            <label class="form-label fw-600">Contraseña <span class="text-danger">*</span></label>
+            {{ form.password1 }}
+            {% if form.password1.errors %}<div class="invalid-feedback d-block">{{ form.password1.errors.0 }}</div>{% endif %}
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label fw-600">Confirmar contraseña <span class="text-danger">*</span></label>
+            {{ form.password2 }}
+            {% if form.password2.errors %}<div class="invalid-feedback d-block">{{ form.password2.errors.0 }}</div>{% endif %}
+          </div>
+          {% endif %}
+          <div class="col-sm-6">
+            <div class="form-check mt-2">
+              {{ form.is_active }}
+              <label class="form-check-label fw-600" for="{{ form.is_active.id_for_label }}">Usuario activo</label>
+            </div>
+          </div>
+          <div class="col-12 pt-2 border-top">
+            <button type="submit" class="btn btn-sta px-5 rounded-pill">
+              <i class="bi bi-save me-1"></i>
+              {% if form.instance.pk %}Guardar cambios{% else %}Crear usuario{% endif %}
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

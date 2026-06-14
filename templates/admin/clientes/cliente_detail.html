@@ -1,0 +1,90 @@
+{% extends 'base_admin.html' %}
+
+{% block title %}{{ cliente.razon_social }}{% endblock %}
+
+{% block breadcrumb %}
+  <li class="breadcrumb-item"><a href="{% url 'clientes:cliente_list' %}">Clientes</a></li>
+  <li class="breadcrumb-item active">{{ cliente.razon_social }}</li>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h4 class="page-title">{{ cliente.razon_social }}</h4>
+    <p class="page-subtitle mb-0">RUT: {{ cliente.rut }}</p>
+  </div>
+  <div class="d-flex gap-2">
+    <a href="{% url 'clientes:cliente_update' cliente.pk %}" class="btn btn-sta rounded-pill px-4">
+      <i class="bi bi-pencil me-1"></i>Editar
+    </a>
+    <a href="{% url 'clientes:factura_create' %}" class="btn btn-outline-secondary rounded-pill px-4">
+      <i class="bi bi-file-earmark-plus me-1"></i>Nueva factura
+    </a>
+  </div>
+</div>
+
+<div class="row g-4">
+  <!-- Datos -->
+  <div class="col-lg-4">
+    <div class="card-sta p-4">
+      <h6 class="fw-700 text-sta mb-3"><i class="bi bi-info-circle me-2"></i>Información</h6>
+      <dl class="row mb-0">
+        <dt class="col-sm-4 text-muted small">Giro</dt>
+        <dd class="col-sm-8 small">{{ cliente.giro|default:"—" }}</dd>
+        <dt class="col-sm-4 text-muted small">Email</dt>
+        <dd class="col-sm-8 small">{{ cliente.email|default:"—" }}</dd>
+        <dt class="col-sm-4 text-muted small">Teléfono</dt>
+        <dd class="col-sm-8 small">{{ cliente.telefono|default:"—" }}</dd>
+        <dt class="col-sm-4 text-muted small">Dirección</dt>
+        <dd class="col-sm-8 small">{{ cliente.direccion|default:"—" }}</dd>
+        <dt class="col-sm-4 text-muted small">Ciudad</dt>
+        <dd class="col-sm-8 small">{{ cliente.ciudad|default:"—" }}</dd>
+        <dt class="col-sm-4 text-muted small">Estado</dt>
+        <dd class="col-sm-8">
+          {% if cliente.activo %}<span class="badge-estado activo">Activo</span>
+          {% else %}<span class="badge-estado inactivo">Inactivo</span>{% endif %}
+        </dd>
+      </dl>
+      {% if cliente.notas %}
+        <hr>
+        <p class="small text-muted mb-0">{{ cliente.notas }}</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Facturas -->
+  <div class="col-lg-8">
+    <div class="card-sta p-4">
+      <div class="d-flex justify-content-between mb-3">
+        <h6 class="fw-700 text-sta mb-0"><i class="bi bi-file-earmark-text me-2"></i>Facturas Emitidas</h6>
+        <a href="{% url 'clientes:factura_create' %}" class="btn btn-sta btn-sm rounded-pill px-3">
+          <i class="bi bi-plus"></i>
+        </a>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sta mb-0 table-sm">
+          <thead>
+            <tr>
+              <th>N°</th><th>Fecha</th><th class="text-end">Neto</th>
+              <th class="text-end">Total</th><th class="text-center">Estado</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for f in cliente.facturas.all %}
+            <tr>
+              <td class="fw-600"><a href="{% url 'clientes:factura_detail' f.pk %}" class="text-sta text-decoration-none">{{ f.numero }}</a></td>
+              <td class="small">{{ f.fecha_emision }}</td>
+              <td class="text-end small">$ {{ f.neto|floatformat:0 }}</td>
+              <td class="text-end fw-600">$ {{ f.total|floatformat:0 }}</td>
+              <td class="text-center"><span class="badge-{{ f.estado }}">{{ f.get_estado_display }}</span></td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="5" class="text-center text-muted py-3">Sin facturas</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

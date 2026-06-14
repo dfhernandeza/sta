@@ -1,0 +1,44 @@
+{% extends 'base_admin.html' %}
+
+{% block title %}{% if form.instance.pk %}Editar{% else %}Nuevo{% endif %} Cargo{% endblock %}
+
+{% block breadcrumb %}
+  <li class="breadcrumb-item"><a href="{% url 'rrhh:cargo_list' %}">RRHH</a></li>
+  <li class="breadcrumb-item active">{% if form.instance.pk %}Editar{% else %}Nuevo{% endif %}</li>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h4 class="page-title">{% if form.instance.pk %}Editar: {{ form.instance.nombre }}{% else %}Nuevo Cargo{% endif %}</h4>
+  <a href="{% url 'rrhh:cargo_list' %}" class="btn btn-outline-secondary rounded-pill px-4">
+    <i class="bi bi-arrow-left me-1"></i>Volver
+  </a>
+</div>
+<div class="row justify-content-center">
+  <div class="col-lg-9">
+    <div class="card-sta p-4">
+      <form method="post" novalidate>
+        {% csrf_token %}
+        <div class="row g-3">
+          <div class="col-sm-4">
+            <label class="form-label fw-600">Nombre</label>
+            {{ form.nombre }}
+          </div>
+          <div class="col-sm-8">
+            <label class="form-label fw-600">Descripción</label>
+            {{ form.descripcion }}
+            {% if form.descripcion.errors %}<div class="invalid-feedback d-block">{{ form.descripcion.errors.0 }}</div>{% endif %}
+          </div>
+
+          <div class="col-12 pt-2 border-top">
+            <button type="submit" class="btn btn-sta px-5 rounded-pill">
+              <i class="bi bi-save me-1"></i>
+              {% if form.instance.pk %}Guardar cambios{% else %}Crear cargo{% endif %}
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

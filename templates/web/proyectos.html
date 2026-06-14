@@ -1,0 +1,76 @@
+{% extends 'base_web.html' %}
+{% load static %}
+
+{% block title %}Proyectos | STA Muebles y Terminaciones{% endblock %}
+
+{% block content %}
+<!-- PAGE HEADER -->
+<div style="background:linear-gradient(135deg,var(--sta-navy),var(--sta-steel));padding:7rem 0 3.5rem;margin-top:70px;">
+  <div class="container text-white text-center">
+    <h1 class="fw-800 mb-2">Nuestros Proyectos</h1>
+    <p class="opacity-75">Trabajos que reflejan nuestra pasión por la calidad y el detalle</p>
+  </div>
+</div>
+
+<!-- FILTROS -->
+<section class="py-4 bg-white border-bottom sticky-top" style="top:70px;z-index:100;">
+  <div class="container">
+    <div class="d-flex gap-2 flex-wrap justify-content-center">
+      <a href="{% url 'web:proyectos' %}" class="filter-btn {% if not categoria_activa %}active{% endif %}">
+        Todos
+      </a>
+      {% for valor, etiqueta in categorias %}
+        <a href="?categoria={{ valor }}" class="filter-btn {% if categoria_activa == valor %}active{% endif %}">
+          {{ etiqueta }}
+        </a>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<!-- GRID DE PROYECTOS -->
+<section class="py-5">
+  <div class="container">
+    {% if proyectos %}
+      <div class="row g-4">
+        {% for p in proyectos %}
+        <div class="col-sm-6 col-lg-4">
+          <div class="project-card card h-100">
+            <div class="card-img-wrapper">
+              {% if p.imagen_principal %}
+                <img src="{{ p.imagen_principal.url }}" alt="{{ p.titulo }}" class="card-img-top">
+              {% else %}
+                <div class="card-img-top d-flex align-items-center justify-content-center" style="height:220px;background:linear-gradient(135deg,var(--sta-navy),var(--sta-steel));">
+                  <i class="bi bi-image text-white" style="font-size:3rem;opacity:.5;"></i>
+                </div>
+              {% endif %}
+            </div>
+            <div class="card-body d-flex flex-column">
+              <span class="badge-categoria d-inline-block mb-2">{{ p.get_categoria_display }}</span>
+              <h5 class="fw-700 mb-2">{{ p.titulo }}</h5>
+              <p class="text-muted small flex-grow-1">{{ p.descripcion|truncatewords:20 }}</p>
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="text-center py-5 text-muted">
+        <i class="bi bi-folder2-open fs-1 mb-3 d-block opacity-50"></i>
+        <p>No hay proyectos disponibles en esta categoría.</p>
+        <a href="{% url 'web:proyectos' %}" class="btn btn-sta rounded-pill px-4">Ver todos</a>
+      </div>
+    {% endif %}
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="py-5 text-center" style="background:var(--sta-bg);">
+  <div class="container">
+    <h3 class="fw-700 text-sta mb-3">¿Te gustaría tener un proyecto como estos?</h3>
+    <a href="{% url 'web:contacto' %}" class="btn btn-sta btn-lg px-5 rounded-pill">
+      Contáctanos <i class="bi bi-arrow-right ms-1"></i>
+    </a>
+  </div>
+</section>
+{% endblock %}

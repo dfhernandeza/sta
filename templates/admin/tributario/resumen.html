@@ -1,0 +1,108 @@
+{% extends 'base_admin.html' %}
+{% load custom_tags %}
+
+{% block title %}Tributario — Resumen{% endblock %}
+
+{% block breadcrumb %}
+  <li class="breadcrumb-item active">Tributario</li>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h4 class="page-title">Tributario</h4>
+    <p class="page-subtitle mb-0">Resumen de declaraciones y registros fiscales</p>
+  </div>
+</div>
+
+<!-- KPIs IVA -->
+<div class="row g-3 mb-4">
+  <div class="col-sm-6 col-xl-3">
+    <div class="kpi-card">
+      <div class="kpi-icon" style="background:linear-gradient(135deg,#28a745,#20c997);">
+        <i class="bi bi-arrow-down-circle"></i>
+      </div>
+      <div class="kpi-value" style="color:#28a745;">{{ total_iva_debito|moneda_chilena }}</div>
+      <div class="kpi-label">IVA Débito (ventas)</div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-xl-3">
+    <div class="kpi-card">
+      <div class="kpi-icon" style="background:linear-gradient(135deg,#dc3545,#fd7e14);">
+        <i class="bi bi-arrow-up-circle"></i>
+      </div>
+      <div class="kpi-value" style="color:#dc3545;">{{ total_iva_credito|moneda_chilena }}</div>
+      <div class="kpi-label">IVA Crédito (compras)</div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-xl-3">
+    <div class="kpi-card">
+      <div class="kpi-icon" style="background:linear-gradient(135deg,var(--sta-navy),var(--sta-steel));">
+        <i class="bi bi-receipt"></i>
+      </div>
+      <div class="kpi-value" style="color:{% if diferencia_iva >= 0 %}#dc3545{% else %}#28a745{% endif %};">
+        {{ diferencia_iva|moneda_chilena }}
+      </div>
+      <div class="kpi-label">IVA a Pagar / Remanente</div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-xl-3">
+    <div class="kpi-card">
+      <div class="kpi-icon" style="background:linear-gradient(135deg,#6f42c1,#e83e8c);">
+        <i class="bi bi-calculator"></i>
+      </div>
+      <div class="kpi-value" style="color:#6f42c1;">{{ total_ppm|moneda_chilena }}</div>
+      <div class="kpi-label">PPM Acumulado</div>
+    </div>
+  </div>
+</div>
+
+<!-- Accesos rápidos -->
+<div class="row g-3">
+  <div class="col-sm-6 col-md-4">
+    <a href="{% url 'tributario:compra_list' %}" class="text-decoration-none">
+      <div class="card border-0 shadow-sm p-4 text-center h-100" style="border-radius:12px;transition:transform .2s;" onmouseover="this.style.transform='translateY(-3px)'" onmouseout="this.style.transform=''">
+        <i class="bi bi-cart-check fs-2 text-sta mb-2"></i>
+        <div class="fw-700">Registro de Compras</div>
+        <div class="small text-muted mt-1">Facturas recibidas y crédito fiscal</div>
+      </div>
+    </a>
+  </div>
+  <div class="col-sm-6 col-md-4">
+    <a href="{% url 'tributario:venta_list' %}" class="text-decoration-none">
+      <div class="card border-0 shadow-sm p-4 text-center h-100" style="border-radius:12px;transition:transform .2s;" onmouseover="this.style.transform='translateY(-3px)'" onmouseout="this.style.transform=''">
+        <i class="bi bi-bag-check fs-2 text-sta mb-2"></i>
+        <div class="fw-700">Registro de Ventas</div>
+        <div class="small text-muted mt-1">Facturas emitidas y débito fiscal</div>
+      </div>
+    </a>
+  </div>
+  <div class="col-sm-6 col-md-4">
+    <a href="{% url 'tributario:iva_list' %}" class="text-decoration-none">
+      <div class="card border-0 shadow-sm p-4 text-center h-100" style="border-radius:12px;transition:transform .2s;" onmouseover="this.style.transform='translateY(-3px)'" onmouseout="this.style.transform=''">
+        <i class="bi bi-file-earmark-ruled fs-2 text-sta mb-2"></i>
+        <div class="fw-700">Declaraciones IVA</div>
+        <div class="small text-muted mt-1">Diferencias IVA por período</div>
+      </div>
+    </a>
+  </div>
+  <div class="col-sm-6 col-md-4">
+    <a href="{% url 'tributario:ppm_list' %}" class="text-decoration-none">
+      <div class="card border-0 shadow-sm p-4 text-center h-100" style="border-radius:12px;transition:transform .2s;" onmouseover="this.style.transform='translateY(-3px)'" onmouseout="this.style.transform=''">
+        <i class="bi bi-percent fs-2 text-sta mb-2"></i>
+        <div class="fw-700">PPM</div>
+        <div class="small text-muted mt-1">Pagos provisionales mensuales</div>
+      </div>
+    </a>
+  </div>
+  <div class="col-sm-6 col-md-4">
+    <a href="{% url 'tributario:f29_list' %}" class="text-decoration-none">
+      <div class="card border-0 shadow-sm p-4 text-center h-100" style="border-radius:12px;transition:transform .2s;" onmouseover="this.style.transform='translateY(-3px)'" onmouseout="this.style.transform=''">
+        <i class="bi bi-file-earmark-check fs-2 text-sta mb-2"></i>
+        <div class="fw-700">Formulario F29</div>
+        <div class="small text-muted mt-1">Declaraciones presentadas al SII</div>
+      </div>
+    </a>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,112 @@
+{% extends 'base_admin.html' %}
+{% load custom_tags %}
+
+{% block title %}{% if form.instance.pk %}Editar{% else %}Nuevo{% endif %} PPM{% endblock %}
+
+{% block breadcrumb %}
+  <li class="breadcrumb-item"><a href="{% url 'tributario:resumen' %}">Tributario</a></li>
+  <li class="breadcrumb-item"><a href="{% url 'tributario:ppm_list' %}">PPM</a></li>
+  <li class="breadcrumb-item active">{% if form.instance.pk %}Editar{% else %}Nuevo{% endif %}</li>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h4 class="page-title">{% if form.instance.pk %}Editar PPM{% else %}Nuevo PPM{% endif %}</h4>
+  <a href="{% url 'tributario:ppm_list' %}" class="btn btn-outline-secondary rounded-pill px-4">
+    <i class="bi bi-arrow-left me-1"></i>Volver
+  </a>
+</div>
+<div class="row justify-content-center">
+  <div class="col-lg-6">
+
+    {% if not form.instance.pk %}
+    <div class="card-sta p-3 mb-3">
+      <p class="small text-muted mb-2"><i class="bi bi-calculator me-1"></i>Selecciona el período para pre-cargar la base imponible desde el registro de ventas.</p>
+      <form method="get" class="row g-2 align-items-end">
+        <div class="col-sm-4">
+          <label class="form-label fw-600 small">Mes</label>
+          <select name="mes" class="form-select form-select-sm">
+            <option value="">— Mes —</option>
+            <option value="1" {% if request.GET.mes == '1' %}selected{% endif %}>Enero</option>
+            <option value="2" {% if request.GET.mes == '2' %}selected{% endif %}>Febrero</option>
+            <option value="3" {% if request.GET.mes == '3' %}selected{% endif %}>Marzo</option>
+            <option value="4" {% if request.GET.mes == '4' %}selected{% endif %}>Abril</option>
+            <option value="5" {% if request.GET.mes == '5' %}selected{% endif %}>Mayo</option>
+            <option value="6" {% if request.GET.mes == '6' %}selected{% endif %}>Junio</option>
+            <option value="7" {% if request.GET.mes == '7' %}selected{% endif %}>Julio</option>
+            <option value="8" {% if request.GET.mes == '8' %}selected{% endif %}>Agosto</option>
+            <option value="9" {% if request.GET.mes == '9' %}selected{% endif %}>Septiembre</option>
+            <option value="10" {% if request.GET.mes == '10' %}selected{% endif %}>Octubre</option>
+            <option value="11" {% if request.GET.mes == '11' %}selected{% endif %}>Noviembre</option>
+            <option value="12" {% if request.GET.mes == '12' %}selected{% endif %}>Diciembre</option>
+          </select>
+        </div>
+        <div class="col-sm-4">
+          <label class="form-label fw-600 small">Año</label>
+          <select name="anio" class="form-select form-select-sm">
+            <option value="">— Año —</option>
+            {% for y in anios_disponibles %}<option value="{{ y }}" {% if request.GET.anio == y|stringformat:"s" %}selected{% endif %}>{{ y }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="col-sm-4">
+          <button type="submit" class="btn btn-outline-primary btn-sm w-100 rounded-pill">
+            <i class="bi bi-arrow-clockwise me-1"></i>Cargar registros
+          </button>
+        </div>
+      </form>
+      {% if calculado %}
+      <div class="alert alert-success py-2 small mt-2 mb-0">
+        <i class="bi bi-check-circle me-1"></i>
+        Período <strong>{{ calculado.mes|stringformat:"02d" }}/{{ calculado.anio }}</strong> —
+        Base imponible (ventas netas): <strong>{{ calculado.base|moneda_chilena }}</strong> |
+        PPM estimado (0.25%): <strong>{{ calculado.monto|moneda_chilena }}</strong>
+        — Valores pre-cargados en el formulario.
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <div class="card-sta p-4">
+      <form method="post" novalidate>
+        {% csrf_token %}
+        <div class="row g-3">
+          <div class="col-sm-3">
+            <label class="form-label fw-600">Mes <span class="text-danger">*</span></label>
+            {{ form.periodo_mes }}
+            {% if form.periodo_mes.errors %}<div class="invalid-feedback d-block">{{ form.periodo_mes.errors.0 }}</div>{% endif %}
+          </div>
+          <div class="col-sm-3">
+            <label class="form-label fw-600">Año <span class="text-danger">*</span></label>
+            {{ form.periodo_anio }}
+            {% if form.periodo_anio.errors %}<div class="invalid-feedback d-block">{{ form.periodo_anio.errors.0 }}</div>{% endif %}
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label fw-600">Estado</label>
+            {{ form.estado }}
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label fw-600">Base Imponible <span class="text-danger">*</span></label>
+            {{ form.base_imponible }}
+            {% if form.base_imponible.errors %}<div class="invalid-feedback d-block">{{ form.base_imponible.errors.0 }}</div>{% endif %}
+          </div>
+          <div class="col-sm-3">
+            <label class="form-label fw-600">Tasa (%)</label>
+            {{ form.tasa }}
+          </div>
+          <div class="col-sm-3">
+            <label class="form-label fw-600">Monto</label>
+            {{ form.monto }}
+          </div>
+          <div class="col-12 pt-2 border-top">
+            <button type="submit" class="btn btn-sta px-5 rounded-pill">
+              <i class="bi bi-save me-1"></i>
+              {% if form.instance.pk %}Guardar cambios{% else %}Registrar PPM{% endif %}
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+</div>
+{% endblock %}

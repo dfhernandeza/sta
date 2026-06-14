@@ -1,0 +1,164 @@
+/* =============================================
+   STA MUEBLES Y TERMINACIONES
+   CSS Corporativo - Variables y estilos globales
+   ============================================= */
+
+:root {
+  --sta-navy:       #3D4E6B;
+  --sta-steel:      #6A85A8;
+  --sta-light:      #A8BDD0;
+  --sta-bg:         #F5F7FA;
+  --sta-text:       #2C3A52;
+  --sta-white:      #FFFFFF;
+  --sta-accent:     #4E7CB5;
+  --sta-success:    #2E8B57;
+  --sta-danger:     #C0392B;
+  --sta-warning:    #E67E22;
+  --sta-border:     #D8E2EC;
+  --sta-sidebar-w:  260px;
+  --sta-topbar-h:   60px;
+  --bs-primary:     var(--sta-navy);
+  --bs-primary-rgb: 61, 78, 107;
+}
+
+/* ---- TIPOGRAFÍA ---- */
+body {
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  color: var(--sta-text);
+  background-color: var(--sta-bg);
+}
+
+/* ---- BOTONES CORPORATIVOS ---- */
+.btn-sta {
+  background-color: var(--sta-navy);
+  color: var(--sta-white);
+  border: none;
+  border-radius: 6px;
+  transition: background-color 0.2s ease;
+}
+.btn-sta:hover {
+  background-color: var(--sta-steel);
+  color: var(--sta-white);
+}
+.btn-sta-outline {
+  background: transparent;
+  color: var(--sta-navy);
+  border: 2px solid var(--sta-navy);
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+.btn-sta-outline:hover {
+  background: var(--sta-navy);
+  color: var(--sta-white);
+}
+
+/* ---- BADGES / ESTADOS ---- */
+.badge-pendiente  { background: #FFF3CD; color: #856404; }
+.badge-pagada     { background: #D1E7DD; color: #0A3622; }
+.badge-vencida    { background: #F8D7DA; color: #842029; }
+.badge-anulada    { background: #E2E3E5; color: #41464B; }
+.badge-borrador   { background: #E2E3E5; color: #41464B; }
+.badge-enviado    { background: #CCE5FF; color: #004085; }
+.badge-aprobado   { background: #D1E7DD; color: #0A3622; }
+.badge-rechazado  { background: #F8D7DA; color: #842029; }
+.badge-activo     { background: #D1E7DD; color: #0A3622; }
+.badge-inactivo   { background: #F8D7DA; color: #842029; }
+.badge-en_ejecucion  { background: #CCE5FF; color: #004085; }
+.badge-adjudicado    { background: #D4EDDA; color: #155724; }
+.badge-negociacion   { background: #FFF3CD; color: #856404; }
+.badge-terminado     { background: #D1ECF1; color: #0C5460; }
+.badge-cancelado     { background: #F8D7DA; color: #842029; }
+
+/* ---- TABLAS ---- */
+.table-sta thead {
+  background-color: var(--sta-navy);
+  color: var(--sta-white);
+}
+.table-sta thead th {
+  font-weight: 600;
+  font-size: 0.85rem;
+  letter-spacing: 0.03em;
+  border: none;
+}
+.table-sta tbody tr:hover {
+  background-color: rgba(168, 189, 208, 0.15);
+}
+
+/* ---- CARDS ---- */
+.card-sta {
+  border: 1px solid var(--sta-border);
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(61, 78, 107, 0.08);
+  background: var(--sta-white);
+}
+.card-sta .card-header {
+  background: var(--sta-navy);
+  color: var(--sta-white);
+  border-radius: 10px 10px 0 0;
+  font-weight: 600;
+}
+
+/* ---- KPI CARDS ---- */
+.kpi-card {
+  border: none;
+  border-radius: 12px;
+  padding: 1.25rem 1.5rem;
+  background: var(--sta-white);
+  box-shadow: 0 2px 12px rgba(61, 78, 107, 0.1);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.kpi-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(61, 78, 107, 0.15);
+}
+.kpi-card .kpi-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.4rem;
+}
+.kpi-card .kpi-value {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--sta-navy);
+  line-height: 1.2;
+}
+.kpi-card .kpi-label {
+  font-size: 0.8rem;
+  color: var(--sta-steel);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+}
+
+/* ---- FORMULARIOS ---- */
+.form-control:focus,
+.form-select:focus {
+  border-color: var(--sta-steel);
+  box-shadow: 0 0 0 0.2rem rgba(106, 133, 168, 0.25);
+}
+.form-label {
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--sta-text);
+}
+
+/* ---- MENSAJES DJANGO ---- */
+.django-messages {
+  position: fixed;
+  top: 70px;
+  right: 20px;
+  z-index: 9999;
+  width: 320px;
+}
+
+/* ---- UTILITARIOS ---- */
+.text-sta       { color: var(--sta-navy) !important; }
+.bg-sta         { background-color: var(--sta-navy) !important; }
+.bg-sta-light   { background-color: var(--sta-bg) !important; }
+.border-sta     { border-color: var(--sta-border) !important; }
+.fw-600         { font-weight: 600 !important; }
+.cursor-pointer { cursor: pointer; }

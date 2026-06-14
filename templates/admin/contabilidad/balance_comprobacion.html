@@ -1,0 +1,77 @@
+{% extends 'base_admin.html' %}
+{% load custom_tags %}
+{% block title %}Balance de Comprobación{% endblock %}
+
+{% block breadcrumb %}
+  <li class="breadcrumb-item active">Balance de Comprobación</li>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h4 class="page-title">Balance de Comprobación</h4>
+</div>
+
+<div class="card-sta p-3 mb-4">
+  <form method="get" class="row g-2 align-items-end">
+    <div class="col-sm-2">
+      <label class="form-label small mb-1">Desde</label>
+      <input type="date" name="desde" class="form-control form-control-sm" value="{{ request.GET.desde }}">
+    </div>
+    <div class="col-sm-2">
+      <label class="form-label small mb-1">Hasta</label>
+      <input type="date" name="hasta" class="form-control form-control-sm" value="{{ request.GET.hasta }}">
+    </div>
+    <div class="col-auto">
+      <button type="submit" class="btn btn-sta btn-sm rounded-pill px-3"><i class="bi bi-search"></i></button>
+      <a href="{% url 'contabilidad:balance_comprobacion' %}" class="btn btn-outline-secondary btn-sm rounded-pill px-3 ms-1"><i class="bi bi-x"></i></a>
+    </div>
+  </form>
+</div>
+
+{% if total_debe == total_haber and total_debe > 0 %}
+<div class="alert alert-success py-2 small"><i class="bi bi-check-circle-fill me-1"></i>Balance cuadrado — Debe = Haber</div>
+{% elif total_debe != total_haber and filas %}
+<div class="alert alert-danger py-2 small"><i class="bi bi-exclamation-triangle-fill me-1"></i>Desbalance detectado</div>
+{% endif %}
+
+<div class="card-sta p-0">
+  <div class="table-responsive">
+    <table class="table table-sta mb-0">
+      <thead>
+        <tr>
+          <th>Código</th>
+          <th>Cuenta</th>
+          <th>Tipo</th>
+          <th class="text-end">Debe</th>
+          <th class="text-end">Haber</th>
+          <th class="text-end">Saldo</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for fila in filas %}
+        <tr>
+          <td class="small font-monospace">{{ fila.cuenta.codigo }}</td>
+          <td class="small">{{ fila.cuenta.nombre }}</td>
+          <td class="small">{{ fila.cuenta.get_tipo_display }}</td>
+          <td class="text-end small font-monospace text-primary">{{ fila.debe| moneda_chilena }}</td>
+          <td class="text-end small font-monospace text-success">{{ fila.haber| moneda_chilena }}</td>
+          <td class="text-end small font-monospace fw-700 {% if fila.saldo < 0 %}text-danger{% endif %}">{{ fila.saldo| moneda_chilena }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6" class="text-center text-muted py-4">Sin movimientos confirmados en el período.</td></tr>
+        {% endfor %}
+      </tbody>
+      {% if filas %}
+      <tfoot class="table-active fw-700">
+        <tr>
+          <td colspan="3" class="text-end">Totales</td>
+          <td class="text-end font-monospace text-primary">{{ total_debe| moneda_chilena }}</td>
+          <td class="text-end font-monospace text-success">{{ total_haber| moneda_chilena }}</td>
+          <td class="text-end font-monospace">—</td>
+        </tr>
+      </tfoot>
+      {% endif %}
+    </table>
+  </div>
+</div>
+{% endblock %}

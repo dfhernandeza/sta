@@ -1,0 +1,91 @@
+{% extends 'base_admin.html' %}
+
+{% block title %}Procesar Remuneraciones{% endblock %}
+
+{% block breadcrumb %}
+  <li class="breadcrumb-item"><a href="{% url 'rrhh:trabajador_list' %}">RRHH</a></li>
+  <li class="breadcrumb-item"><a href="{% url 'rrhh:remuneracion_list' %}">Remuneraciones</a></li>
+  <li class="breadcrumb-item active">Procesar por Período</li>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h4 class="page-title"><i class="bi bi-calendar3-range me-2"></i>Procesar Remuneraciones</h4>
+  <a href="{% url 'rrhh:remuneracion_list' %}" class="btn btn-outline-secondary rounded-pill px-4">
+    <i class="bi bi-list me-1"></i>Ver listado
+  </a>
+</div>
+
+<div class="row justify-content-center">
+  <div class="col-lg-5">
+
+    {# Selector de período #}
+    <div class="card-sta p-4 mb-3">
+      <h6 class="fw-600 mb-3">Selecciona el período a procesar</h6>
+      <form method="get" action="">
+        <div class="row g-2 align-items-end">
+          <div class="col-5">
+            <label class="form-label small fw-600">Mes</label>
+            <select name="mes" class="form-select">
+              <option value="1"  {% if mes_actual == 1  %}selected{% endif %}>Enero</option>
+              <option value="2"  {% if mes_actual == 2  %}selected{% endif %}>Febrero</option>
+              <option value="3"  {% if mes_actual == 3  %}selected{% endif %}>Marzo</option>
+              <option value="4"  {% if mes_actual == 4  %}selected{% endif %}>Abril</option>
+              <option value="5"  {% if mes_actual == 5  %}selected{% endif %}>Mayo</option>
+              <option value="6"  {% if mes_actual == 6  %}selected{% endif %}>Junio</option>
+              <option value="7"  {% if mes_actual == 7  %}selected{% endif %}>Julio</option>
+              <option value="8"  {% if mes_actual == 8  %}selected{% endif %}>Agosto</option>
+              <option value="9"  {% if mes_actual == 9  %}selected{% endif %}>Septiembre</option>
+              <option value="10" {% if mes_actual == 10 %}selected{% endif %}>Octubre</option>
+              <option value="11" {% if mes_actual == 11 %}selected{% endif %}>Noviembre</option>
+              <option value="12" {% if mes_actual == 12 %}selected{% endif %}>Diciembre</option>
+            </select>
+          </div>
+          <div class="col-4">
+            <label class="form-label small fw-600">Año</label>
+            <select name="anio" class="form-select">
+              {% for a in anios_disponibles %}
+              <option value="{{ a }}" {% if a == anio_actual %}selected{% endif %}>{{ a }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-3">
+            <button type="submit" class="btn btn-sta w-100 rounded-pill">
+              <i class="bi bi-arrow-right"></i> Ver
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+
+    {# Períodos recientes con estado #}
+    <div class="card-sta">
+      <div class="px-3 py-2 border-bottom">
+        <span class="small fw-600 text-muted text-uppercase">Períodos recientes</span>
+      </div>
+      <ul class="list-group list-group-flush">
+        {% for p in periodos|slice:":8" %}
+        <li class="list-group-item px-3 py-2 border-0">
+          <a href="{% url 'rrhh:remuneracion_procesar_detalle' mes=p.mes anio=p.anio %}"
+             class="d-flex justify-content-between align-items-center text-decoration-none text-reset">
+            <span class="fw-500">{{ p.nombre }} {{ p.anio }}</span>
+            <span>
+              {% if p.total == 0 %}
+                <span class="badge bg-secondary">Sin trabajadores</span>
+              {% elif p.pagados == p.total %}
+                <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Completo</span>
+              {% elif p.pagados > 0 %}
+                <span class="badge bg-warning text-dark">{{ p.pagados }}/{{ p.total }} pagados</span>
+              {% else %}
+                <span class="badge bg-secondary">Pendiente</span>
+              {% endif %}
+            </span>
+          </a>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+
+  </div>
+</div>
+{% endblock %}

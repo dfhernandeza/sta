@@ -1,0 +1,39 @@
+{% extends 'base_admin.html' %}
+
+{% block title %}Bancos{% endblock %}
+
+{% block breadcrumb %}
+  <li class="breadcrumb-item"><a href="{% url 'tesoreria:resumen' %}">Tesorería</a></li>
+  <li class="breadcrumb-item active">Bancos</li>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h4 class="page-title">Bancos</h4>
+  <a href="{% url 'tesoreria:banco_create' %}" class="btn btn-sta rounded-pill px-4">
+    <i class="bi bi-plus-circle me-1"></i>Nuevo banco
+  </a>
+</div>
+<div class="card-sta p-0">
+  <div class="table-responsive">
+    <table class="table table-sta mb-0">
+      <thead>
+        <tr><th>Nombre</th><th>Código</th><th class="text-center">Acciones</th></tr>
+      </thead>
+      <tbody>
+        {% for banco in bancos %}
+        <tr>
+          <td class="fw-600">{{ banco.nombre }}</td>
+          <td class="font-monospace">{{ banco.codigo }}</td>
+          <td class="text-center">
+            <a href="{% url 'tesoreria:banco_update' banco.pk %}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-pencil"></i></a>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="3" class="text-center text-muted py-4">No hay bancos registrados.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
