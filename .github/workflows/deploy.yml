@@ -1,0 +1,93 @@
+name: CI-CD
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: sta_test
+          POSTGRES_USER: sta_user
+          POSTGRES_PASSWORD: test_pass
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U sta_user -d sta_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DJANGO_SETTINGS_MODULE: sta_project.settings
+      DJANGO_ENV: production
+      SECRET_KEY: ci-secret-key
+      ALLOWED_HOSTS: localhost,127.0.0.1
+      DB_NAME: sta_test
+      DB_USER: sta_user
+      DB_PASSWORD: test_pass
+      DB_HOST: 127.0.0.1
+      DB_PORT: 5432
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      # Instala dependencias Python del proyecto.
+      - run: pip install -r requirements.txt
+      # Ejecuta chequeos de despliegue seguro en Django.
+      - run: python manage.py check --deploy
+      # Verifica que no falten migraciones por generar.
+      - run: python manage.py makemigrations --dry-run --check
+      # Aplica migraciones en la base temporal de CI.
+      - run: python manage.py migrate --noinput
+      # Simula collectstatic para validar estaticos sin escribir.
+      - run: python manage.py collectstatic --noinput --dry-run
+      # Ejecuta pruebas automaticas del proyecto.
+      - run: python manage.py test
+
+  cd:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: ci
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup SSH key
+        run: |
+          # Crea carpeta SSH del runner.
+          mkdir -p ~/.ssh
+          # Escribe la clave privada desde GitHub Secrets.
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
+          # Restringe permisos de la clave para que SSH la acepte.
+          chmod 600 ~/.ssh/id_ed25519
+          # Agrega huella del servidor para evitar prompt interactivo.
+          ssh-keyscan -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Deploy on server
+        run: |
+          ssh -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" '
+            # Falla de inmediato si algun comando da error.
+            set -e
+            # Entra a la carpeta del proyecto en servidor.
+            cd /var/www/sta
+            # Actualiza referencias remotas del repositorio.
+            git fetch --all
+            # Sincroniza exacto con la rama main remota.
+            git reset --hard origin/main
+            # Activa entorno virtual Python del servidor.
+            source venv/bin/activate
+            # Instala/actualiza dependencias del despliegue.
+            pip install -r requirements.txt
+            # Ejecuta migraciones pendientes en produccion.
+            python manage.py migrate --noinput
+            # Actualiza archivos estaticos para Nginx/WhiteNoise.
+            python manage.py collectstatic --noinput
+            # Reinicia servicio app para aplicar nueva version.
+            sudo systemctl restart sta
+            # Muestra estado final del servicio tras despliegue.
+            sudo systemctl status sta --no-pager
+          '

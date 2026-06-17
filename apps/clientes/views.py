@@ -5,8 +5,33 @@ from django.shortcuts import get_object_or_404, redirect
 from django.utils import timezone
 from django.forms import inlineformset_factory, ModelForm, TextInput, NumberInput, Select, Textarea, DateInput
 from apps.core.mixins import GestionMixin
+from apps.contabilidad.utils import generar_asiento_factura_emitida
 from apps.tributario.models import RegistroVenta
 from .models import Cliente, FacturaEmitida, CuentaPorCobrar, DetalleFacturaEmitida
+
+
+def _generar_asiento_automatico_factura_emitida(request, factura, reemplazar_borrador=False):
+    asiento_activo = factura.asientos.exclude(estado='anulado').first()
+    if asiento_activo:
+        if asiento_activo.estado == 'confirmado':
+            messages.warning(
+                request,
+                f'No se regeneró el asiento automático porque la factura ya tiene un asiento confirmado ({asiento_activo.numero}).'
+            )
+            return asiento_activo
+        if asiento_activo.estado == 'borrador' and reemplazar_borrador:
+            asiento_activo.delete()
+        elif asiento_activo.estado == 'borrador':
+            return asiento_activo
+    asiento = generar_asiento_factura_emitida(factura, usuario=request.user)
+    if asiento:
+        messages.info(request, f'Se generó automáticamente el asiento {asiento.numero}.')
+    else:
+        messages.warning(
+            request,
+            'La factura se guardó, pero no se pudo generar el asiento automático. Revise la configuración contable.'
+        )
+    return asiento
 
 
 class FacturaEmitidaForm(ModelForm):
@@ -168,6 +193,7 @@ class FacturaEmitidaCreateView(GestionMixin, CreateView):
                 'total': form.instance.total,
             }
         )
+        _generar_asiento_automatico_factura_emitida(self.request, form.instance, reemplazar_borrador=False)
         messages.success(self.request, f'Factura {form.instance.numero} creada exitosamente.')
         return response
 
@@ -210,6 +236,11 @@ class FacturaEmitidaDetailView(GestionMixin, DetailView):
     model = FacturaEmitida
     template_name = 'admin/clientes/factura_detail.html'
     context_object_name = 'factura'
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx['asiento'] = self.object.asientos.exclude(estado='anulado').first()
+        return ctx
 
 
 class CuentaPorCobrarListView(GestionMixin, ListView):

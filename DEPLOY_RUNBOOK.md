@@ -7,7 +7,7 @@ Este documento es una guia de ejecucion paso a paso para levantar STA desde una 
 - Dominio: `stasoluciones.cl`
 - Dominio alterno: `www.stasoluciones.cl`
 - IP publica VM: `170.239.85.202`
-- Usuario admin inicial VM: `ubuntu`
+- Usuario admin inicial VM: `root` (o `ubuntu`, segun proveedor)
 - Usuario deploy: `deploy`
 - Ruta app: `/var/www/sta`
 - Servicio systemd app: `sta`
@@ -80,17 +80,39 @@ sudo ufw --force enable
 sudo ufw status
 ```
 
-Hardening SSH basico:
+Instalar llaves SSH (hacer antes del hardening):
 
 ```bash
-# Respaldar configuracion SSH actual antes de editar.
-sudo cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak
-# Deshabilita autenticacion por contraseña (solo llaves).
-sudo sed -i 's/^#\?PasswordAuthentication .*/PasswordAuthentication no/' /etc/ssh/sshd_config
-# Impide login SSH del usuario root.
-sudo sed -i 's/^#\?PermitRootLogin .*/PermitRootLogin no/' /etc/ssh/sshd_config
-# Reinicia el servicio SSH para aplicar cambios.
-sudo systemctl restart ssh
+# En tu PC: genera una llave si aun no existe.
+ssh-keygen -t ed25519 -C "tu_correo"
+# En tu PC: muestra la llave publica para copiarla.
+cat ~/.ssh/id_ed25519.pub
+```
+
+```bash
+# En servidor: crea carpeta SSH de deploy.
+sudo mkdir -p /home/deploy/.ssh
+# En servidor: agrega tu llave publica al usuario deploy.
+sudo bash -c 'echo "PEGA_AQUI_TU_LLAVE_PUBLICA_COMPLETA" >> /home/deploy/.ssh/authorized_keys'
+# En servidor: ajusta propiedad y permisos para que SSH acepte la llave.
+sudo chown -R deploy:deploy /home/deploy/.ssh
+sudo chmod 700 /home/deploy/.ssh
+sudo chmod 600 /home/deploy/.ssh/authorized_keys
+```
+
+```bash
+# Opcional: si tu proveedor inicia con root, instala tambien la llave en root.
+sudo mkdir -p /root/.ssh
+# Agrega la misma llave publica a authorized_keys de root.
+sudo bash -c 'echo "PEGA_AQUI_TU_LLAVE_PUBLICA_COMPLETA" >> /root/.ssh/authorized_keys'
+# Ajusta permisos del directorio y archivo de root.
+sudo chmod 700 /root/.ssh
+sudo chmod 600 /root/.ssh/authorized_keys
+```
+
+```bash
+# Prueba acceso por llave a deploy antes de continuar.
+ssh -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes deploy@170.239.85.202
 ```
 
 ---
@@ -121,7 +143,32 @@ GRANT ALL PRIVILEGES ON DATABASE sta_db TO sta_user;
 
 ---
 
-## 4) Clonar app y preparar Python
+## 4) Crear deploy key para GitHub (antes de clonar)
+
+```bash
+# Genera una llave SSH del usuario deploy para autenticarse contra GitHub.
+sudo -u deploy -H bash -lc "ssh-keygen -t ed25519 -C 'deploy@stasoluciones' -f ~/.ssh/id_ed25519 -N ''"
+# Muestra la llave publica para copiarla.
+sudo -u deploy -H bash -lc "cat ~/.ssh/id_ed25519.pub"
+```
+
+Sube la llave publica mostrada en GitHub:
+
+- Repositorio -> Settings -> Deploy keys -> Add deploy key
+- Titulo sugerido: `sta-prod-deploy`
+- Pegar la llave publica completa
+- Activar solo lectura (Read access)
+
+Verifica conectividad SSH desde el servidor:
+
+```bash
+# Acepta huella de GitHub y valida autenticacion SSH del usuario deploy.
+sudo -u deploy -H bash -lc "ssh -T git@github.com"
+```
+
+---
+
+## 5) Clonar app y preparar Python
 
 ```bash
 # Clona el repositorio en la ruta final ejecutando como deploy.
@@ -171,7 +218,7 @@ sudo chmod 640 /var/www/sta/.env
 
 ---
 
-## 5) Ajustes obligatorios de settings para produccion
+## 6) Ajustes obligatorios de settings para produccion
 
 Asegura estos valores en el codigo:
 
@@ -184,7 +231,7 @@ Asegura estos valores en el codigo:
 
 ---
 
-## 6) Migraciones, estaticos y superusuario
+## 7) Migraciones, estaticos y superusuario
 
 ```bash
 # Valida configuracion de seguridad recomendada para despliegue.
@@ -208,7 +255,7 @@ sudo chmod -R 755 /var/www/sta/media /var/www/sta/staticfiles
 
 ---
 
-## 7) Systemd para Gunicorn
+## 8) Systemd para Gunicorn
 
 ```bash
 # Copia la unidad systemd de la app a la ruta de servicios del sistema.
@@ -227,7 +274,7 @@ sudo journalctl -u sta -n 100 --no-pager
 
 ---
 
-## 8) Nginx + HTTPS
+## 9) Nginx + HTTPS
 
 ```bash
 # Copia la configuracion del sitio Nginx a sites-available.
@@ -248,7 +295,7 @@ sudo systemctl reload nginx
 
 ---
 
-## 9) Validacion de salida
+## 10) Validacion de salida
 
 ```bash
 # Consulta encabezados HTTP del dominio principal (salud y TLS).
@@ -265,7 +312,7 @@ sudo systemctl is-active sta
 
 ---
 
-## 10) Backups automaticos PostgreSQL
+## 11) Backups automaticos PostgreSQL
 
 Crear script:
 
@@ -310,7 +357,7 @@ Cron diario (02:30):
 
 ---
 
-## 11) GitHub Actions (CI/CD)
+## 12) GitHub Actions (CI/CD)
 
 ### 11.1 Secrets en GitHub
 
@@ -436,7 +483,7 @@ jobs:
 
 ---
 
-## 12) Rollback rapido
+## 13) Rollback rapido
 
 ```bash
 # Entra al directorio de la aplicacion para operar rollback.
@@ -457,7 +504,26 @@ sudo systemctl restart sta
 
 ---
 
-## 13) Checklist final
+## 14) Hardening SSH basico (hacer al final)
+
+```bash
+# Respaldar configuracion SSH actual antes de endurecer.
+sudo cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak
+# Mantiene autenticacion por llave habilitada.
+sudo sed -i 's/^#\?PubkeyAuthentication .*/PubkeyAuthentication yes/' /etc/ssh/sshd_config
+# Deshabilita autenticacion por contraseña.
+sudo sed -i 's/^#\?PasswordAuthentication .*/PasswordAuthentication no/' /etc/ssh/sshd_config
+# Impide login SSH del usuario root.
+sudo sed -i 's/^#\?PermitRootLogin .*/PermitRootLogin no/' /etc/ssh/sshd_config
+# Valida sintaxis antes de reiniciar el servicio SSH.
+sudo sshd -t
+# Reinicia SSH para aplicar cambios.
+sudo systemctl restart ssh
+```
+
+---
+
+## 15) Checklist final
 
 - [ ] `python manage.py check --deploy` sin errores criticos
 - [ ] `sta`, `nginx`, `postgresql` activos
