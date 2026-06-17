@@ -61,6 +61,10 @@ local_settings.py
 db.sqlite3
 db.sqlite3-journal
 
+# Media uploads (archivos subidos por usuarios, no van en git)
+media/**
+!media/**/.gitkeep
+
 # Flask stuff:
 instance/
 .webassets-cache
