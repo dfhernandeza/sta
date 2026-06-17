@@ -1,5 +1,5 @@
 from decimal import Decimal
-from django.test import TestCase, Client
+from django.test import TestCase, Client, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -59,6 +59,7 @@ class F29ModelTest(TestCase):
         self.assertEqual(f.total_pagar, Decimal('340000'))
 
 
+@override_settings(SECURE_SSL_REDIRECT=False)
 class F29PagarViewTest(TestCase):
     def setUp(self):
         self.user = CustomUser.objects.create_user('trib_user', password='pass')
@@ -129,6 +130,7 @@ class F29PagarViewTest(TestCase):
         self.assertTrue(AsientoContable.objects.filter(tipo='movimiento_banco').exists())
 
 
+@override_settings(SECURE_SSL_REDIRECT=False)
 class PPMPagarViewTest(TestCase):
     def setUp(self):
         self.user = CustomUser.objects.create_user('ppm_user', password='pass')

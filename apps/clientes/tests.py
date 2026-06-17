@@ -1,5 +1,5 @@
 from decimal import Decimal
-from django.test import TestCase, Client
+from django.test import TestCase, Client, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -65,6 +65,7 @@ class FacturaEmitidaModelTest(TestCase):
         self.assertEqual(f.total, f.neto + f.iva)
 
 
+@override_settings(SECURE_SSL_REDIRECT=False)
 class CxCPagarViewTest(TestCase):
     def setUp(self):
         self.user = CustomUser.objects.create_user('tester', password='pass')

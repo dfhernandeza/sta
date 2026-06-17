@@ -1,12 +1,12 @@
 from decimal import Decimal
-from django.test import TestCase, Client
+from django.test import TestCase, Client, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
 from apps.accounts.models import CustomUser
 from apps.contabilidad.models import PlanCuentas, ConfiguracionContable
 from apps.tesoreria.models import Banco, CuentaBancaria
-from .models import Trabajador, Remuneracion, AnticipoLaboral
+from .models import CargoTrabajador, Trabajador, Remuneracion, AnticipoLaboral
 
 
 def _setup_contabilidad():
@@ -29,15 +29,17 @@ def _make_cuenta_bancaria(cta_banco):
 
 
 def _make_trabajador():
+    cargo, _ = CargoTrabajador.objects.get_or_create(nombre='Desarrollador')
     return Trabajador.objects.create(
         rut='12.345.678-9',
         nombres='Juan', apellidos='Pérez',
-        cargo='Desarrollador',
+        cargo=cargo,
         fecha_ingreso=timezone.now().date(),
         sueldo_base=Decimal('1000000'),
     )
 
 
+@override_settings(SECURE_SSL_REDIRECT=False)
 class RemuneracionPagarViewTest(TestCase):
     def setUp(self):
         self.user = CustomUser.objects.create_user('tester_rrhh', password='pass')
@@ -107,6 +109,7 @@ class RemuneracionPagarViewTest(TestCase):
         self.assertTrue(AsientoContable.objects.filter(tipo='movimiento_banco').exists())
 
 
+@override_settings(SECURE_SSL_REDIRECT=False)
 class AnticipoLaboralPagarViewTest(TestCase):
     def setUp(self):
         self.user = CustomUser.objects.create_user('tester_ant', password='pass')
@@ -120,10 +123,11 @@ class AnticipoLaboralPagarViewTest(TestCase):
         self.cuenta_bancaria.pk = None
         self.cuenta_bancaria.save()
 
+        cargo, _ = CargoTrabajador.objects.get_or_create(nombre='Contadora')
         self.trabajador = Trabajador.objects.create(
             rut='98.765.432-1',
             nombres='Ana', apellidos='López',
-            cargo='Contadora',
+            cargo=cargo,
             fecha_ingreso=timezone.now().date(),
             sueldo_base=Decimal('900000'),
         )
