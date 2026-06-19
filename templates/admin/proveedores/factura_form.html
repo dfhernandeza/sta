@@ -207,14 +207,14 @@
           <div class="col-5">
             <label class="form-label fw-600" for="modal-cantidad">Cantidad <span class="text-danger">*</span></label>
             <input type="number" id="modal-cantidad" class="form-control"
-                   step="0.01" min="0" placeholder="">
+                   step="0.0001" min="0" placeholder="">
           </div>
           <div class="col-7">
             <label class="form-label fw-600" for="modal-precio">Precio unit. <span class="text-danger">*</span></label>
             <div class="input-group">
               <span class="input-group-text">$</span>
               <input type="number" id="modal-precio" class="form-control"
-                     step="1" min="0" placeholder="">
+                     step="0.0001" min="0" placeholder="">
             </div>
           </div>
           <div class="col-12">
@@ -477,10 +477,10 @@ function eliminarDetalle(i) {
     if (isExento) exentoTotal += qty * price;
     else          netoAfecto  += qty * price;
   }
-  document.getElementById('id_neto').value   = netoAfecto.toFixed(0);
-  document.getElementById('id_exento').value = exentoTotal.toFixed(0);
-  document.getElementById('id_iva').value    = (netoAfecto * 0.19).toFixed(0);
-  document.getElementById('id_total').value  = (netoAfecto * 1.19 + exentoTotal).toFixed(0);
+  document.getElementById('id_neto').value   = netoAfecto.toFixed(2);
+  document.getElementById('id_exento').value = exentoTotal.toFixed(2);
+  document.getElementById('id_iva').value    = (netoAfecto * 0.19).toFixed(2);
+  document.getElementById('id_total').value  = (netoAfecto * 1.19 + exentoTotal).toFixed(2);
   updateTotal();
   syncUI();
 }
@@ -536,10 +536,10 @@ function confirmarDetalle() {
     if (isExento) exentoTotal += qty * price;
     else          netoAfecto  += qty * price;
   }
-  document.getElementById('id_neto').value   = netoAfecto.toFixed(0);
-  document.getElementById('id_exento').value = exentoTotal.toFixed(0);
-  document.getElementById('id_iva').value    = (netoAfecto * 0.19).toFixed(0);
-  document.getElementById('id_total').value  = (netoAfecto * 1.19 + exentoTotal).toFixed(0);
+  document.getElementById('id_neto').value   = netoAfecto.toFixed(2);
+  document.getElementById('id_exento').value = exentoTotal.toFixed(2);
+  document.getElementById('id_iva').value    = (netoAfecto * 0.19).toFixed(2);
+  document.getElementById('id_total').value  = (netoAfecto * 1.19 + exentoTotal).toFixed(2);
 
   // Actualizamos el total del pie de tabla
   updateTotal();

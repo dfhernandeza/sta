@@ -205,6 +205,13 @@ class FacturaRecibidaCreateView(GestionMixin, CreateView):
         for fname in ['fecha_emision', 'fecha_vencimiento']:
             if fname in form.fields:
                 form.fields[fname].widget = DateInput(attrs={'class': 'form-control'}, format='%Y-%m-%d')
+        for fname in ['neto', 'exento', 'iva', 'total']:
+            if fname in form.fields:
+                form.fields[fname].widget.attrs.update({
+                    'class': 'form-control bg-light',
+                    'readonly': True,
+                    'tabindex': '-1',
+                })
         return form
 
     def form_valid(self, form):
@@ -272,6 +279,13 @@ class FacturaRecibidaUpdateView(GestionMixin, UpdateView):
         for fname in ['fecha_emision', 'fecha_vencimiento']:
             if fname in form.fields:
                 form.fields[fname].widget = DateInput(attrs={'class': 'form-control'}, format='%Y-%m-%d')
+        for fname in ['neto', 'exento', 'iva', 'total']:
+            if fname in form.fields:
+                form.fields[fname].widget.attrs.update({
+                    'class': 'form-control bg-light',
+                    'readonly': True,
+                    'tabindex': '-1',
+                })
         return form
 
     def form_valid(self, form):
