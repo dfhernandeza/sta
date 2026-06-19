@@ -120,7 +120,7 @@ def generar_asiento_factura_recibida(factura, usuario=None):
     afecto_asignado = Decimal('0.00')   # solo acumula líneas afectas a IVA
     ultima_cuenta_detalle = None
     for det in detalles:
-        subtotal = (det.cantidad * det.precio_unitario).quantize(Decimal('0.01'))
+        subtotal = (det.cantidad * det.precio_unitario).quantize(Decimal('0.0001'))
         cuenta_costo = det.cuenta_contable or config.cuenta_compras_default
         _add_linea(asiento, cuenta_costo, debe=subtotal,
                    descripcion=det.descripcion[:200], orden=orden)
@@ -131,7 +131,7 @@ def generar_asiento_factura_recibida(factura, usuario=None):
 
     # Diferencia vs neto AFECTO (factura.neto no incluye exentos)
     # Usa cuenta_compras_default, o la última cuenta del detalle si no hay default configurado
-    diferencia_neto = (factura.neto - afecto_asignado).quantize(Decimal('0.01'))
+    diferencia_neto = (factura.neto - afecto_asignado).quantize(Decimal('0.0001'))
     if diferencia_neto != Decimal('0.00'):
         cuenta_diferencia = config.cuenta_compras_default or ultima_cuenta_detalle
         if cuenta_diferencia:

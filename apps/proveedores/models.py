@@ -95,8 +95,8 @@ class DetalleFacturaRecibida(models.Model):
         'contabilidad.PlanCuentas', null=True, blank=True,
         on_delete=models.SET_NULL, verbose_name='Cuenta contable'
     )
-    cantidad = models.DecimalField(max_digits=10, decimal_places=2, default=1, verbose_name='Cantidad')
-    precio_unitario = models.DecimalField(max_digits=15, decimal_places=2, verbose_name='Precio Unitario')
+    cantidad = models.DecimalField(max_digits=10, decimal_places=4, default=1, verbose_name='Cantidad')
+    precio_unitario = models.DecimalField(max_digits=15, decimal_places=4, verbose_name='Precio Unitario')
     centro_costo = models.ForeignKey(
         'contabilidad.CentroCosto', null=True, blank=True,
         on_delete=models.SET_NULL, verbose_name='Centro de Costo'
