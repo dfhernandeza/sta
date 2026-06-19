@@ -117,19 +117,29 @@ def generar_asiento_factura_recibida(factura, usuario=None):
     # Líneas DEBE: costos/gastos por detalle (afectos y exentos a sus propias cuentas)
     orden = 1
     detalles = factura.detalles.select_related('cuenta_contable').all()
+    suma_afecto = Decimal('0')
+    suma_exento = Decimal('0')
     for det in detalles:
         subtotal = (det.cantidad * det.precio_unitario).quantize(Decimal('0.0001'))
         cuenta_costo = det.cuenta_contable or config.cuenta_compras_default
         _add_linea(asiento, cuenta_costo, debe=subtotal,
                    descripcion=det.descripcion[:200], orden=orden)
+        if det.exento_iva:
+            suma_exento += subtotal
+        else:
+            suma_afecto += subtotal
         orden += 1
 
+    # IVA y total calculados desde los subtotales (garantiza que Debe = Haber)
+    iva_calculado = (suma_afecto * Decimal('0.19')).quantize(Decimal('0.01'))
+    total_calculado = suma_afecto + suma_exento + iva_calculado
+
     # Línea DEBE: IVA Crédito Fiscal
-    _add_linea(asiento, config.cuenta_iva_credito, debe=factura.iva,
+    _add_linea(asiento, config.cuenta_iva_credito, debe=iva_calculado,
                descripcion='IVA Crédito Fiscal', orden=orden)
 
     # Línea HABER: CxP por total
-    _add_linea(asiento, config.cuenta_cxp, haber=factura.total,
+    _add_linea(asiento, config.cuenta_cxp, haber=total_calculado,
                descripcion=descripcion_cxp, orden=orden + 1)
 
     return asiento
