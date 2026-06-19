@@ -18,6 +18,11 @@ def get_config():
 
 def _add_linea(asiento, cuenta, debe=0, haber=0, descripcion='', orden=0):
     """Helper para crear una LineaAsiento."""
+    if cuenta is None:
+        raise ValueError(
+            f'No se puede crear la línea "{descripcion}": la cuenta contable no está configurada. '
+            'Revise la Configuración Contable.'
+        )
     return LineaAsiento.objects.create(
         asiento=asiento,
         cuenta=cuenta,
@@ -113,20 +118,25 @@ def generar_asiento_factura_recibida(factura, usuario=None):
     orden = 1
     detalles = factura.detalles.select_related('cuenta_contable').all()
     afecto_asignado = Decimal('0.00')   # solo acumula líneas afectas a IVA
+    ultima_cuenta_detalle = None
     for det in detalles:
         subtotal = (det.cantidad * det.precio_unitario).quantize(Decimal('0.01'))
         cuenta_costo = det.cuenta_contable or config.cuenta_compras_default
         _add_linea(asiento, cuenta_costo, debe=subtotal,
                    descripcion=det.descripcion[:200], orden=orden)
+        ultima_cuenta_detalle = cuenta_costo or ultima_cuenta_detalle
         if not det.exento_iva:
             afecto_asignado += subtotal
         orden += 1
 
     # Diferencia vs neto AFECTO (factura.neto no incluye exentos)
+    # Usa cuenta_compras_default, o la última cuenta del detalle si no hay default configurado
     diferencia_neto = (factura.neto - afecto_asignado).quantize(Decimal('0.01'))
     if diferencia_neto != Decimal('0.00'):
-        _add_linea(asiento, config.cuenta_compras_default, debe=diferencia_neto,
-                   descripcion='Costo s/n detalle', orden=orden)
+        cuenta_diferencia = config.cuenta_compras_default or ultima_cuenta_detalle
+        if cuenta_diferencia:
+            _add_linea(asiento, cuenta_diferencia, debe=diferencia_neto,
+                       descripcion='Costo s/n detalle', orden=orden)
         orden += 1
 
     # Línea DEBE: IVA Crédito Fiscal
