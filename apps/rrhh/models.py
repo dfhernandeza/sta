@@ -74,6 +74,11 @@ class Trabajador(TimeStampedModel):
     telefono = models.CharField(max_length=20, blank=True, verbose_name='Teléfono')
     direccion = models.CharField(max_length=300, blank=True, verbose_name='Dirección')
     estado = models.CharField(max_length=15, choices=ESTADO_CHOICES, default='activo', verbose_name='Estado')
+    exento_previsional = models.BooleanField(
+        default=False,
+        verbose_name='Exento de AFP/Salud',
+        help_text='Marcar si el trabajador no tiene contrato y solo se le paga el sueldo bruto sin descuentos previsionales.',
+    )
     tipo_costo = models.CharField(
         max_length=15, choices=TIPO_COSTO_CHOICES, default='administrativo',
         verbose_name='Tipo de costo',

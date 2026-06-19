@@ -278,16 +278,17 @@ const subtotal = (qty, price) => { const s = parseFloat(qty) * parseFloat(price)
 /* ── actualizar pie de tabla ── */
 function updateTotal() {
   const total = parseInt(totalEl().value) || 0;
-  let sum = 0;
+  let sum = 0, exentoSum = 0;
   for (let i = 0; i < total; i++) {
-    // Solo sumamos los que no estén marcados como exentos de IVA
-    if (document.querySelector(`[name="detalles-${i}-exento_iva"]`)?.checked) continue;
     if (document.querySelector(`[name="detalles-${i}-DELETE"]`)?.checked) continue;
     if (!document.getElementById(`drow-${i}`)) continue;
-    sum += subtotal(getField(i, 'cantidad'), getField(i, 'precio_unitario'));
-    
+    const isExento = document.querySelector(`[name="detalles-${i}-exento_iva"]`)?.checked;
+    const s = subtotal(getField(i, 'cantidad'), getField(i, 'precio_unitario'));
+    if (isExento) exentoSum += s;
+    else sum += s;
   }
   document.getElementById('detalle-total').textContent = '$ ' + fmt(sum);
+  document.getElementById('detalle-exento-iva').textContent = '$ ' + fmt(exentoSum);
 }
 
 
@@ -408,6 +409,7 @@ document.addEventListener('DOMContentLoaded', () => {
     tbody.insertAdjacentHTML('beforeend', renderRow(i));
   }
   syncUI();
+  updateTotal();
 
   /* botón agregar */
   document.getElementById('btn-agregar-detalle').addEventListener('click', () => {
@@ -464,6 +466,22 @@ function eliminarDetalle(i) {
   const delEl = document.querySelector(`[name="detalles-${i}-DELETE"]`);
   if (delEl) delEl.checked = true;
   document.getElementById(`drow-${i}`)?.remove();
+  let netoAfecto = 0, exentoTotal = 0;
+  const n = parseInt(totalEl().value) || 0;
+  for (let j = 0; j < n; j++) {
+    if (document.querySelector(`[name="detalles-${j}-DELETE"]`)?.checked) continue;
+    if (!document.getElementById(`drow-${j}`)) continue;
+    const qty   = parseFloat(getField(j, 'cantidad')) || 0;
+    const price = parseFloat(getField(j, 'precio_unitario')) || 0;
+    const isExento = document.querySelector(`[name="detalles-${j}-exento_iva"]`)?.checked;
+    if (isExento) exentoTotal += qty * price;
+    else          netoAfecto  += qty * price;
+  }
+  document.getElementById('id_neto').value   = netoAfecto.toFixed(0);
+  document.getElementById('id_exento').value = exentoTotal.toFixed(0);
+  document.getElementById('id_iva').value    = (netoAfecto * 0.19).toFixed(0);
+  document.getElementById('id_total').value  = (netoAfecto * 1.19 + exentoTotal).toFixed(0);
+  updateTotal();
   syncUI();
 }
 

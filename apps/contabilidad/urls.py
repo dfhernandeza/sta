@@ -20,6 +20,7 @@ urlpatterns = [
     path('diario/<int:pk>/editar/', views.AsientoUpdateView.as_view(), name='asiento_update'),
     path('diario/<int:pk>/confirmar/', views.AsientoConfirmarView.as_view(), name='asiento_confirmar'),
     path('diario/<int:pk>/anular/', views.AsientoAnularView.as_view(), name='asiento_anular'),
+    path('diario/<int:pk>/eliminar/', views.AsientoDeleteView.as_view(), name='asiento_delete'),
 
     # Reportes
     path('mayor/', views.LibroMayorView.as_view(), name='libro_mayor'),
@@ -32,4 +33,7 @@ urlpatterns = [
     path('centros/crear/', views.CentroCostoCreateView.as_view(), name='centro_create'),
     path('centros/<int:pk>/editar/', views.CentroCostoUpdateView.as_view(), name='centro_update'),
     path('centros/reporte/', views.CentroCostoReporteView.as_view(), name='centro_reporte'),
+
+    # Saldos de Apertura
+    path('apertura/', views.AperturaContableView.as_view(), name='apertura'),
 ]

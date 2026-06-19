@@ -1,5 +1,5 @@
-from django.views.generic import ListView, CreateView, UpdateView, DetailView, View
-from django.urls import reverse_lazy
+from django.views.generic import ListView, CreateView, UpdateView, DetailView, DeleteView, View
+from django.urls import reverse_lazy, reverse
 from django.contrib import messages
 from django.shortcuts import get_object_or_404, redirect
 from django.utils import timezone
@@ -41,8 +41,8 @@ class FacturaEmitidaForm(ModelForm):
                   'neto', 'estado', 'observaciones']
         widgets = {
             'numero':           TextInput(attrs={'class': 'form-control', 'autocomplete': 'off'}),
-            'fecha_emision':    DateInput(attrs={'class': 'form-control', 'type': 'date'}),
-            'fecha_vencimiento': DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+            'fecha_emision':    DateInput(attrs={'class': 'form-control', 'type': 'date'}, format='%Y-%m-%d'),
+            'fecha_vencimiento': DateInput(attrs={'class': 'form-control', 'type': 'date'}, format='%Y-%m-%d'),
             'cliente':          Select(attrs={'class': 'form-select'}),
             'proyecto':         Select(attrs={'class': 'form-select'}),
             'neto':             NumberInput(attrs={'class': 'form-control', 'autocomplete': 'off'}),
@@ -170,7 +170,9 @@ class FacturaEmitidaCreateView(GestionMixin, CreateView):
     def form_valid(self, form):
         formset = DetalleEmitidaFormSet(self.request.POST, instance=form.instance)
         if not formset.is_valid():
-            return self.form_invalid(form)
+            return self.render_to_response(
+                self.get_context_data(form=form, detalle_formset=formset)
+            )
         response = super().form_valid(form)
         formset.instance = self.object
         formset.save()
@@ -200,10 +202,11 @@ class FacturaEmitidaCreateView(GestionMixin, CreateView):
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         ctx['titulo'] = 'Nueva Factura'
-        if self.request.POST:
-            ctx['detalle_formset'] = DetalleEmitidaFormSet(self.request.POST)
-        else:
-            ctx['detalle_formset'] = DetalleEmitidaFormSet()
+        if 'detalle_formset' not in ctx:
+            if self.request.POST:
+                ctx['detalle_formset'] = DetalleEmitidaFormSet(self.request.POST)
+            else:
+                ctx['detalle_formset'] = DetalleEmitidaFormSet()
         return ctx
 
 
@@ -213,10 +216,28 @@ class FacturaEmitidaUpdateView(GestionMixin, UpdateView):
     form_class = FacturaEmitidaForm
     success_url = reverse_lazy('clientes:factura_list')
 
+    def dispatch(self, request, *args, **kwargs):
+        factura = self.get_object()
+        if factura.estado in ('pagada', 'anulada'):
+            messages.error(
+                request,
+                f'No se puede editar la factura porque está en estado "{factura.get_estado_display()}".'
+            )
+            return redirect('clientes:factura_detail', pk=factura.pk)
+        if factura.asientos.filter(estado='confirmado').exists():
+            messages.error(
+                request,
+                'No se puede editar la factura porque tiene un asiento contable confirmado.'
+            )
+            return redirect('clientes:factura_detail', pk=factura.pk)
+        return super().dispatch(request, *args, **kwargs)
+
     def form_valid(self, form):
         formset = DetalleEmitidaFormSet(self.request.POST, instance=self.object)
         if not formset.is_valid():
-            return self.form_invalid(form)
+            return self.render_to_response(
+                self.get_context_data(form=form, detalle_formset=formset)
+            )
         response = super().form_valid(form)
         formset.save()
         messages.success(self.request, 'Factura actualizada.')
@@ -225,10 +246,11 @@ class FacturaEmitidaUpdateView(GestionMixin, UpdateView):
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         ctx['titulo'] = f'Editar Factura {self.object.numero}'
-        if self.request.POST:
-            ctx['detalle_formset'] = DetalleEmitidaFormSet(self.request.POST, instance=self.object)
-        else:
-            ctx['detalle_formset'] = DetalleEmitidaFormSet(instance=self.object)
+        if 'detalle_formset' not in ctx:
+            if self.request.POST:
+                ctx['detalle_formset'] = DetalleEmitidaFormSet(self.request.POST, instance=self.object)
+            else:
+                ctx['detalle_formset'] = DetalleEmitidaFormSet(instance=self.object)
         return ctx
 
 
@@ -241,6 +263,39 @@ class FacturaEmitidaDetailView(GestionMixin, DetailView):
         ctx = super().get_context_data(**kwargs)
         ctx['asiento'] = self.object.asientos.exclude(estado='anulado').first()
         return ctx
+
+
+class FacturaEmitidaDeleteView(GestionMixin, DeleteView):
+    model = FacturaEmitida
+    template_name = 'admin/confirm_delete.html'
+    success_url = reverse_lazy('clientes:factura_list')
+
+    def dispatch(self, request, *args, **kwargs):
+        factura = self.get_object()
+        if factura.estado in ('pagada', 'anulada'):
+            messages.error(
+                request,
+                f'No se puede eliminar la factura porque está en estado "{factura.get_estado_display()}".'
+            )
+            return redirect('clientes:factura_detail', pk=factura.pk)
+        if factura.asientos.filter(estado='confirmado').exists():
+            messages.error(
+                request,
+                'No se puede eliminar la factura porque tiene un asiento contable confirmado.'
+            )
+            return redirect('clientes:factura_detail', pk=factura.pk)
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx['cancel_url'] = reverse('clientes:factura_detail', kwargs={'pk': self.object.pk})
+        return ctx
+
+    def form_valid(self, form):
+        factura = self.object
+        factura.asientos.filter(estado='borrador').delete()
+        messages.success(self.request, f'Factura {factura.numero} eliminada.')
+        return super().form_valid(form)
 
 
 class CuentaPorCobrarListView(GestionMixin, ListView):
@@ -364,6 +419,10 @@ class CxCPagarView(GestionMixin, View):
         except Exception:
             pass
 
+        # Vincular movimiento a la CxC
+        cxc.movimiento_pago = movimiento
+        cxc.save(update_fields=['movimiento_pago'])
+
         # 4. Generar asiento contable borrador
         asiento = generar_asiento_movimiento_bancario(movimiento, usuario=request.user)
 
@@ -380,6 +439,52 @@ class CxCPagarView(GestionMixin, View):
                 'Verifique que la cuenta bancaria y la Config. Contable tengan cuentas asignadas.'
             )
 
+        return redirect('clientes:cxc_list')
+
+
+class AnularPagoCxCView(GestionMixin, View):
+    """Revierte un cobro: elimina el movimiento bancario y su asiento (borrador),
+    y deja la CxC y la factura en estado pendiente."""
+
+    def post(self, request, pk):
+        from django.db import transaction
+        cxc = get_object_or_404(CuentaPorCobrar, pk=pk)
+
+        if cxc.estado != 'pagada':
+            messages.error(request, 'Esta cuenta no está en estado pagada.')
+            return redirect('clientes:cxc_list')
+
+        movimiento = cxc.movimiento_pago
+        if movimiento:
+            asiento_confirmado = movimiento.asientos.filter(estado='confirmado').exists()
+            if asiento_confirmado:
+                messages.error(
+                    request,
+                    'No se puede anular el cobro porque el asiento contable del movimiento está confirmado. '
+                    'Anúle el asiento primero.'
+                )
+                return redirect('clientes:cxc_list')
+
+        with transaction.atomic():
+            if movimiento:
+                movimiento.asientos.filter(estado='borrador').delete()
+                movimiento.delete()
+
+            # Revertir CxC
+            cxc.estado = 'pendiente'
+            cxc.monto_pagado = 0
+            cxc.fecha_pago = None
+            cxc.medio_cobro = ''
+            cxc.numero_documento = ''
+            cxc.notas = ''
+            cxc.movimiento_pago = None
+            cxc.save()
+
+            # Revertir factura
+            cxc.factura.estado = 'pendiente'
+            cxc.factura.save(update_fields=['estado'])
+
+        messages.success(request, 'Cobro anulado correctamente. La cuenta quedó pendiente de cobro.')
         return redirect('clientes:cxc_list')
 
 

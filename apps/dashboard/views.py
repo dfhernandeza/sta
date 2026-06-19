@@ -37,8 +37,6 @@ class DashboardView(GestionMixin, TemplateView):
         ).exclude(estado='anulada')
         ctx['egresos_mes'] = facturas_recibidas_mes.aggregate(t=Sum('total'))['t'] or 0
 
-        ctx['utilidad_mes'] = ctx['ingresos_mes'] - ctx['egresos_mes']
-
         # Sueldos pagados el mes
         remuneraciones_pagadas_mes = Remuneracion.objects.filter(
             estado='pagado',
@@ -46,6 +44,9 @@ class DashboardView(GestionMixin, TemplateView):
             fecha_pago__year=anio_actual
         )
         ctx['sueldos_pagados_mes'] = remuneraciones_pagadas_mes.aggregate(t=Sum('liquido_pagar'))['t'] or 0
+
+        ctx['egresos_mes'] += ctx['sueldos_pagados_mes']
+        ctx['utilidad_mes'] = ctx['ingresos_mes'] - ctx['egresos_mes']
 
         # CxC vencidas
         ctx['cxc_vencidas'] = CuentaPorCobrar.objects.filter(
@@ -61,6 +62,19 @@ class DashboardView(GestionMixin, TemplateView):
         ctx['total_cxp_pendiente'] = CuentaPorPagar.objects.filter(
             estado__in=['pendiente', 'vencida']
         ).aggregate(t=Sum('monto'))['t'] or 0
+
+        # Remuneraciones pendientes de pago (borrador + aprobado)
+        rems_pendientes = Remuneracion.objects.filter(
+            estado__in=['borrador', 'aprobado']
+        ).aggregate(
+            sueldos=Sum('liquido_pagar'),
+            afp=Sum('descuento_afp'),
+            salud=Sum('descuento_salud'),
+        )
+        ctx['sueldos_por_pagar'] = rems_pendientes['sueldos'] or 0
+        ctx['afp_por_pagar'] = rems_pendientes['afp'] or 0
+        ctx['salud_por_pagar'] = rems_pendientes['salud'] or 0
+        ctx['previred_por_pagar'] = ctx['afp_por_pagar'] + ctx['salud_por_pagar']
 
         # Proyectos activos
         ctx['proyectos_activos'] = Proyecto.objects.filter(

@@ -33,6 +33,10 @@
               Salud: <strong id="lbl-isapre">—</strong> |
               Anticipo pendiente: <strong id="lbl-anticipo">—</strong>
             </div>
+            <div id="alerta-exento" class="alert alert-warning py-1 px-2 mt-1 small" style="display:none;">
+              <i class="bi bi-exclamation-triangle-fill me-1"></i>
+              <strong>Exento de AFP y Salud</strong> — solo se paga el sueldo bruto.
+            </div>
           </div>
 
           {# Período #}
@@ -128,16 +132,20 @@ function recalcular() {
   const bruto = base + extra + bono;
   setVal('id_sueldo_bruto', bruto);
 
-  const tasaAFP = window._tasaAFP ?? 0.1144;
-  const afp     = Math.round(bruto * tasaAFP);
-  const salud   = Math.round(bruto * TASA_SALUD);
-  setVal('id_descuento_afp', afp);
-  setVal('id_descuento_salud', salud);
+  if (window._exentoPrevisional) {
+    setVal('id_descuento_afp', 0);
+    setVal('id_descuento_salud', 0);
+  } else {
+    const tasaAFP = window._tasaAFP ?? 0.1144;
+    setVal('id_descuento_afp', Math.round(bruto * tasaAFP));
+    setVal('id_descuento_salud', Math.round(bruto * TASA_SALUD));
+  }
 
   const otros     = v('id_otros_descuentos');
   const anticipo  = v('id_anticipo_descontado');
-  const liquido   = Math.max(bruto - afp - salud - otros - anticipo, 0);
-  setVal('id_liquido_pagar', liquido);
+  const afp       = v('id_descuento_afp');
+  const salud     = v('id_descuento_salud');
+  setVal('id_liquido_pagar', Math.max(bruto - afp - salud - otros - anticipo, 0));
 }
 
 function recalcularLiquido() {
@@ -149,6 +157,23 @@ function recalcularLiquido() {
   setVal('id_liquido_pagar', Math.max(bruto - afp - salud - otros - anticipo, 0));
 }
 
+function setExentoUI(exento) {
+  const campos = ['id_descuento_afp', 'id_descuento_salud'];
+  campos.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (exento) {
+      el.setAttribute('readonly', 'readonly');
+      el.classList.add('bg-light');
+    } else {
+      el.removeAttribute('readonly');
+      el.classList.remove('bg-light');
+    }
+  });
+  const alerta = document.getElementById('alerta-exento');
+  if (alerta) alerta.style.display = exento ? '' : 'none';
+}
+
 // Al cambiar trabajador: cargar datos vía API
 document.getElementById('id_trabajador')?.addEventListener('change', function () {
   const pk = this.value;
@@ -157,6 +182,7 @@ document.getElementById('id_trabajador')?.addEventListener('change', function ()
     .then(r => r.json())
     .then(d => {
       window._tasaAFP = d.tasa_afp;
+      window._exentoPrevisional = d.exento_previsional;
       setVal('id_sueldo_base', d.sueldo_base);
       setVal('id_horas_extra', 0);
       setVal('id_bono', 0);
@@ -169,6 +195,7 @@ document.getElementById('id_trabajador')?.addEventListener('change', function ()
       document.getElementById('lbl-isapre').textContent  = d.isapre || '—';
       document.getElementById('lbl-anticipo').textContent = '$ ' + d.anticipo_pendiente.toLocaleString('es-CL');
 
+      setExentoUI(d.exento_previsional);
       recalcular();
     })
     .catch(() => {});

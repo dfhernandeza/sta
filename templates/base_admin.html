@@ -76,6 +76,9 @@
         <a href="{% url 'contabilidad:configuracion' %}" class="nav-link ps-4 {% if request.resolver_match.url_name == 'configuracion' %}active{% endif %}" style="font-size:.82rem;">
           <i class="bi bi-gear"></i> Configuración
         </a>
+        <a href="{% url 'contabilidad:apertura' %}" class="nav-link ps-4 {% if request.resolver_match.url_name == 'apertura' %}active{% endif %}" style="font-size:.82rem;">
+          <i class="bi bi-door-open"></i> Aperturas
+        </a>
         <a href="{% url 'contabilidad:centro_list' %}" class="nav-link ps-4 {% if 'centro' in request.resolver_match.url_name %}active{% endif %}" style="font-size:.82rem;">
           <i class="bi bi-diagram-3"></i> Centros de Costo
         </a>
@@ -102,7 +105,7 @@
         <a href="{% url 'clientes:factura_list' %}" class="nav-link ps-4 {% if request.resolver_match.url_name == 'factura_list' and request.resolver_match.namespace == 'clientes' %}active{% endif %}" style="font-size:.82rem;">
           <i class="bi bi-file-earmark-text"></i> Facturas Emitidas
         </a>
-        <a href="{% url 'clientes:cxc_list' %}" class="nav-link ps-4 {% if request.resolver_match.url_name == 'cxc_list' %}active{% endif %}" style="font-size:.82rem;">
+        <a href="{% url 'clientes:cxc_list' %}" class="nav-link ps-4 {% if request.resolver_match.url_name == 'cxc_list' and request.resolver_match.namespace == 'clientes' %}active{% endif %}" style="font-size:.82rem;">
           <i class="bi bi-cash-stack"></i> Cuentas por Cobrar
         </a>
       </div>

@@ -134,6 +134,11 @@ class CuentaPorCobrar(TimeStampedModel):
         help_text='N° transferencia, cheque, depósito, etc.'
     )
     notas = models.TextField(blank=True, verbose_name='Notas')
+    movimiento_pago = models.ForeignKey(
+        'tesoreria.MovimientoBancario', null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='cuentas_cobrar',
+        verbose_name='Movimiento de Cobro',
+    )
 
     class Meta:
         verbose_name = 'Cuenta por Cobrar'

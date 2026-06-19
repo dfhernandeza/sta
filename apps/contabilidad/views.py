@@ -105,6 +105,10 @@ class ConfiguracionContableView(GestionMixin, View):
                     'cuenta_ventas_default', 'cuenta_compras_default',
                     'cuenta_sueldos_operacional', 'cuenta_sueldos_administrativo',
                     'cuenta_impuestos_sii',
+                    'cuenta_afp_por_pagar', 'cuenta_salud_por_pagar',
+                    'cuenta_sueldos_por_pagar',
+                    'cuenta_anticipos_trabajadores', 'cuenta_anticipos_proveedores',
+                    'cuenta_patrimonio_apertura',
                 ]
             # Editamos el init para limitar las opciones de cuentas a solo aquellas que son de nivel 4 y si son de gastos o ingresos según corresponda
             def __init__(self, *args, **kwargs):
@@ -119,6 +123,12 @@ class ConfiguracionContableView(GestionMixin, View):
                 self.fields['cuenta_sueldos_operacional'].queryset = cuentas.filter(tipo='costo')
                 self.fields['cuenta_sueldos_administrativo'].queryset = cuentas.filter(tipo='gasto')
                 self.fields['cuenta_impuestos_sii'].queryset = cuentas.filter(tipo='pasivo')
+                self.fields['cuenta_afp_por_pagar'].queryset = cuentas.filter(tipo='pasivo')
+                self.fields['cuenta_salud_por_pagar'].queryset = cuentas.filter(tipo='pasivo')
+                self.fields['cuenta_sueldos_por_pagar'].queryset = cuentas.filter(tipo='pasivo')
+                self.fields['cuenta_anticipos_trabajadores'].queryset = cuentas.filter(tipo='activo')
+                self.fields['cuenta_anticipos_proveedores'].queryset = cuentas.filter(tipo='activo')
+                self.fields['cuenta_patrimonio_apertura'].queryset = cuentas.filter(tipo='patrimonio')
 
         return ConfigForm
 
@@ -364,6 +374,17 @@ class AsientoAnularView(GestionMixin, View):
             messages.success(request, f'Asiento {asiento.numero} anulado.')
         return redirect('contabilidad:asiento_detail', pk=asiento.pk)
 
+class AsientoDeleteView(GestionMixin, DeleteView):
+    model = AsientoContable
+    template_name = 'admin/confirm_delete.html'
+    success_url = reverse_lazy('contabilidad:diario_list')
+
+    def form_valid(self, form):
+        if self.object.estado == 'confirmado':
+            messages.warning(self.request, 'Los asientos confirmados no pueden eliminarse. Anúlelo primero.')
+            return redirect('contabilidad:asiento_detail', pk=self.object.pk)
+        messages.success(self.request, f'Asiento {self.object.numero} eliminado.')
+        return super().form_valid(form)
 
 # ---------------------------------------------------------------------------
 # Reportes Contables
@@ -742,3 +763,217 @@ class CentroCostoReporteView(GestionMixin, View):
             'total_resultado': total_resultado,
             'desv_total': desv_total,
         })
+
+
+# ---------------------------------------------------------------------------
+# Asiento de Apertura — Saldos Iniciales
+# ---------------------------------------------------------------------------
+
+class AperturaContableView(GestionMixin, View):
+    """
+    Permite ingresar los saldos de apertura contable de la empresa.
+
+    Crea (o reemplaza) un único AsientoContable de tipo 'apertura'. Al confirmarlo,
+    todos los reportes (Balance General, Comprobación, Libro Mayor) lo incluyen
+    automáticamente porque filtran por asiento__estado='confirmado', sin requerir
+    ningún cambio en las vistas de reportes.
+
+    Lógica de cuadre:
+        DEBE  = activos con saldo
+        HABER = pasivos con saldo
+        La diferencia (DEBE - HABER) se registra automáticamente en
+        ConfiguracionContable.cuenta_patrimonio_apertura (Resultados Acumulados / Capital).
+    """
+    template_name = 'admin/contabilidad/apertura.html'
+
+    def _get_apertura(self):
+        return AsientoContable.objects.filter(tipo='apertura').order_by('fecha').first()
+
+    def get(self, request):
+        from django.shortcuts import render
+        import json
+        apertura = self._get_apertura()
+        cuentas = PlanCuentas.objects.filter(activa=True, acepta_movimientos=True).order_by('codigo')
+        config = ConfiguracionContable.get()
+
+        # Collect bank accounts linked to a PlanCuentas account (single source of truth: saldo_inicial)
+        from apps.tesoreria.models import CuentaBancaria
+        cuentas_bancarias = (
+            CuentaBancaria.objects
+            .filter(activa=True, cuenta_contable__isnull=False)
+            .select_related('cuenta_contable', 'banco')
+        )
+        banco_cuenta_ids = {cb.cuenta_contable_id: cb for cb in cuentas_bancarias}
+
+        # Pre-fill manual lines from existing apertura (excluding patrimonio and bank lines)
+        patrimonio_id = config.cuenta_patrimonio_apertura_id if config else None
+        lineas_existentes = []
+        if apertura:
+            for linea in apertura.lineas.select_related('cuenta').order_by('orden'):
+                if linea.cuenta_id == patrimonio_id:
+                    continue  # auto-balance line, recalculated on save
+                if linea.cuenta_id in banco_cuenta_ids:
+                    continue  # bank line, driven by saldo_inicial — don't show as manual
+                lineas_existentes.append({
+                    'cuenta_id': linea.cuenta_id,
+                    'cuenta_str': str(linea.cuenta),
+                    'monto': float(linea.debe if linea.debe > 0 else linea.haber),
+                    'tipo': 'debe' if linea.debe > 0 else 'haber',
+                    'from_banco': False,
+                })
+
+        cuentas_json = json.dumps([
+            {'id': c.pk, 'label': str(c), 'tipo': c.tipo}
+            for c in cuentas
+            if c.pk not in banco_cuenta_ids  # bank accounts are shown separately, not in dropdown
+        ])
+
+        # Bank accounts summary for display (always shown, read-only)
+        bancos_apertura = [
+            {
+                'cuenta_id': cb.cuenta_contable_id,
+                'label': f'{cb.banco} — {cb.numero}',
+                'cuenta_str': str(cb.cuenta_contable),
+                'saldo_inicial': float(cb.saldo_inicial),
+            }
+            for cb in cuentas_bancarias
+            if cb.saldo_inicial != 0
+        ]
+
+        return render(request, self.template_name, {
+            'titulo': 'Saldos de Apertura',
+            'apertura': apertura,
+            'config': config,
+            'cuentas_json': cuentas_json,
+            'lineas_json': json.dumps(lineas_existentes),
+            'bancos_apertura': bancos_apertura,
+            'bancos_apertura_json': json.dumps(bancos_apertura),
+            'fecha_apertura': apertura.fecha.isoformat() if apertura else '',
+        })
+
+    def post(self, request):
+        from django.shortcuts import render, redirect
+        from decimal import Decimal, InvalidOperation
+        import json
+
+        # ── Confirm existing borrador ──────────────────────────────────────
+        if request.POST.get('action') == 'confirmar':
+            apertura = self._get_apertura()
+            if apertura and apertura.estado == 'borrador':
+                if not apertura.esta_cuadrado:
+                    messages.error(request, 'El asiento no está cuadrado (Debe ≠ Haber). Corrija los montos.')
+                    return redirect('contabilidad:apertura')
+                apertura.estado = 'confirmado'
+                apertura.save(update_fields=['estado'])
+                messages.success(request, f'Asiento de apertura {apertura.numero} confirmado. Todos los reportes lo incluirán.')
+            return redirect('contabilidad:apertura')
+
+        # ── Save / replace borrador ────────────────────────────────────────
+        config = ConfiguracionContable.get()
+
+        fecha_str = request.POST.get('fecha', '').strip()
+        fecha = parse_date(fecha_str)
+        if not fecha:
+            messages.error(request, 'Ingrese una fecha de apertura válida.')
+            return redirect('contabilidad:apertura')
+
+        cuenta_ids = request.POST.getlist('cuenta_id')
+        montos_raw = request.POST.getlist('monto')
+        tipos = request.POST.getlist('tipo')  # 'debe' | 'haber'
+
+        # ── Manual lines (non-bank accounts) ──────────────────────────────
+        lineas = []
+        errores = []
+        for i, (cid, monto_str, tipo) in enumerate(zip(cuenta_ids, montos_raw, tipos), 1):
+            try:
+                cid = int(cid)
+                monto = Decimal(monto_str.strip().replace('.', '').replace(',', '.'))
+                if monto <= 0:
+                    continue
+                cuenta = PlanCuentas.objects.get(pk=cid, activa=True, acepta_movimientos=True)
+                if tipo not in ('debe', 'haber'):
+                    tipo = 'debe'
+                lineas.append({'cuenta': cuenta, 'monto': monto, 'tipo': tipo})
+            except (ValueError, InvalidOperation, PlanCuentas.DoesNotExist):
+                errores.append(f'Fila {i}: datos inválidos.')
+
+        # ── Auto-include bank accounts from saldo_inicial ─────────────────
+        from apps.tesoreria.models import CuentaBancaria
+        for cb in CuentaBancaria.objects.filter(activa=True, cuenta_contable__isnull=False).select_related('cuenta_contable'):
+            if cb.saldo_inicial and cb.saldo_inicial != 0:
+                lineas.append({
+                    'cuenta': cb.cuenta_contable,
+                    'monto': abs(cb.saldo_inicial),
+                    'tipo': 'debe' if cb.saldo_inicial > 0 else 'haber',
+                })
+
+        if errores:
+            for e in errores:
+                messages.warning(request, e)
+
+        if not lineas:
+            messages.error(request, 'No hay líneas con montos válidos.')
+            return redirect('contabilidad:apertura')
+
+        # Check confirmed asiento can't be replaced
+        existente = self._get_apertura()
+        if existente and existente.estado == 'confirmado':
+            messages.error(
+                request,
+                f'Ya existe un asiento de apertura confirmado ({existente.numero}). '
+                'Anúlelo desde el Libro Diario antes de reemplazarlo.'
+            )
+            return redirect('contabilidad:apertura')
+
+        total_debe = sum(l['monto'] for l in lineas if l['tipo'] == 'debe')
+        total_haber = sum(l['monto'] for l in lineas if l['tipo'] == 'haber')
+        diferencia = total_debe - total_haber  # positive → more assets than liabilities
+
+        # Need patrimonio account if entry doesn't balance
+        if diferencia != 0 and (not config or not config.cuenta_patrimonio_apertura):
+            messages.error(
+                request,
+                'El asiento no cuadra y no hay cuenta de Patrimonio / Resultados Acumulados '
+                'configurada en Configuración Contable. Configúrela primero o ingrese saldos que cuadren manualmente.'
+            )
+            return redirect('contabilidad:apertura')
+
+        # Delete existing borrador
+        if existente:
+            existente.delete()
+
+        # Create new apertura asiento
+        apertura = AsientoContable.objects.create(
+            fecha=fecha,
+            descripcion='Saldos de Apertura',
+            tipo='apertura',
+            estado='borrador',
+        )
+
+        for i, l in enumerate(lineas, start=1):
+            LineaAsiento.objects.create(
+                asiento=apertura,
+                cuenta=l['cuenta'],
+                debe=l['monto'] if l['tipo'] == 'debe' else Decimal('0'),
+                haber=l['monto'] if l['tipo'] == 'haber' else Decimal('0'),
+                descripcion='Saldo de apertura',
+                orden=i,
+            )
+
+        # Auto-balance line → cuenta_patrimonio_apertura
+        if diferencia != 0 and config and config.cuenta_patrimonio_apertura:
+            LineaAsiento.objects.create(
+                asiento=apertura,
+                cuenta=config.cuenta_patrimonio_apertura,
+                debe=Decimal('0') if diferencia > 0 else abs(diferencia),
+                haber=diferencia if diferencia > 0 else Decimal('0'),
+                descripcion='Patrimonio / Resultados Acumulados (cuadre automático)',
+                orden=len(lineas) + 1,
+            )
+
+        messages.success(
+            request,
+            f'Asiento de apertura {apertura.numero} guardado en borrador con {len(lineas)} líneas. '
+            'Revíselo y confírmelo para que aparezca en los reportes.'
+        )
+        return redirect('contabilidad:apertura')

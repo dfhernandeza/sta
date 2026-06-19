@@ -1,5 +1,5 @@
-from django.views.generic import ListView, CreateView, UpdateView, DetailView, View
-from django.urls import reverse_lazy
+from django.views.generic import ListView, CreateView, UpdateView, DetailView, DeleteView, View
+from django.urls import reverse_lazy, reverse
 from django.contrib import messages
 from django.shortcuts import get_object_or_404, redirect
 from django.utils import timezone
@@ -191,10 +191,20 @@ class FacturaRecibidaCreateView(GestionMixin, CreateView):
     fields = ['numero', 'fecha_emision', 'fecha_vencimiento', 'proveedor', 'proyecto', 'pago_por_trabajador', 'neto', 'exento', 'iva', 'total', 'estado', 'observaciones']
     success_url = reverse_lazy('proveedores:factura_list')
 
+    def get_form(self, form_class=None):
+        from django.forms import DateInput
+        form = super().get_form(form_class)
+        for fname in ['fecha_emision', 'fecha_vencimiento']:
+            if fname in form.fields:
+                form.fields[fname].widget = DateInput(attrs={'class': 'form-control'}, format='%Y-%m-%d')
+        return form
+
     def form_valid(self, form):
         formset = DetalleFormSet(self.request.POST, instance=form.instance)
         if not formset.is_valid():
-            return self.form_invalid(form)
+            return self.render_to_response(
+                self.get_context_data(form=form, detalle_formset=formset)
+            )
         response = super().form_valid(form)
         formset.instance = self.object
         formset.save()
@@ -217,10 +227,11 @@ class FacturaRecibidaCreateView(GestionMixin, CreateView):
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         ctx['titulo'] = 'Registrar Factura de Proveedor'
-        if self.request.POST:
-            ctx['detalle_formset'] = DetalleFormSet(self.request.POST)
-        else:
-            ctx['detalle_formset'] = DetalleFormSet()
+        if 'detalle_formset' not in ctx:
+            if self.request.POST:
+                ctx['detalle_formset'] = DetalleFormSet(self.request.POST)
+            else:
+                ctx['detalle_formset'] = DetalleFormSet()
         return ctx
 
 
@@ -230,10 +241,36 @@ class FacturaRecibidaUpdateView(GestionMixin, UpdateView):
     fields = ['numero', 'fecha_emision', 'fecha_vencimiento', 'proveedor', 'proyecto', 'pago_por_trabajador', 'neto', 'exento', 'iva', 'total', 'estado', 'observaciones']
     success_url = reverse_lazy('proveedores:factura_list')
 
+    def dispatch(self, request, *args, **kwargs):
+        factura = self.get_object()
+        if factura.estado in ('pagada', 'anulada'):
+            messages.error(
+                request,
+                f'No se puede editar la factura porque está en estado "{factura.get_estado_display()}".'
+            )
+            return redirect('proveedores:factura_detail', pk=factura.pk)
+        if factura.asientos.filter(estado='confirmado').exists():
+            messages.error(
+                request,
+                'No se puede editar la factura porque tiene un asiento contable confirmado.'
+            )
+            return redirect('proveedores:factura_detail', pk=factura.pk)
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_form(self, form_class=None):
+        from django.forms import DateInput
+        form = super().get_form(form_class)
+        for fname in ['fecha_emision', 'fecha_vencimiento']:
+            if fname in form.fields:
+                form.fields[fname].widget = DateInput(attrs={'class': 'form-control'}, format='%Y-%m-%d')
+        return form
+
     def form_valid(self, form):
         formset = DetalleFormSet(self.request.POST, instance=self.object)
         if not formset.is_valid():
-            return self.form_invalid(form)
+            return self.render_to_response(
+                self.get_context_data(form=form, detalle_formset=formset)
+            )
         response = super().form_valid(form)
         formset.save()
         _sincronizar_cxp_factura(self.object)
@@ -244,10 +281,11 @@ class FacturaRecibidaUpdateView(GestionMixin, UpdateView):
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         ctx['titulo'] = f'Editar Factura {self.object.numero}'
-        if self.request.POST:
-            ctx['detalle_formset'] = DetalleFormSet(self.request.POST, instance=self.object)
-        else:
-            ctx['detalle_formset'] = DetalleFormSet(instance=self.object)
+        if 'detalle_formset' not in ctx:
+            if self.request.POST:
+                ctx['detalle_formset'] = DetalleFormSet(self.request.POST, instance=self.object)
+            else:
+                ctx['detalle_formset'] = DetalleFormSet(instance=self.object)
         return ctx
 
 
@@ -255,6 +293,39 @@ class FacturaRecibidaDetailView(GestionMixin, DetailView):
     model = FacturaRecibida
     template_name = 'admin/proveedores/factura_detail.html'
     context_object_name = 'factura'
+
+
+class FacturaRecibidaDeleteView(GestionMixin, DeleteView):
+    model = FacturaRecibida
+    template_name = 'admin/confirm_delete.html'
+    success_url = reverse_lazy('proveedores:factura_list')
+
+    def dispatch(self, request, *args, **kwargs):
+        factura = self.get_object()
+        if factura.estado in ('pagada', 'anulada'):
+            messages.error(
+                request,
+                f'No se puede eliminar la factura porque está en estado "{factura.get_estado_display()}".'
+            )
+            return redirect('proveedores:factura_detail', pk=factura.pk)
+        if factura.asientos.filter(estado='confirmado').exists():
+            messages.error(
+                request,
+                'No se puede eliminar la factura porque tiene un asiento contable confirmado.'
+            )
+            return redirect('proveedores:factura_detail', pk=factura.pk)
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx['cancel_url'] = reverse('proveedores:factura_detail', kwargs={'pk': self.object.pk})
+        return ctx
+
+    def form_valid(self, form):
+        factura = self.object
+        factura.asientos.filter(estado='borrador').delete()
+        messages.success(self.request, f'Factura {factura.numero} eliminada.')
+        return super().form_valid(form)
 
 
 class CuentaPorPagarListView(GestionMixin, ListView):
@@ -281,7 +352,9 @@ class CxPPagarView(GestionMixin, View):
         from django import forms
         from apps.tesoreria.models import CuentaBancaria
 
-        cuentas_bancarias = CuentaBancaria.objects.filter(activa=True).select_related('banco')
+        # Filtramos cuentas bancarias activas y que tengan cuenta_contable asignada para evitar errores al generar el asiento
+
+        cuentas_bancarias = CuentaBancaria.objects.filter(activa=True, cuenta_contable__isnull=False).select_related('banco')
 
         class PagoForm(forms.Form):
             fecha_pago = forms.DateField(
@@ -398,6 +471,10 @@ class CxPPagarView(GestionMixin, View):
         except Exception:
             pass
 
+        # Vincular movimiento a la CxP
+        cxp.movimiento_pago = movimiento
+        cxp.save(update_fields=['movimiento_pago'])
+
         # 4. Generar asiento contable borrador
         asiento = generar_asiento_movimiento_bancario(movimiento, usuario=request.user)
 
@@ -414,6 +491,56 @@ class CxPPagarView(GestionMixin, View):
                 'Verifique que la cuenta bancaria y la Config. Contable tengan cuentas asignadas.'
             )
 
+        return redirect('proveedores:cxp_list')
+
+
+class AnularPagoCxPView(GestionMixin, View):
+    """Revierte un pago: elimina el movimiento bancario y su asiento (borrador),
+    y deja la CxP y la factura/rendición en estado pendiente."""
+
+    def post(self, request, pk):
+        from django.db import transaction
+        cxp = get_object_or_404(CuentaPorPagar, pk=pk)
+
+        if cxp.estado != 'pagada':
+            messages.error(request, 'Esta cuenta no está en estado pagada.')
+            return redirect('proveedores:cxp_list')
+
+        movimiento = cxp.movimiento_pago
+        if movimiento:
+            asiento_confirmado = movimiento.asientos.filter(estado='confirmado').exists()
+            if asiento_confirmado:
+                messages.error(
+                    request,
+                    'No se puede anular el pago porque el asiento contable del movimiento está confirmado. '
+                    'Anúle el asiento primero.'
+                )
+                return redirect('proveedores:cxp_list')
+
+        with transaction.atomic():
+            if movimiento:
+                movimiento.asientos.filter(estado='borrador').delete()
+                movimiento.delete()
+
+            # Revertir CxP
+            cxp.estado = 'pendiente'
+            cxp.monto_pagado = 0
+            cxp.fecha_pago = None
+            cxp.medio_pago = ''
+            cxp.numero_documento = ''
+            cxp.notas = ''
+            cxp.movimiento_pago = None
+            cxp.save()
+
+            # Revertir factura o rendición
+            if cxp.factura:
+                cxp.factura.estado = 'pendiente'
+                cxp.factura.save(update_fields=['estado'])
+            elif cxp.rendicion:
+                cxp.rendicion.estado = 'aprobado'
+                cxp.rendicion.save(update_fields=['estado'])
+
+        messages.success(request, 'Pago anulado correctamente. La cuenta quedó pendiente de pago.')
         return redirect('proveedores:cxp_list')
 
 
@@ -462,6 +589,100 @@ class AnticipoCreateView(GestionMixin, CreateView):
         ctx = super().get_context_data(**kwargs)
         ctx['titulo'] = 'Nuevo Anticipo a Proveedor'
         return ctx
+
+
+class AnticipoProveedorPagarView(GestionMixin, View):
+    template_name = 'admin/proveedores/anticipo_pagar.html'
+
+    def _build_form(self, data=None, initial=None):
+        from django import forms
+        from apps.tesoreria.models import CuentaBancaria
+
+        cuentas_bancarias = CuentaBancaria.objects.filter(activa=True).select_related('banco')
+
+        class PagoAnticipoProveedorForm(forms.Form):
+            fecha_pago = forms.DateField(
+                widget=forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+                label='Fecha de pago',
+            )
+            cuenta_bancaria = forms.ModelChoiceField(
+                queryset=cuentas_bancarias,
+                widget=forms.Select(attrs={'class': 'form-select'}),
+                label='Cuenta bancaria de egreso',
+                help_text='El anticipo se descontará de esta cuenta.',
+            )
+            notas = forms.CharField(
+                required=False,
+                widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+                label='Notas',
+            )
+
+        return PagoAnticipoProveedorForm(data=data, initial=initial)
+
+    def get(self, request, pk):
+        from django.shortcuts import render
+        anticipo = get_object_or_404(Anticipo, pk=pk)
+        if anticipo.estado != 'pendiente':
+            messages.info(request, f'Este anticipo ya está en estado "{anticipo.get_estado_display()}".')
+            return redirect('proveedores:anticipo_list')
+        form = self._build_form(initial={'fecha_pago': timezone.localdate()})
+        return render(request, self.template_name, {'anticipo': anticipo, 'form': form})
+
+    def post(self, request, pk):
+        from django.shortcuts import render
+        from apps.tesoreria.models import MovimientoBancario
+        from apps.contabilidad.utils import generar_asiento_pago_anticipo_proveedor
+
+        anticipo = get_object_or_404(Anticipo, pk=pk)
+        form = self._build_form(data=request.POST)
+
+        if not form.is_valid():
+            return render(request, self.template_name, {'anticipo': anticipo, 'form': form})
+
+        d = form.cleaned_data
+        cuenta_bancaria = d['cuenta_bancaria']
+
+        # 1. Crear MovimientoBancario (egreso)
+        descripcion_mov = f'Anticipo {anticipo.proveedor.razon_social} - {anticipo.fecha}'
+        movimiento = MovimientoBancario.objects.create(
+            cuenta=cuenta_bancaria,
+            fecha=d['fecha_pago'],
+            tipo='egreso',
+            monto=anticipo.monto,
+            descripcion=descripcion_mov,
+            cuenta_contable=None,
+        )
+
+        # Asignar cuenta_contable del movimiento = cuenta_anticipos_proveedores (fallback a compras)
+        try:
+            from apps.contabilidad.models import ConfiguracionContable
+            config = ConfiguracionContable.get()
+            if config and config.cuenta_anticipos_proveedores:
+                movimiento.cuenta_contable = config.cuenta_anticipos_proveedores
+            elif config and config.cuenta_compras_default:
+                movimiento.cuenta_contable = config.cuenta_compras_default
+            if movimiento.cuenta_contable:
+                movimiento.save(update_fields=['cuenta_contable'])
+        except Exception:
+            pass
+
+        # 2. Generar asiento: DEBE Anticipos a Proveedores (activo) / HABER Banco
+        asiento = generar_asiento_pago_anticipo_proveedor(anticipo, movimiento, usuario=request.user)
+
+        if asiento:
+            messages.success(
+                request,
+                f'Anticipo registrado. Movimiento bancario creado y asiento {asiento.numero} generado en borrador.'
+            )
+        else:
+            messages.success(request, 'Anticipo registrado y movimiento bancario creado.')
+            messages.warning(
+                request,
+                'No se pudo generar el asiento contable. '
+                'Verifique que la cuenta bancaria y la Configuración Contable tengan cuentas asignadas.'
+            )
+
+        return redirect('proveedores:anticipo_list')
 
 class RendicionGastosListView(GestionMixin, ListView):
     model = RendicionGastos

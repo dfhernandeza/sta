@@ -1,0 +1,304 @@
+{% extends 'base_admin.html' %}
+{% load custom_tags %}
+
+{% block title %}Saldos de Apertura{% endblock %}
+
+{% block breadcrumb %}
+  <li class="breadcrumb-item"><a href="{% url 'contabilidad:plan_list' %}">Contabilidad</a></li>
+  <li class="breadcrumb-item active">Saldos de Apertura</li>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h4 class="page-title">Saldos de Apertura Contable</h4>
+  <a href="{% url 'contabilidad:diario_list' %}" class="btn btn-outline-secondary rounded-pill px-4">
+    <i class="bi bi-journal-text me-1"></i>Libro Diario
+  </a>
+</div>
+
+{% if not config.cuenta_patrimonio_apertura %}
+<div class="alert alert-warning">
+  <i class="bi bi-exclamation-triangle-fill me-2"></i>
+  <strong>Configure primero</strong> la cuenta <em>Patrimonio / Resultados Acumulados (Apertura)</em>
+  en <a href="{% url 'contabilidad:configuracion' %}" class="alert-link">Configuración Contable</a>.
+  Es necesaria para cuadrar el asiento automáticamente.
+</div>
+{% endif %}
+
+{% if apertura %}
+<div class="card-sta p-3 mb-4">
+  <div class="d-flex align-items-center gap-3 flex-wrap">
+    <div>
+      <span class="text-muted small">Asiento de apertura actual</span>
+      <div class="fw-700 fs-6">
+        <a href="{% url 'contabilidad:asiento_detail' apertura.pk %}">{{ apertura.numero }}</a>
+        — {{ apertura.fecha|date:"d/m/Y" }}
+      </div>
+    </div>
+    <div>
+      {% if apertura.estado == 'borrador' %}
+        <span class="badge bg-warning text-dark">Borrador</span>
+      {% elif apertura.estado == 'confirmado' %}
+        <span class="badge bg-success">Confirmado — incluido en reportes</span>
+      {% else %}
+        <span class="badge bg-danger">{{ apertura.get_estado_display }}</span>
+      {% endif %}
+    </div>
+    <div class="ms-auto d-flex gap-2">
+      {% if apertura.estado == 'borrador' %}
+      <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="confirmar">
+        <button type="submit" class="btn btn-success rounded-pill px-4">
+          <i class="bi bi-check2-circle me-1"></i>Confirmar y activar
+        </button>
+      </form>
+      {% endif %}
+      {% if apertura.estado == 'confirmado' %}
+      <a href="{% url 'contabilidad:asiento_anular' apertura.pk %}" class="btn btn-outline-danger rounded-pill px-3 btn-sm">
+        <i class="bi bi-x-circle me-1"></i>Anular para reemplazar
+      </a>
+      {% endif %}
+    </div>
+  </div>
+  {% if apertura.estado == 'borrador' %}
+  <div class="alert alert-info py-1 px-3 mt-2 mb-0 small">
+    <i class="bi bi-info-circle me-1"></i>
+    El asiento está en borrador. Los reportes <strong>no lo incluyen</strong> hasta que lo confirme.
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if not apertura or apertura.estado != 'confirmado' %}
+<div class="card-sta p-4">
+  <h6 class="fw-700 text-sta mb-3">
+    <i class="bi bi-pencil-square me-2"></i>
+    {% if apertura %}Editar{% else %}Crear{% endif %} Saldos de Apertura
+  </h6>
+
+  <div class="alert alert-secondary py-2 px-3 small mb-3">
+    <i class="bi bi-lightbulb me-1"></i>
+    Ingrese el saldo al <strong>inicio</strong> del período contable para cada cuenta que tenga saldo previo.
+    Los activos (CxC, Anticipos, Activos Fijos…) van en <strong>Debe</strong>; los pasivos (CxP, AFP x Pagar…) en <strong>Haber</strong>.
+    El sistema calculará automáticamente la línea de cuadre hacia <em>Patrimonio / Resultados Acumulados</em>.
+  </div>
+
+  {% if bancos_apertura %}
+  <div class="mb-3">
+    <p class="fw-600 small mb-1">
+      <i class="bi bi-bank me-1 text-primary"></i>
+      Cuentas bancarias — <span class="text-muted fw-400">tomadas automáticamente del Saldo Inicial en Tesorería (solo lectura aquí)</span>
+    </p>
+    <table class="table table-sm table-bordered mb-1">
+      <thead class="table-light">
+        <tr><th>Cuenta bancaria</th><th>Cuenta contable</th><th class="text-end">Saldo inicial</th><th>Tipo</th></tr>
+      </thead>
+      <tbody>
+        {% for b in bancos_apertura %}
+        <tr class="text-muted small">
+          <td>{{ b.label }}</td>
+          <td>{{ b.cuenta_str }}</td>
+          <td class="text-end fw-600">$ {{ b.saldo_inicial|floatformat:0 }}</td>
+          <td><span class="badge bg-primary">Debe</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div class="form-text">
+      Para modificar estos valores vaya a
+      <a href="{% url 'tesoreria:cuenta_list' %}" target="_blank">Tesorería → Cuentas Bancarias</a>
+      y edite el <em>Saldo Inicial</em>.
+    </div>
+  </div>
+  {% else %}
+  <div class="alert alert-light border small py-2 px-3 mb-3">
+    <i class="bi bi-bank me-1"></i>
+    No hay cuentas bancarias con saldo inicial configurado en Tesorería.
+    <a href="{% url 'tesoreria:cuenta_list' %}" class="alert-link">Configurarlas aquí</a>.
+  </div>
+  {% endif %}
+
+  <form method="post" id="form-apertura" novalidate>
+    {% csrf_token %}
+
+    <div class="row g-2 mb-3 align-items-end">
+      <div class="col-sm-4">
+        <label class="form-label fw-600">Fecha de apertura <span class="text-danger">*</span></label>
+        <input type="date" name="fecha" class="form-control" value="{{ fecha_apertura }}" required>
+        <div class="form-text">Generalmente el primer día del período contable.</div>
+      </div>
+    </div>
+
+    <!-- Líneas de apertura -->
+    <div class="table-responsive mb-3">
+      <table class="table table-sm" id="tabla-lineas">
+        <thead class="table-light">
+          <tr>
+            <th style="min-width:320px">Cuenta contable</th>
+            <th style="width:160px">Monto</th>
+            <th style="width:130px">Tipo</th>
+            <th style="width:50px"></th>
+          </tr>
+        </thead>
+        <tbody id="cuerpo-lineas">
+          <!-- JS populates rows -->
+        </tbody>
+      </table>
+    </div>
+
+    <button type="button" class="btn btn-outline-secondary btn-sm rounded-pill px-3 mb-3" id="btn-agregar">
+      <i class="bi bi-plus-circle me-1"></i>Agregar cuenta
+    </button>
+
+    <!-- Totales en tiempo real -->
+    <div class="card border-0 bg-light p-3 mb-3">
+      <div class="row text-center g-2">
+        <div class="col-sm-4">
+          <div class="text-muted small">Total Debe</div>
+          <div class="fw-700 fs-5 text-primary" id="lbl-total-debe">$ 0</div>
+        </div>
+        <div class="col-sm-4">
+          <div class="text-muted small">Total Haber</div>
+          <div class="fw-700 fs-5 text-primary" id="lbl-total-haber">$ 0</div>
+        </div>
+        <div class="col-sm-4">
+          <div class="text-muted small">Cuadre automático (Patrimonio)</div>
+          <div class="fw-700 fs-5" id="lbl-diferencia">$ 0</div>
+          <div class="small text-muted" id="lbl-diferencia-cuenta">
+            {% if config.cuenta_patrimonio_apertura %}→ {{ config.cuenta_patrimonio_apertura }}{% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="d-flex gap-2">
+      <button type="submit" class="btn btn-sta px-5 rounded-pill">
+        <i class="bi bi-floppy me-1"></i>Guardar borrador
+      </button>
+    </div>
+  </form>
+</div>
+{% else %}
+<!-- Read-only view when confirmed -->
+<div class="card-sta p-0">
+  <div class="table-responsive">
+    <table class="table table-sta mb-0">
+      <thead>
+        <tr>
+          <th>Cuenta</th>
+          <th class="text-end">Debe</th>
+          <th class="text-end">Haber</th>
+          <th>Descripción</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for linea in apertura.lineas.all %}
+        <tr>
+          <td class="small fw-600">{{ linea.cuenta }}</td>
+          <td class="text-end">{% if linea.debe %}{{ linea.debe|moneda_chilena }}{% endif %}</td>
+          <td class="text-end">{% if linea.haber %}{{ linea.haber|moneda_chilena }}{% endif %}</td>
+          <td class="small text-muted">{{ linea.descripcion }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot class="table-light fw-700">
+        <tr>
+          <td>Totales</td>
+          <td class="text-end">{{ apertura.total_debe|moneda_chilena }}</td>
+          <td class="text-end">{{ apertura.total_haber|moneda_chilena }}</td>
+          <td>
+            {% if apertura.esta_cuadrado %}
+              <span class="text-success"><i class="bi bi-check-circle-fill"></i> Cuadrado</span>
+            {% else %}
+              <span class="text-danger"><i class="bi bi-x-circle-fill"></i> No cuadrado</span>
+            {% endif %}
+          </td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const CUENTAS = {{ cuentas_json|safe }};
+const LINEAS_INIT = {{ lineas_json|safe }};
+const BANCOS = {{ bancos_apertura_json|safe }};  // auto-included from Tesorería
+
+function formatCLP(n) {
+  return '$ ' + Math.round(n).toLocaleString('es-CL');
+}
+
+function makeRow(cid, monto, tipo) {
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td>
+      <select name="cuenta_id" class="form-select form-select-sm select-cuenta" required>
+        <option value="">— Seleccione cuenta —</option>
+        ${CUENTAS.map(c => `<option value="${c.id}" ${c.id == cid ? 'selected' : ''}>${c.label}</option>`).join('')}
+      </select>
+    </td>
+    <td>
+      <input type="number" name="monto" class="form-control form-control-sm input-monto"
+        value="${monto || ''}" min="1" step="1" placeholder="0">
+    </td>
+    <td>
+      <select name="tipo" class="form-select form-select-sm select-tipo">
+        <option value="debe" ${tipo === 'debe' ? 'selected' : ''}>Debe (Activo)</option>
+        <option value="haber" ${tipo === 'haber' ? 'selected' : ''}>Haber (Pasivo)</option>
+      </select>
+    </td>
+    <td>
+      <button type="button" class="btn btn-sm btn-outline-danger rounded-pill btn-eliminar px-2">
+        <i class="bi bi-trash"></i>
+      </button>
+    </td>`;
+  tr.querySelector('.btn-eliminar').addEventListener('click', () => { tr.remove(); recalcular(); });
+  tr.querySelector('.input-monto').addEventListener('input', recalcular);
+  tr.querySelector('.select-tipo').addEventListener('change', recalcular);
+  return tr;
+}
+
+function recalcular() {
+  // Start with bank accounts (always Debe, from saldo_inicial)
+  let debe = BANCOS.reduce((s, b) => s + (b.saldo_inicial > 0 ? b.saldo_inicial : 0), 0);
+  let haber = BANCOS.reduce((s, b) => s + (b.saldo_inicial < 0 ? Math.abs(b.saldo_inicial) : 0), 0);
+
+  // Add manual lines
+  document.querySelectorAll('#cuerpo-lineas tr').forEach(tr => {
+    const m = parseFloat(tr.querySelector('.input-monto')?.value) || 0;
+    const t = tr.querySelector('.select-tipo')?.value;
+    if (t === 'debe') debe += m; else haber += m;
+  });
+  document.getElementById('lbl-total-debe').textContent  = formatCLP(debe);
+  document.getElementById('lbl-total-haber').textContent = formatCLP(haber);
+  const dif = debe - haber;
+  const lblDif = document.getElementById('lbl-diferencia');
+  lblDif.textContent = formatCLP(Math.abs(dif));
+  lblDif.className = 'fw-700 fs-5 ' + (dif === 0 ? 'text-success' : 'text-warning');
+  if (dif === 0) {
+    document.getElementById('lbl-diferencia-cuenta').textContent = '✓ Cuadrado';
+  }
+}
+
+document.getElementById('btn-agregar')?.addEventListener('click', () => {
+  const cuerpo = document.getElementById('cuerpo-lineas');
+  const row = makeRow('', '', 'debe');
+  cuerpo.appendChild(row);
+  row.querySelector('select').focus();
+  recalcular();
+});
+
+// Init existing lines
+const cuerpo = document.getElementById('cuerpo-lineas');
+if (cuerpo) {
+  LINEAS_INIT.forEach(l => cuerpo.appendChild(makeRow(l.cuenta_id, l.monto, l.tipo)));
+  if (LINEAS_INIT.length === 0) cuerpo.appendChild(makeRow('', '', 'debe'));
+  recalcular();
+}
+</script>
+{% endblock %}

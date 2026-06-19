@@ -211,3 +211,321 @@ def generar_asiento_movimiento_bancario(movimiento, usuario=None):
                    descripcion='Pago banco', orden=2)
 
     return asiento
+
+
+def generar_asiento_pago_anticipo(anticipo, movimiento, usuario=None):
+    """
+    Genera el asiento de pago de un anticipo laboral:
+
+        DEBE : Anticipos a Trabajadores (activo)             = anticipo.monto
+        HABER: Banco (cuenta_contable de la CuentaBancaria)  = anticipo.monto
+
+    El anticipo se registra como un activo (por cobrar al trabajador) en vez de un gasto.
+    El gasto se reconoce al descontarlo de la remuneración en generar_asiento_pago_remuneracion.
+
+    Si cuenta_anticipos_trabajadores no está configurada, hace fallback a
+    generar_asiento_movimiento_bancario() para mantener compatibilidad.
+
+    Retorna el AsientoContable creado (borrador) o None.
+    """
+    config = get_config()
+    cuenta_banco = movimiento.cuenta.cuenta_contable
+
+    if not config or not cuenta_banco:
+        return None
+
+    if not config.cuenta_anticipos_trabajadores:
+        return generar_asiento_movimiento_bancario(movimiento, usuario=usuario)
+
+    descripcion = f'Anticipo {anticipo.trabajador.nombre_completo} — {anticipo.fecha}'
+    asiento = AsientoContable.objects.create(
+        fecha=movimiento.fecha,
+        descripcion=descripcion,
+        tipo='pago_anticipo',
+        estado='borrador',
+        movimiento_bancario=movimiento,
+        creado_por=usuario,
+    )
+
+    # DEBE: Anticipos a Trabajadores (activo — el trabajador nos debe este monto)
+    _add_linea(asiento, config.cuenta_anticipos_trabajadores, debe=anticipo.monto,
+               descripcion=f'Anticipo por descontar — {anticipo.trabajador.nombre_completo}',
+               orden=1)
+
+    # HABER: Banco (salida de efectivo)
+    _add_linea(asiento, cuenta_banco, haber=anticipo.monto,
+               descripcion='Pago banco (anticipo)', orden=2)
+
+    return asiento
+
+
+def generar_asiento_pago_anticipo_proveedor(anticipo, movimiento, usuario=None):
+    """
+    Genera el asiento de pago de un anticipo a proveedor:
+
+        DEBE : Anticipos a Proveedores (activo)              = anticipo.monto
+        HABER: Banco (cuenta_contable de la CuentaBancaria)  = anticipo.monto
+
+    El anticipo se registra como activo (el proveedor nos debe bienes/servicios).
+    Cuando el proveedor entrega la factura y se aplica el anticipo, la CxP se reduce
+    manualmente vía movimiento bancario usando esta misma cuenta como contrapartida.
+
+    Si cuenta_anticipos_proveedores no está configurada, hace fallback a
+    generar_asiento_movimiento_bancario() para mantener compatibilidad.
+
+    Retorna el AsientoContable creado (borrador) o None.
+    """
+    config = get_config()
+    cuenta_banco = movimiento.cuenta.cuenta_contable
+
+    if not config or not cuenta_banco:
+        return None
+
+    if not config.cuenta_anticipos_proveedores:
+        return generar_asiento_movimiento_bancario(movimiento, usuario=usuario)
+
+    descripcion = f'Anticipo {anticipo.proveedor.razon_social} — {anticipo.fecha}'
+    asiento = AsientoContable.objects.create(
+        fecha=movimiento.fecha,
+        descripcion=descripcion,
+        tipo='pago_anticipo_proveedor',
+        estado='borrador',
+        movimiento_bancario=movimiento,
+        creado_por=usuario,
+    )
+
+    # DEBE: Anticipos a Proveedores (activo — el proveedor nos debe entrega)
+    _add_linea(asiento, config.cuenta_anticipos_proveedores, debe=anticipo.monto,
+               descripcion=f'Anticipo por aplicar — {anticipo.proveedor.razon_social}',
+               orden=1)
+
+    # HABER: Banco (salida de efectivo)
+    _add_linea(asiento, cuenta_banco, haber=anticipo.monto,
+               descripcion='Pago banco (anticipo proveedor)', orden=2)
+
+    return asiento
+
+
+def generar_asiento_devengamiento_remuneracion(remuneracion, usuario=None):
+    """
+    Genera el asiento de DEVENGAMIENTO al crear/liquidar una remuneración (base devengada):
+
+        DEBE : Gasto Sueldos (operacional o administrativo)  = sueldo_bruto
+        HABER: AFP por Pagar                                 = descuento_afp    (si > 0)
+        HABER: Salud por Pagar                               = descuento_salud  (si > 0)
+        HABER: Anticipos a Trabajadores (liquida el activo)  = anticipo_descontado (si > 0)
+        HABER: Sueldos por Pagar (otros descuentos)          = otros_descuentos  (si > 0)
+        HABER: Sueldos por Pagar (neto al trabajador)        = liquido_pagar
+
+    DEBE = HABER = sueldo_bruto (siempre balanceado).
+
+    La línea HABER Anticipos a Trabajadores cancela el activo creado por
+    generar_asiento_pago_anticipo cuando se entregó el adelanto; el costo
+    queda reconocido aquí en DEBE Gasto Sueldos por el bruto completo.
+
+    El pago posterior solo mueve Sueldos por Pagar → Banco (ver
+    generar_asiento_pago_remuneracion).
+
+    Si alguna cuenta necesaria no está configurada, devuelve None.
+    """
+    config = get_config()
+    if not config:
+        return None
+
+    if remuneracion.trabajador.tipo_costo == 'operacional':
+        cuenta_gasto = config.cuenta_sueldos_operacional
+    else:
+        cuenta_gasto = config.cuenta_sueldos_administrativo
+
+    if not cuenta_gasto or not config.cuenta_sueldos_por_pagar:
+        return None
+
+    descuento_afp    = remuneracion.descuento_afp       or Decimal('0')
+    descuento_salud  = remuneracion.descuento_salud     or Decimal('0')
+    otros_descuentos = remuneracion.otros_descuentos    or Decimal('0')
+    anticipo         = remuneracion.anticipo_descontado or Decimal('0')
+
+    if descuento_afp > 0 and not config.cuenta_afp_por_pagar:
+        return None
+    if descuento_salud > 0 and not config.cuenta_salud_por_pagar:
+        return None
+    if anticipo > 0 and not (config.cuenta_anticipos_trabajadores or config.cuenta_sueldos_por_pagar):
+        return None
+
+    descripcion = (
+        f'Devengamiento Rem. {remuneracion.trabajador.nombre_completo} '
+        f'{remuneracion.periodo_mes:02d}/{remuneracion.periodo_anio}'
+    )
+    asiento = AsientoContable.objects.create(
+        fecha=timezone.now().date(),
+        descripcion=descripcion,
+        tipo='devengamiento_remuneracion',
+        estado='borrador',
+        remuneracion=remuneracion,
+        creado_por=usuario,
+    )
+
+    orden = 1
+    # DEBE: gasto sueldos por el bruto completo
+    _add_linea(asiento, cuenta_gasto, debe=remuneracion.sueldo_bruto,
+               descripcion=f'Gasto sueldo bruto — {remuneracion.trabajador.nombre_completo}',
+               orden=orden)
+    orden += 1
+
+    # HABER: AFP por Pagar
+    if descuento_afp > 0 and config.cuenta_afp_por_pagar:
+        _add_linea(asiento, config.cuenta_afp_por_pagar, haber=descuento_afp,
+                   descripcion='AFP por Pagar', orden=orden)
+        orden += 1
+
+    # HABER: Salud por Pagar
+    if descuento_salud > 0 and config.cuenta_salud_por_pagar:
+        _add_linea(asiento, config.cuenta_salud_por_pagar, haber=descuento_salud,
+                   descripcion='Salud por Pagar (Isapre/FONASA)', orden=orden)
+        orden += 1
+
+    # HABER: Anticipos a Trabajadores — liquida el activo creado al entregar el anticipo
+    if anticipo > 0:
+        if config.cuenta_anticipos_trabajadores:
+            _add_linea(asiento, config.cuenta_anticipos_trabajadores, haber=anticipo,
+                       descripcion='Anticipo descontado (liquida activo)', orden=orden)
+        else:
+            _add_linea(asiento, config.cuenta_sueldos_por_pagar, haber=anticipo,
+                       descripcion='Anticipo descontado', orden=orden)
+        orden += 1
+
+    # HABER: Otros descuentos por Pagar
+    if otros_descuentos > 0:
+        _add_linea(asiento, config.cuenta_sueldos_por_pagar, haber=otros_descuentos,
+                   descripcion='Otros descuentos por pagar', orden=orden)
+        orden += 1
+
+    # HABER: Sueldos por Pagar — neto líquido adeudado al trabajador
+    _add_linea(asiento, config.cuenta_sueldos_por_pagar, haber=remuneracion.liquido_pagar,
+               descripcion=f'Sueldo líquido por pagar — {remuneracion.trabajador.nombre_completo}',
+               orden=orden)
+
+    return asiento
+
+
+def generar_asiento_pago_remuneracion(remuneracion, movimiento, usuario=None):
+    """
+    Genera el asiento de PAGO de una remuneración.
+
+    Si ya existe un asiento de devengamiento para esta remuneración (generado al
+    crear la liquidación), el asiento de pago es simple:
+        DEBE : Sueldos por Pagar  = liquido_pagar
+        HABER: Banco              = liquido_pagar
+
+    Si NO existe devengamiento previo (compatibilidad con liquidaciones antiguas),
+    genera el asiento compuesto completo:
+        DEBE : Gasto Sueldos      = sueldo_bruto
+        HABER: Banco              = liquido_pagar
+        HABER: AFP por Pagar      = descuento_afp
+        HABER: Salud por Pagar    = descuento_salud
+        HABER: Anticipos a Trab.  = anticipo_descontado
+        HABER: Sueldos por Pagar  = otros_descuentos
+
+    Retorna el AsientoContable creado (borrador) o None.
+    """
+    config = get_config()
+    cuenta_banco = movimiento.cuenta.cuenta_contable
+    cuenta_gasto = movimiento.cuenta_contable
+
+    if not config or not cuenta_banco:
+        return None
+
+    # Determinar si ya existe asiento de devengamiento
+    tiene_devengamiento = remuneracion.asientos.filter(
+        tipo='devengamiento_remuneracion'
+    ).exists()
+
+    descripcion = (
+        f'Pago Rem. {remuneracion.trabajador.nombre_completo} '
+        f'{remuneracion.periodo_mes:02d}/{remuneracion.periodo_anio}'
+    )
+
+    if tiene_devengamiento and config.cuenta_sueldos_por_pagar:
+        # Asiento simple: liquida Sueldos por Pagar contra Banco
+        asiento = AsientoContable.objects.create(
+            fecha=movimiento.fecha,
+            descripcion=descripcion,
+            tipo='pago_remuneracion',
+            estado='borrador',
+            movimiento_bancario=movimiento,
+            remuneracion=remuneracion,
+            creado_por=usuario,
+        )
+        _add_linea(asiento, config.cuenta_sueldos_por_pagar, debe=remuneracion.liquido_pagar,
+                   descripcion=f'Liquidación sueldo — {remuneracion.trabajador.nombre_completo}',
+                   orden=1)
+        _add_linea(asiento, cuenta_banco, haber=remuneracion.liquido_pagar,
+                   descripcion='Pago banco (líquido)', orden=2)
+        return asiento
+
+    # --- Fallback: asiento compuesto (sin devengamiento previo) ---
+    if not cuenta_gasto:
+        return None
+
+    descuento_afp    = remuneracion.descuento_afp       or Decimal('0')
+    descuento_salud  = remuneracion.descuento_salud     or Decimal('0')
+    otros_descuentos = remuneracion.otros_descuentos    or Decimal('0')
+    anticipo         = remuneracion.anticipo_descontado or Decimal('0')
+
+    puede_balancear = True
+    if descuento_afp > 0 and not config.cuenta_afp_por_pagar:
+        puede_balancear = False
+    if descuento_salud > 0 and not config.cuenta_salud_por_pagar:
+        puede_balancear = False
+    if anticipo > 0 and not (config.cuenta_anticipos_trabajadores or config.cuenta_sueldos_por_pagar):
+        puede_balancear = False
+    if otros_descuentos > 0 and not config.cuenta_sueldos_por_pagar:
+        puede_balancear = False
+
+    if not puede_balancear:
+        return generar_asiento_movimiento_bancario(movimiento, usuario=usuario)
+
+    asiento = AsientoContable.objects.create(
+        fecha=movimiento.fecha,
+        descripcion=descripcion,
+        tipo='pago_remuneracion',
+        estado='borrador',
+        movimiento_bancario=movimiento,
+        remuneracion=remuneracion,
+        creado_por=usuario,
+    )
+
+    orden = 1
+    _add_linea(asiento, cuenta_gasto, debe=remuneracion.sueldo_bruto,
+               descripcion=f'Gasto sueldo bruto — {remuneracion.trabajador.nombre_completo}',
+               orden=orden)
+    orden += 1
+
+    _add_linea(asiento, cuenta_banco, haber=remuneracion.liquido_pagar,
+               descripcion='Pago banco (líquido)', orden=orden)
+    orden += 1
+
+    if descuento_afp > 0 and config.cuenta_afp_por_pagar:
+        _add_linea(asiento, config.cuenta_afp_por_pagar, haber=descuento_afp,
+                   descripcion='AFP por Pagar', orden=orden)
+        orden += 1
+
+    if descuento_salud > 0 and config.cuenta_salud_por_pagar:
+        _add_linea(asiento, config.cuenta_salud_por_pagar, haber=descuento_salud,
+                   descripcion='Salud por Pagar (Isapre/FONASA)', orden=orden)
+        orden += 1
+
+    if anticipo > 0:
+        if config.cuenta_anticipos_trabajadores:
+            _add_linea(asiento, config.cuenta_anticipos_trabajadores, haber=anticipo,
+                       descripcion='Anticipo descontado (liquida activo)', orden=orden)
+        elif config.cuenta_sueldos_por_pagar:
+            _add_linea(asiento, config.cuenta_sueldos_por_pagar, haber=anticipo,
+                       descripcion='Anticipo descontado', orden=orden)
+        orden += 1
+
+    if otros_descuentos > 0 and config.cuenta_sueldos_por_pagar:
+        _add_linea(asiento, config.cuenta_sueldos_por_pagar, haber=otros_descuentos,
+                   descripcion='Otros descuentos por pagar', orden=orden)
+
+    return asiento

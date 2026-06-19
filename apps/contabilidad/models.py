@@ -12,6 +12,7 @@ class PlanCuentas(TimeStampedModel):
         ('costo', 'Costo Operacional'),
         ('gasto', 'Gasto Administrativo'),
         ('socio', 'Socio / Gerencia'),
+        ('patrimonio', 'Patrimonio / Resultados Acumulados'),
     ]
     NIVEL_CHOICES = [(i, f'Nivel {i}') for i in range(1, 5)]
 
@@ -123,6 +124,36 @@ class ConfiguracionContable(models.Model):
         related_name='+', verbose_name='Cuenta Impuestos SII (F29 / PPM)',
         help_text='Cuenta pasivo para registrar obligaciones tributarias pagadas al SII (Debe en pago F29).'
     )
+    cuenta_afp_por_pagar = models.ForeignKey(
+        PlanCuentas, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='+', verbose_name='AFP por Pagar',
+        help_text='Cuenta pasivo para el descuento AFP retenido al trabajador pendiente de enterar a la AFP.'
+    )
+    cuenta_salud_por_pagar = models.ForeignKey(
+        PlanCuentas, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='+', verbose_name='Salud por Pagar (Isapre/FONASA)',
+        help_text='Cuenta pasivo para el descuento de salud retenido al trabajador pendiente de enterar.'
+    )
+    cuenta_sueldos_por_pagar = models.ForeignKey(
+        PlanCuentas, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='+', verbose_name='Sueldos por Pagar (otros descuentos)',
+        help_text='Cuenta pasivo catch-all para otros descuentos y anticipos descontados en liquidación.'
+    )
+    cuenta_anticipos_trabajadores = models.ForeignKey(
+        PlanCuentas, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='+', verbose_name='Anticipos a Trabajadores',
+        help_text='Cuenta activo para registrar anticipos entregados a trabajadores pendientes de descontar en liquidación.'
+    )
+    cuenta_anticipos_proveedores = models.ForeignKey(
+        PlanCuentas, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='+', verbose_name='Anticipos a Proveedores',
+        help_text='Cuenta activo para registrar anticipos entregados a proveedores pendientes de aplicar contra factura.'
+    )
+    cuenta_patrimonio_apertura = models.ForeignKey(
+        PlanCuentas, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='+', verbose_name='Patrimonio / Resultados Acumulados (Apertura)',
+        help_text='Cuenta de patrimonio o resultados acumulados usada como contrapartida de cuadre en el asiento de apertura.'
+    )
 
     class Meta:
         verbose_name = 'Configuración Contable'
@@ -147,11 +178,16 @@ class ConfiguracionContable(models.Model):
 
 class AsientoContable(TimeStampedModel):
     TIPO_CHOICES = [
+        ('apertura', 'Asiento de Apertura'),
         ('factura_venta', 'Factura de Venta'),
         ('factura_compra', 'Factura de Compra'),
         ('pago_cxc', 'Cobro CxC'),
         ('pago_cxp', 'Pago CxP'),
         ('movimiento_banco', 'Movimiento Bancario'),
+        ('devengamiento_remuneracion', 'Devengamiento de Remuneración'),
+        ('pago_remuneracion', 'Pago de Remuneración'),
+        ('pago_anticipo', 'Pago de Anticipo Laboral'),
+        ('pago_anticipo_proveedor', 'Pago de Anticipo a Proveedor'),
         ('ajuste', 'Ajuste Contable'),
         ('rendicion_gastos', 'Rendición de Gastos'),
         ('otro', 'Otro'),
@@ -165,7 +201,7 @@ class AsientoContable(TimeStampedModel):
     numero = models.CharField(max_length=20, unique=True, verbose_name='N° Asiento', editable=False)
     fecha = models.DateField(verbose_name='Fecha')
     descripcion = models.CharField(max_length=300, verbose_name='Descripción')
-    tipo = models.CharField(max_length=20, choices=TIPO_CHOICES, default='otro', verbose_name='Tipo')
+    tipo = models.CharField(max_length=30, choices=TIPO_CHOICES, default='otro', verbose_name='Tipo')
     estado = models.CharField(max_length=15, choices=ESTADO_CHOICES, default='borrador', verbose_name='Estado')
 
     factura_emitida = models.ForeignKey(
@@ -183,6 +219,10 @@ class AsientoContable(TimeStampedModel):
     rendicion_gastos = models.ForeignKey(
         'proveedores.RendicionGastos', null=True, blank=True, on_delete=models.SET_NULL,
         related_name='asientos', verbose_name='Rendición de Gastos'
+    )
+    remuneracion = models.ForeignKey(
+        'rrhh.Remuneracion', null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='asientos', verbose_name='Remuneración'
     )
     creado_por = models.ForeignKey(
         'accounts.CustomUser', null=True, blank=True, on_delete=models.SET_NULL,

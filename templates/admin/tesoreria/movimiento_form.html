@@ -2,6 +2,11 @@
 
 {% block title %}{% if form.instance.pk %}Editar{% else %}Nuevo{% endif %} Movimiento{% endblock %}
 
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/css/tom-select.bootstrap5.min.css" rel="stylesheet"/>
+<link href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css" rel="stylesheet"/>
+{% endblock %}
+
 {% block breadcrumb %}
   <li class="breadcrumb-item"><a href="{% url 'tesoreria:resumen' %}">Tesorería</a></li>
   <li class="breadcrumb-item"><a href="{% url 'tesoreria:movimiento_list' %}">Movimientos</a></li>
@@ -28,6 +33,7 @@
           <div class="col-sm-3">
             <label class="form-label fw-600">Fecha <span class="text-danger">*</span></label>
             {{ form.fecha }}
+            {% if form.fecha.errors %}<div class="invalid-feedback d-block">{{ form.fecha.errors.0 }}</div>{% endif %}
           </div>
           <div class="col-sm-3">
             <label class="form-label fw-600">Tipo <span class="text-danger">*</span></label>
@@ -45,6 +51,7 @@
           <div class="col-sm-6">
             <label class="form-label fw-600">Cuenta Contable</label>
             {{ form.cuenta_contable }}
+            {% if form.cuenta_contable.errors %}<div class="invalid-feedback d-block">{{ form.cuenta_contable.errors.0 }}</div>{% endif %}
           </div>
           <div class="col-sm-6">
             <label class="form-label fw-600">Proyecto</label>
@@ -73,4 +80,30 @@
     </div>
   </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/js/tom-select.complete.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/l10n/es.js"></script>
+<script>
+'use strict';
+document.addEventListener('DOMContentLoaded', () => {
+  // altInput muestra dd/mm/yyyy al usuario; el input oculto mantiene
+  // YYYY-MM-DD para que Django lo procese sin errores de formato.
+  flatpickr('#id_fecha', {
+    locale: 'es',
+    dateFormat: 'Y-m-d',
+    altInput: true,
+    altFormat: 'd/m/Y',
+    allowInput: true,
+  });
+
+  new TomSelect('#id_cuenta_contable', {
+    allowEmptyOption: true,
+    placeholder: 'Buscar cuenta contable…',
+    sortField: { field: 'text', direction: 'asc' },
+  });
+});
+</script>
 {% endblock %}

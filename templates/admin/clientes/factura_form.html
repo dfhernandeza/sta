@@ -421,6 +421,14 @@ function eliminarDetalle(i) {
   const delEl = document.querySelector(`[name="detalles-${i}-DELETE"]`);
   if (delEl) delEl.checked = true;
   document.getElementById(`drow-${i}`)?.remove();
+  let neto = 0;
+  const n = parseInt(totalEl().value) || 0;
+  for (let j = 0; j < n; j++) {
+    if (document.querySelector(`[name="detalles-${j}-DELETE"]`)?.checked) continue;
+    if (!document.getElementById(`drow-${j}`)) continue;
+    neto += (parseFloat(getField(j, 'cantidad')) || 0) * (parseFloat(getField(j, 'precio_unitario')) || 0);
+  }
+  document.getElementById('id_neto').value = neto.toFixed(0);
   syncUI();
 }
 

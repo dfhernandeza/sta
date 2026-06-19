@@ -14,14 +14,17 @@ urlpatterns = [
     path('facturas/crear/', views.FacturaRecibidaCreateView.as_view(), name='factura_create'),
     path('facturas/<int:pk>/', views.FacturaRecibidaDetailView.as_view(), name='factura_detail'),
     path('facturas/<int:pk>/editar/', views.FacturaRecibidaUpdateView.as_view(), name='factura_update'),
+    path('facturas/<int:pk>/eliminar/', views.FacturaRecibidaDeleteView.as_view(), name='factura_delete'),
     # CxP
     path('cxp/', views.CuentaPorPagarListView.as_view(), name='cxp_list'),
     path('cxp/<int:pk>/pagar/', views.CxPPagarView.as_view(), name='cxp_pagar'),
+    path('cxp/<int:pk>/anular/', views.AnularPagoCxPView.as_view(), name='cxp_anular'),
     # Asiento contable
     path('facturas/<int:pk>/asiento/', views.GenerarAsientoFacturaRecibidaView.as_view(), name='factura_asiento'),
     # Anticipos
     path('anticipos/', views.AnticipoListView.as_view(), name='anticipo_list'),
     path('anticipos/crear/', views.AnticipoCreateView.as_view(), name='anticipo_create'),
+    path('anticipos/<int:pk>/pagar/', views.AnticipoProveedorPagarView.as_view(), name='anticipo_pagar'),
     # Rendiciones de gastos
     path('rendiciones/', views.RendicionGastosListView.as_view(), name='rendicion_list'),
     path('rendiciones/crear/', views.RendicionGastosCreateView.as_view(), name='rendicion_create'),

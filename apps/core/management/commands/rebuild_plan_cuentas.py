@@ -1,11 +1,5 @@
-from django.db import migrations
-
-# ---------------------------------------------------------------------------
-# Plan de cuentas inicial STA Muebles y Terminaciones
-# Estructura: (nivel1, nivel2, nivel3, nivel4)
-# Las cuentas de nivel 1-3 NO aceptan movimientos directos (acepta_movimientos=False)
-# Las cuentas de nivel 4 SÍ aceptan movimientos (acepta_movimientos=True)
-# ---------------------------------------------------------------------------
+from django.core.management.base import BaseCommand
+from apps.contabilidad.models import AsientoContable, PlanCuentas
 
 PLAN = [
     # ACTIVOS
@@ -259,7 +253,6 @@ PLAN = [
     ('SOCIO GERENCIA', 'Gastos Personales', 'Otros', 'Personal'),
 ]
 
-# Mapeo de nivel-1 a tipo del modelo
 TIPO_MAP = {
     "ACTIVOS": "activo",
     "PASIVOS": "pasivo",
@@ -271,55 +264,63 @@ TIPO_MAP = {
 }
 
 
-def build_plan(apps, schema_editor):
-    PlanCuentas = apps.get_model("contabilidad", "PlanCuentas")
+class Command(BaseCommand):
+    help = "Elimina todo el plan de cuentas y lo recrea desde cero con la misma lógica de la migración inicial"
 
-    # Contadores por tipo para generar códigos correlativos
-    tipo_counter = {}   # tipo -> int  (nivel 1)
-    l2_counter = {}     # (tipo_code,) -> int
-    l3_counter = {}     # (tipo_code, l2_code) -> int
-    l4_counter = {}     # (tipo_code, l2_code, l3_code) -> int
-
-    # Caché de objetos ya creados: clave = (nombre, nivel, parent_id)
-    cache = {}
-
-    def get_or_create_cuenta(nombre, nivel, tipo, parent=None):
-        parent_id = parent.pk if parent else None
-        key = (nombre, nivel, parent_id)
-        if key in cache:
-            return cache[key]
-        obj, _ = PlanCuentas.objects.get_or_create(
-            nombre=nombre,
-            nivel=nivel,
-            parent=parent,
-            defaults={
-                "tipo": tipo,
-                "activa": True,
-                "acepta_movimientos": (nivel == 4),
-                "codigo": "__TMP__",  # se actualiza justo después
-            },
+    def add_arguments(self, parser):
+        parser.add_argument(
+            '--confirmar',
+            action='store_true',
+            help='Confirma la eliminación y recreación del plan de cuentas',
         )
-        cache[key] = obj
-        return obj
+        parser.add_argument(
+            '--incluyendo-asientos',
+            action='store_true',
+            help='Elimina también todos los asientos contables (y sus líneas) antes de reconstruir el plan',
+        )
 
-    # Primer paso: recopilar estructura única para asignar códigos
-    # Construir árbol: {l1: {l2: {l3: [l4, ...]}}}
-    tree = {}
-    for l1, l2, l3, l4 in PLAN:
-        tree.setdefault(l1, {})
-        tree[l1].setdefault(l2, {})
-        tree[l1][l2].setdefault(l3, [])
-        if l4 not in tree[l1][l2][l3]:
-            tree[l1][l2][l3].append(l4)
+    def handle(self, *args, **options):
+        if not options['confirmar']:
+            self.stdout.write(self.style.WARNING(
+                'Este comando eliminará TODAS las cuentas y las recreará.\n'
+                'Ejecuta con --confirmar para proceder.'
+            ))
+            return
 
-    l1_idx = 0
-    for l1_name, l2s in tree.items():
-        l1_idx += 1
-        tipo = TIPO_MAP[l1_name]
-        l1_code = str(l1_idx)
+        # Verificar si hay asientos que bloquearían la eliminación
+        asientos_count = AsientoContable.objects.count()
+        if asientos_count > 0 and not options['incluyendo_asientos']:
+            self.stdout.write(self.style.ERROR(
+                f'Existen {asientos_count} asientos contables con líneas referenciando cuentas.\n'
+                'Agrega --incluyendo-asientos para eliminarlos también (acción irreversible).'
+            ))
+            return
 
-        l1_obj = PlanCuentas.objects.filter(codigo=l1_code).first()
-        if not l1_obj:
+        if options['incluyendo_asientos'] and asientos_count > 0:
+            self.stdout.write(self.style.WARNING(f'Eliminando {asientos_count} asientos contables...'))
+            AsientoContable.objects.all().delete()
+            self.stdout.write(self.style.WARNING('  Asientos eliminados.'))
+
+        self.stdout.write('Eliminando plan de cuentas existente...')
+        total_deleted = 0
+        for nivel in (4, 3, 2, 1):
+            deleted, _ = PlanCuentas.objects.filter(nivel=nivel).delete()
+            total_deleted += deleted
+        self.stdout.write(self.style.WARNING(f'  {total_deleted} cuentas eliminadas.'))
+
+        self.stdout.write('Construyendo árbol...')
+        tree = {}
+        for l1, l2, l3, l4 in PLAN:
+            tree.setdefault(l1, {})
+            tree[l1].setdefault(l2, {})
+            tree[l1][l2].setdefault(l3, [])
+            if l4 not in tree[l1][l2][l3]:
+                tree[l1][l2][l3].append(l4)
+
+        total = 0
+        for l1_idx, (l1_name, l2s) in enumerate(tree.items(), start=1):
+            tipo = TIPO_MAP[l1_name]
+            l1_code = str(l1_idx)
             l1_obj = PlanCuentas.objects.create(
                 codigo=l1_code,
                 nombre=l1_name,
@@ -329,15 +330,10 @@ def build_plan(apps, schema_editor):
                 activa=True,
                 acepta_movimientos=False,
             )
-        cache[(l1_name, 1, None)] = l1_obj
+            total += 1
 
-        l2_idx = 0
-        for l2_name, l3s in l2s.items():
-            l2_idx += 1
-            l2_code = f"{l1_code}.{l2_idx:02d}"
-
-            l2_obj = PlanCuentas.objects.filter(codigo=l2_code).first()
-            if not l2_obj:
+            for l2_idx, (l2_name, l3s) in enumerate(l2s.items(), start=1):
+                l2_code = f"{l1_code}.{l2_idx:02d}"
                 l2_obj = PlanCuentas.objects.create(
                     codigo=l2_code,
                     nombre=l2_name,
@@ -347,14 +343,10 @@ def build_plan(apps, schema_editor):
                     activa=True,
                     acepta_movimientos=False,
                 )
+                total += 1
 
-            l3_idx = 0
-            for l3_name, l4s in l3s.items():
-                l3_idx += 1
-                l3_code = f"{l2_code}.{l3_idx:02d}"
-
-                l3_obj = PlanCuentas.objects.filter(codigo=l3_code).first()
-                if not l3_obj:
+                for l3_idx, (l3_name, l4s) in enumerate(l3s.items(), start=1):
+                    l3_code = f"{l2_code}.{l3_idx:02d}"
                     l3_obj = PlanCuentas.objects.create(
                         codigo=l3_code,
                         nombre=l3_name,
@@ -364,10 +356,10 @@ def build_plan(apps, schema_editor):
                         activa=True,
                         acepta_movimientos=False,
                     )
+                    total += 1
 
-                for l4_idx, l4_name in enumerate(l4s, start=1):
-                    l4_code = f"{l3_code}.{l4_idx:02d}"
-                    if not PlanCuentas.objects.filter(codigo=l4_code).exists():
+                    for l4_idx, l4_name in enumerate(l4s, start=1):
+                        l4_code = f"{l3_code}.{l4_idx:02d}"
                         PlanCuentas.objects.create(
                             codigo=l4_code,
                             nombre=l4_name,
@@ -377,19 +369,6 @@ def build_plan(apps, schema_editor):
                             activa=True,
                             acepta_movimientos=True,
                         )
+                        total += 1
 
-
-def reverse_plan(apps, schema_editor):
-    PlanCuentas = apps.get_model("contabilidad", "PlanCuentas")
-    PlanCuentas.objects.all().delete()
-
-
-class Migration(migrations.Migration):
-
-    dependencies = [
-        ("contabilidad", "0001_initial"),
-    ]
-
-    operations = [
-        migrations.RunPython(build_plan, reverse_plan),
-    ]
+        self.stdout.write(self.style.SUCCESS(f'Plan de cuentas reconstruido: {total} cuentas creadas.'))

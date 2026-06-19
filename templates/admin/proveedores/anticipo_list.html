@@ -22,7 +22,8 @@
       <select name="estado" class="form-select form-select-sm">
         <option value="">Todos los estados</option>
         <option value="pendiente" {% if request.GET.estado == "pendiente" %}selected{% endif %}>Pendiente</option>
-        <option value="pagada" {% if request.GET.estado == "pagada" %}selected{% endif %}>Pagada</option>
+        <option value="aplicado" {% if request.GET.estado == "aplicado" %}selected{% endif %}>Aplicado</option>
+        <option value="devuelto" {% if request.GET.estado == "devuelto" %}selected{% endif %}>Devuelto</option>
       </select>
     </div>
     <div class="col-auto">
@@ -38,7 +39,7 @@
       <thead>
         <tr>
           <th>Proveedor</th><th>Fecha</th><th class="text-end">Monto</th>
-          <th class="text-center">Estado</th>
+          <th class="text-center">Estado</th><th></th>
         </tr>
       </thead>
       <tbody>
@@ -48,6 +49,13 @@
           <td class="small">{{ a.fecha }}</td>
           <td class="text-end fw-600">{{ a.monto|moneda_chilena }}</td>
           <td class="text-center"><span class="badge-{{ a.estado }}">{{ a.get_estado_display }}</span></td>
+          <td class="text-end">
+            {% if a.estado == 'pendiente' %}
+            <a href="{% url 'proveedores:anticipo_pagar' a.pk %}" class="btn btn-sm btn-success rounded-pill px-3">
+              <i class="bi bi-cash-coin me-1"></i>Pagar
+            </a>
+            {% endif %}
+          </td>
         </tr>
         {% empty %}
         <tr><td colspan="4" class="text-center text-muted py-4">No hay anticipos registrados.</td></tr>

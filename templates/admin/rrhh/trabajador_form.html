@@ -93,6 +93,15 @@
             <label class="form-label fw-600">Isapre / Fonasa</label>
             {{ form.isapre }}
           </div>
+          <div class="col-sm-4 d-flex align-items-end pb-1">
+            <div class="form-check">
+              {{ form.exento_previsional }}
+              <label class="form-check-label fw-600" for="{{ form.exento_previsional.id_for_label }}">
+                {{ form.exento_previsional.label }}
+              </label>
+              <div class="form-text">{{ form.exento_previsional.help_text }}</div>
+            </div>
+          </div>
           <div class="col-sm-4">
             <label class="form-label fw-600">Banco</label>
             {{ form.banco }}

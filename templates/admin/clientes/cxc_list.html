@@ -60,6 +60,14 @@
             <a href="{% url 'clientes:cxc_pagar' cxc.pk %}" class="btn btn-success btn-sm rounded-pill px-3" title="Registrar cobro">
               <i class="bi bi-cash-coin"></i>
             </a>
+            {% else %}
+            <form method="post" action="{% url 'clientes:cxc_anular' cxc.pk %}" class="d-inline"
+                  onsubmit="return confirm('\u00bfAnular este cobro? Se eliminará el movimiento bancario asociado y la cuenta volverá a pendiente.')">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-outline-danger btn-sm rounded-pill px-3" title="Anular cobro">
+                <i class="bi bi-arrow-counterclockwise"></i>
+              </button>
+            </form>
             {% endif %}
           </td>
         </tr>

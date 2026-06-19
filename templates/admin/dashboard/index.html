@@ -80,6 +80,16 @@
           <span class="text-muted"><i class="bi bi-credit-card me-2 text-danger"></i>CxP Pendiente</span>
           <span class="fw-600">{{ total_cxp_pendiente|moneda_chilena }}</span>
         </li>
+        <li class="list-group-item d-flex justify-content-between px-0">
+          <span class="text-muted"><i class="bi bi-people me-2 text-warning"></i>Sueldos por Pagar</span>
+          <span class="fw-600 text-warning">{{ sueldos_por_pagar|moneda_chilena }}</span>
+        </li>
+        <li class="list-group-item d-flex justify-content-between px-0">
+          <span class="text-muted"><i class="bi bi-shield-check me-2 text-info"></i>Previred por Pagar</span>
+          <span class="fw-600 text-info" title="AFP: {{ afp_por_pagar|moneda_chilena }} / Salud: {{ salud_por_pagar|moneda_chilena }}">
+            {{ previred_por_pagar|moneda_chilena }}
+          </span>
+        </li>
         {% if f29_pendientes %}
         <li class="list-group-item d-flex justify-content-between px-0">
           <span class="text-muted"><i class="bi bi-receipt me-2 text-warning"></i>F29 Pendientes</span>

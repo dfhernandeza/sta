@@ -123,7 +123,7 @@ class TrabajadorCreateView(GestionMixin, CreateView):
     template_name = 'admin/rrhh/trabajador_form.html'
     fields = ['rut', 'nombres', 'apellidos', 'cargo', 'fecha_ingreso', 'fecha_termino', 'fecha_nacimiento', 'sueldo_base',
               'afp', 'isapre', 'banco', 'tipo_cuenta', 'numero_cuenta', 'email', 'telefono', 'direccion',
-              'tipo_costo', 'centro_costo', 'estado']
+              'tipo_costo', 'centro_costo', 'estado', 'exento_previsional']
     success_url = reverse_lazy('rrhh:trabajador_list')
 
     def form_valid(self, form):
@@ -141,7 +141,7 @@ class TrabajadorUpdateView(GestionMixin, UpdateView):
     template_name = 'admin/rrhh/trabajador_form.html'
     fields = ['rut', 'nombres', 'apellidos', 'cargo', 'fecha_ingreso', 'fecha_termino', 'fecha_nacimiento',
               'sueldo_base', 'afp', 'isapre', 'banco', 'tipo_cuenta', 'numero_cuenta',
-              'email', 'telefono', 'direccion', 'estado', 'tipo_costo', 'centro_costo']
+              'email', 'telefono', 'direccion', 'estado', 'tipo_costo', 'centro_costo', 'exento_previsional']
     success_url = reverse_lazy('rrhh:trabajador_list')
 
     def form_valid(self, form):
@@ -210,13 +210,17 @@ class RemuneracionCreateView(GestionMixin, CreateView):
         if trabajador_pk:
             try:
                 t = Trabajador.objects.get(pk=int(trabajador_pk))
-                tasa_afp = AFP_TASAS.get(t.afp, Decimal('0.1144'))
                 bruto = t.sueldo_base
-                afp = round(bruto * tasa_afp)
-                salud = round(bruto * TASA_SALUD_DEFAULT)
                 anticipo = AnticipoLaboral.objects.filter(
-                    trabajador=t, estado='pendiente'
+                    trabajador=t, estado='descontado'
                 ).aggregate(s=Sum('monto'))['s'] or Decimal('0')
+                if t.exento_previsional:
+                    afp = Decimal('0')
+                    salud = Decimal('0')
+                else:
+                    tasa_afp = AFP_TASAS.get(t.afp, Decimal('0.1144'))
+                    afp = round(bruto * tasa_afp)
+                    salud = round(bruto * TASA_SALUD_DEFAULT)
                 liquido = bruto - afp - salud - anticipo
                 initial.update({
                     'trabajador': t.pk,
@@ -232,8 +236,22 @@ class RemuneracionCreateView(GestionMixin, CreateView):
         return initial
 
     def form_valid(self, form):
-        messages.success(self.request, 'Liquidación registrada.')
-        return super().form_valid(form)
+        response = super().form_valid(form)
+        from apps.contabilidad.utils import generar_asiento_devengamiento_remuneracion
+        asiento = generar_asiento_devengamiento_remuneracion(self.object, usuario=self.request.user)
+        if asiento:
+            messages.success(
+                self.request,
+                f'Liquidación registrada. Asiento de devengamiento {asiento.numero} generado en borrador.'
+            )
+        else:
+            messages.success(self.request, 'Liquidación registrada.')
+            messages.warning(
+                self.request,
+                'No se pudo generar el asiento de devengamiento. '
+                'Verifique que la Configuración Contable tenga todas las cuentas de remuneraciones asignadas.'
+            )
+        return response
 
     def get_success_url(self):
         from django.urls import reverse
@@ -255,7 +273,7 @@ class RemuneracionDatosAPI(GestionMixin, View):
     def get(self, request, pk):
         t = get_object_or_404(Trabajador, pk=pk)
         anticipo_pendiente = AnticipoLaboral.objects.filter(
-            trabajador=t, estado='pendiente'
+            trabajador=t, estado='descontado'
         ).aggregate(s=Sum('monto'))['s'] or Decimal('0')
         tasa_afp = AFP_TASAS.get(t.afp, Decimal('0.1144'))
         bruto = t.sueldo_base
@@ -270,6 +288,7 @@ class RemuneracionDatosAPI(GestionMixin, View):
             'descuento_afp': float(afp),
             'descuento_salud': float(salud),
             'anticipo_pendiente': float(anticipo_pendiente),
+            'exento_previsional': t.exento_previsional,
         })
 
 
@@ -279,6 +298,16 @@ class RemuneracionUpdateView(GestionMixin, UpdateView):
     fields = ['trabajador', 'periodo_mes', 'periodo_anio', 'sueldo_base', 'horas_extra',
               'bono', 'sueldo_bruto', 'descuento_afp', 'descuento_salud',
               'otros_descuentos', 'anticipo_descontado', 'liquido_pagar', 'estado', 'fecha_pago']
+
+    def dispatch(self, request, *args, **kwargs):
+        rem = self.get_object()
+        if rem.estado == 'pagado':
+            messages.error(
+                request,
+                'No se puede editar una liquidación que ya fue pagada.'
+            )
+            return redirect('rrhh:remuneracion_procesar_detalle', mes=rem.periodo_mes, anio=rem.periodo_anio)
+        return super().dispatch(request, *args, **kwargs)
 
     def form_valid(self, form):
         messages.success(self.request, 'Liquidación actualizada.')
@@ -434,7 +463,7 @@ class AnticipoLaboralPagarView(GestionMixin, View):
 
     def post(self, request, pk):
         from apps.tesoreria.models import MovimientoBancario
-        from apps.contabilidad.utils import generar_asiento_movimiento_bancario
+        from apps.contabilidad.utils import generar_asiento_pago_anticipo
 
         anticipo = get_object_or_404(AnticipoLaboral, pk=pk)
         form = self._build_form(data=request.POST)
@@ -460,7 +489,8 @@ class AnticipoLaboralPagarView(GestionMixin, View):
             cuenta_contable=None,
         )
 
-        # Asignar cuenta_contable según tipo_costo del trabajador
+        # La cuenta_contable del movimiento apunta a la cuenta de sueldos del trabajador
+        # (usada como fallback en el asiento si cuenta_anticipos_trabajadores no está configurada)
         try:
             from apps.contabilidad.models import ConfiguracionContable
             config = ConfiguracionContable.get()
@@ -474,8 +504,9 @@ class AnticipoLaboralPagarView(GestionMixin, View):
         except Exception:
             pass
 
-        # 3. Generar asiento contable borrador
-        asiento = generar_asiento_movimiento_bancario(movimiento, usuario=request.user)
+        # 3. Generar asiento: DEBE Anticipos a Trabajadores (activo) / HABER Banco
+        #    Si cuenta_anticipos_trabajadores no está configurada, fallback a DEBE gasto / HABER banco
+        asiento = generar_asiento_pago_anticipo(anticipo, movimiento, usuario=request.user)
 
         if asiento:
             messages.success(
@@ -530,7 +561,7 @@ class RemuneracionPagarView(GestionMixin, View):
 
     def post(self, request, pk):
         from apps.tesoreria.models import MovimientoBancario
-        from apps.contabilidad.utils import generar_asiento_movimiento_bancario
+        from apps.contabilidad.utils import generar_asiento_pago_remuneracion
 
         remuneracion = get_object_or_404(Remuneracion, pk=pk)
         form = self._build_form(data=request.POST)
@@ -546,7 +577,7 @@ class RemuneracionPagarView(GestionMixin, View):
         remuneracion.fecha_pago = d['fecha_pago']
         remuneracion.save()
 
-        # 2. Crear MovimientoBancario (egreso)
+        # 2. Crear MovimientoBancario (egreso por el líquido transferido al trabajador)
         descripcion_mov = (
             f'Rem. {remuneracion.trabajador.nombre_completo} '
             f'{remuneracion.periodo_mes:02d}/{remuneracion.periodo_anio}'
@@ -560,7 +591,8 @@ class RemuneracionPagarView(GestionMixin, View):
             cuenta_contable=None,
         )
 
-        # Asignar cuenta_contable según tipo_costo del trabajador
+        # Asignar cuenta_contable del movimiento según tipo_costo del trabajador
+        # (usado por el asiento como cuenta DEBE de gasto de sueldos)
         try:
             from apps.contabilidad.models import ConfiguracionContable
             config = ConfiguracionContable.get()
@@ -574,8 +606,9 @@ class RemuneracionPagarView(GestionMixin, View):
         except Exception:
             pass
 
-        # 3. Generar asiento contable borrador
-        asiento = generar_asiento_movimiento_bancario(movimiento, usuario=request.user)
+        # 3. Generar asiento compuesto: DEBE gasto_sueldos (bruto) /
+        #    HABER banco (líquido) + AFP por Pagar + Salud por Pagar + Sueldos por Pagar (otros)
+        asiento = generar_asiento_pago_remuneracion(remuneracion, movimiento, usuario=request.user)
 
         if asiento:
             messages.success(

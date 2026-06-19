@@ -1,4 +1,4 @@
-from django.views.generic import ListView, CreateView, UpdateView, TemplateView, View
+from django.views.generic import ListView, CreateView, UpdateView, TemplateView, View, DeleteView
 from django.urls import reverse_lazy
 from django.contrib import messages
 from django.db.models import Sum
@@ -167,6 +167,19 @@ class MovimientoUpdateView(GestionMixin, UpdateView):
     fields = ['cuenta', 'fecha', 'tipo', 'monto', 'descripcion', 'documento', 'cuenta_contable', 'proyecto', 'conciliado']
     success_url = reverse_lazy('tesoreria:movimiento_list')
 
+    def dispatch(self, request, *args, **kwargs):
+        movimiento = self.get_object()
+        asientos_confirmados = movimiento.asientos.filter(estado='confirmado')
+        if asientos_confirmados.exists():
+            numeros = ', '.join(a.numero for a in asientos_confirmados)
+            messages.error(
+                request,
+                f'No se puede editar este movimiento: tiene asiento(s) confirmado(s) asociado(s): {numeros}. '
+                'Anule el asiento antes de modificar el movimiento.'
+            )
+            return redirect('tesoreria:movimiento_list')
+        return super().dispatch(request, *args, **kwargs)
+
     def form_valid(self, form):
         messages.success(self.request, 'Movimiento actualizado.')
         return super().form_valid(form)
@@ -175,6 +188,37 @@ class MovimientoUpdateView(GestionMixin, UpdateView):
         ctx = super().get_context_data(**kwargs)
         ctx['titulo'] = 'Editar Movimiento'
         return ctx
+
+
+class MovimientoDeleteView(GestionMixin, DeleteView):
+    model = MovimientoBancario
+    template_name = 'admin/confirm_delete.html'
+    success_url = reverse_lazy('tesoreria:movimiento_list')
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx['cancel_url'] = reverse_lazy('tesoreria:movimiento_list')
+        return ctx
+
+    def dispatch(self, request, *args, **kwargs):
+        movimiento = self.get_object()
+        asientos_confirmados = movimiento.asientos.filter(estado='confirmado')
+        if asientos_confirmados.exists():
+            numeros = ', '.join(a.numero for a in asientos_confirmados)
+            messages.error(
+                request,
+                f'No se puede eliminar este movimiento: tiene asiento(s) confirmado(s): {numeros}. '
+                'Anule el asiento antes de eliminar el movimiento.'
+            )
+            return redirect('tesoreria:movimiento_list')
+        return super().dispatch(request, *args, **kwargs)
+
+    def form_valid(self, form):
+        # Anular asientos en borrador vinculados antes de eliminar el movimiento
+        movimiento = self.get_object()
+        movimiento.asientos.filter(estado='borrador').update(estado='anulado')
+        messages.success(self.request, 'Movimiento eliminado.')
+        return super().form_valid(form)
 
 
 class GenerarAsientoMovimientoView(GestionMixin, View):
