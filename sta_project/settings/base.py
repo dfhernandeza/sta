@@ -113,11 +113,23 @@ LOGGING = {
             'backupCount': 5,
             'formatter': 'verbose',
         },
+        'file_django': {
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': BASE_DIR / 'logs' / 'django.log',
+            'maxBytes': 1024 * 1024 * 5,  # 5 MB
+            'backupCount': 5,
+            'formatter': 'verbose',
+        },
     },
     'loggers': {
         'apps.proveedores': {
             'handlers': ['console', 'file'],
             'level': 'INFO',
+            'propagate': False,
+        },
+        'django.request': {
+            'handlers': ['console', 'file_django'],
+            'level': 'ERROR',
             'propagate': False,
         },
     },
