@@ -27,6 +27,7 @@ jobs:
             echo "--- Instalando dependencias ---"
             source venv/bin/activate
             pip install -r requirements.txt --quiet
+            chmod +x venv/bin/*
 
             echo "--- Aplicando migraciones ---"
             python manage.py migrate --noinput

@@ -1,6 +1,10 @@
+import logging
+
 from django.views.generic import ListView, CreateView, UpdateView, DetailView, DeleteView, View
 from django.urls import reverse_lazy, reverse
 from django.contrib import messages
+
+logger = logging.getLogger(__name__)
 from django.shortcuts import get_object_or_404, redirect
 from django.utils import timezone
 from datetime import timedelta
@@ -126,8 +130,10 @@ class ProveedorCreateView(GestionMixin, CreateView):
     success_url = reverse_lazy('proveedores:proveedor_list')
 
     def form_valid(self, form):
+        response = super().form_valid(form)
+        logger.info('Proveedor creado: %s (RUT: %s) por %s', self.object.razon_social, self.object.rut, self.request.user)
         messages.success(self.request, 'Proveedor registrado exitosamente.')
-        return super().form_valid(form)
+        return response
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
@@ -142,8 +148,10 @@ class ProveedorUpdateView(GestionMixin, UpdateView):
     success_url = reverse_lazy('proveedores:proveedor_list')
 
     def form_valid(self, form):
+        response = super().form_valid(form)
+        logger.info('Proveedor actualizado: %s (pk=%s) por %s', self.object.razon_social, self.object.pk, self.request.user)
         messages.success(self.request, 'Proveedor actualizado.')
-        return super().form_valid(form)
+        return response
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
@@ -221,6 +229,7 @@ class FacturaRecibidaCreateView(GestionMixin, CreateView):
             }
         )
         _generar_asiento_automatico_factura(self.request, form.instance, reemplazar_borrador=False)
+        logger.info('Factura recibida creada: %s (proveedor: %s) por %s', form.instance.numero, form.instance.proveedor, self.request.user)
         messages.success(self.request, f'Factura {form.instance.numero} registrada exitosamente.')
         return response
 
@@ -275,6 +284,7 @@ class FacturaRecibidaUpdateView(GestionMixin, UpdateView):
         formset.save()
         _sincronizar_cxp_factura(self.object)
         _generar_asiento_automatico_factura(self.request, self.object, reemplazar_borrador=True)
+        logger.info('Factura recibida actualizada: %s (pk=%s) por %s', self.object.numero, self.object.pk, self.request.user)
         messages.success(self.request, 'Factura actualizada.')
         return response
 
@@ -324,6 +334,7 @@ class FacturaRecibidaDeleteView(GestionMixin, DeleteView):
     def form_valid(self, form):
         factura = self.object
         factura.asientos.filter(estado='borrador').delete()
+        logger.warning('Factura recibida eliminada: %s (pk=%s) por %s', factura.numero, factura.pk, self.request.user)
         messages.success(self.request, f'Factura {factura.numero} eliminada.')
         return super().form_valid(form)
 
@@ -479,11 +490,13 @@ class CxPPagarView(GestionMixin, View):
         asiento = generar_asiento_movimiento_bancario(movimiento, usuario=request.user)
 
         if asiento:
+            logger.info('CxP pk=%s pagada. Movimiento=%s, asiento=%s. Usuario: %s', cxp.pk, movimiento.pk, asiento.numero, request.user)
             messages.success(
                 request,
                 f'Pago registrado. Movimiento bancario creado y asiento {asiento.numero} generado en borrador.'
             )
         else:
+            logger.warning('CxP pk=%s pagada sin asiento generado. Movimiento=%s. Usuario: %s', cxp.pk, movimiento.pk, request.user)
             messages.success(request, 'Pago registrado y movimiento bancario creado.')
             messages.warning(
                 request,
@@ -540,6 +553,7 @@ class AnularPagoCxPView(GestionMixin, View):
                 cxp.rendicion.estado = 'aprobado'
                 cxp.rendicion.save(update_fields=['estado'])
 
+        logger.warning('Pago anulado para CxP pk=%s por %s', cxp.pk, request.user)
         messages.success(request, 'Pago anulado correctamente. La cuenta quedó pendiente de pago.')
         return redirect('proveedores:cxp_list')
 
@@ -670,11 +684,13 @@ class AnticipoProveedorPagarView(GestionMixin, View):
         asiento = generar_asiento_pago_anticipo_proveedor(anticipo, movimiento, usuario=request.user)
 
         if asiento:
+            logger.info('Anticipo pk=%s pagado. Movimiento=%s, asiento=%s. Usuario: %s', anticipo.pk, movimiento.pk, asiento.numero, request.user)
             messages.success(
                 request,
                 f'Anticipo registrado. Movimiento bancario creado y asiento {asiento.numero} generado en borrador.'
             )
         else:
+            logger.warning('Anticipo pk=%s pagado sin asiento generado. Movimiento=%s. Usuario: %s', anticipo.pk, movimiento.pk, request.user)
             messages.success(request, 'Anticipo registrado y movimiento bancario creado.')
             messages.warning(
                 request,
@@ -748,6 +764,7 @@ class RendicionGastosCreateView(GestionMixin, CreateView):
                 monto=total_rendicion,
             )
 
+        logger.info('Rendición de gastos creada: pk=%s, trabajador=%s, total=%s por %s', self.object.pk, self.object.trabajador, total_rendicion, self.request.user)
         messages.success(self.request, 'Rendición de gastos creada.')
         return response
 
@@ -793,8 +810,10 @@ class RendicionGastosDetailView(GestionMixin, DetailView):
             rendicion.estado = nuevo_estado
             rendicion.save(update_fields=['estado'])
             labels = dict(RendicionGastos.ESTADO_CHOICES)
+            logger.info('Rendición pk=%s cambio de estado a "%s" por %s', rendicion.pk, nuevo_estado, request.user)
             messages.success(request, f'Estado actualizado a "{labels[nuevo_estado]}".') 
         else:
+            logger.warning('Transición inválida para rendición pk=%s: estado=%s, solicitado=%s por %s', rendicion.pk, rendicion.estado, nuevo_estado, request.user)
             messages.error(request, f'Transición de estado no permitida.')
         return redirect('proveedores:rendicion_detail', pk=rendicion.pk)
 

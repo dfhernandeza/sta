@@ -102,8 +102,10 @@
     altFormat: 'd/m/Y',
     allowInput: true,
   };
-  flatpickr('#id_fecha_inicio', fpOpts);
-  flatpickr('#id_fecha_termino', fpOpts);
+  const elInicio = document.getElementById('id_fecha_inicio');
+  const elTermino = document.getElementById('id_fecha_termino');
+  flatpickr(elInicio, {...fpOpts, defaultDate: elInicio.value || null});
+  flatpickr(elTermino, {...fpOpts, defaultDate: elTermino.value || null});
   // Tom Select en campo de cliente
   new TomSelect("#id_cliente", {
     create: false,
