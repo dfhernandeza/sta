@@ -54,31 +54,35 @@ def generar_asiento_factura_emitida(factura, usuario=None):
         creado_por=usuario,
     )
 
-    # Línea DEBE: CxC por total
-    _add_linea(asiento, config.cuenta_cxc, debe=factura.total,
-               descripcion=f'CxC Factura {factura.numero}', orden=1)
-
     # Líneas HABER: ingresos por detalle
     orden = 10
     detalles = factura.detalles.select_related('cuenta_contable').all()
-    subtotal_asignado = Decimal('0.00')
+    suma_afecto = Decimal('0')
+    suma_exento = Decimal('0')
     for det in detalles:
-        subtotal = (det.cantidad * det.precio_unitario).quantize(Decimal('0.01'))
+        subtotal = (det.cantidad * det.precio_unitario).quantize(Decimal('0.0001'))
         cuenta_ingreso = det.cuenta_contable or config.cuenta_ventas_default
+        descripcion_detallada = f'{det.descripcion[:150]} (Factura {factura.numero} Cant: {det.cantidad} x Precio Unit: {det.precio_unitario})'
         _add_linea(asiento, cuenta_ingreso, haber=subtotal,
-                   descripcion=det.descripcion[:200], orden=orden)
-        subtotal_asignado += subtotal
+                   descripcion=descripcion_detallada, orden=orden)
+        if getattr(det, 'exento_iva', False):
+            suma_exento += subtotal
+        else:
+            suma_afecto += subtotal
         orden += 1
 
-    # Si no hay detalles o quedó diferencia vs neto, asignar a ventas_default
-    diferencia_neto = (factura.neto - subtotal_asignado).quantize(Decimal('0.01'))
-    if diferencia_neto != Decimal('0.00'):
-        _add_linea(asiento, config.cuenta_ventas_default, haber=diferencia_neto,
-                   descripcion='Ingresos s/n detalle', orden=orden)
+    # IVA y total calculados desde los subtotales (garantiza que Debe = Haber)
+    iva_calculado = (suma_afecto * Decimal('0.19')).quantize(Decimal('0.01'))
+    total_calculado = suma_afecto + suma_exento + iva_calculado
+
+    # Línea DEBE: CxC por total calculado
+    _add_linea(asiento, config.cuenta_cxc, debe=total_calculado,
+               descripcion=f'CxC Factura {factura.numero}', orden=1)
 
     # Línea HABER: IVA Débito Fiscal
-    _add_linea(asiento, config.cuenta_iva_debito, haber=factura.iva,
-               descripcion='IVA Débito Fiscal', orden=orden + 1)
+    _add_linea(asiento, config.cuenta_iva_debito, haber=iva_calculado,
+               descripcion=f'IVA Débito Fiscal (Factura {factura.numero} - Afecto: {suma_afecto} Exento: {suma_exento})',
+               orden=orden)
 
     return asiento
 
@@ -122,8 +126,9 @@ def generar_asiento_factura_recibida(factura, usuario=None):
     for det in detalles:
         subtotal = (det.cantidad * det.precio_unitario).quantize(Decimal('0.0001'))
         cuenta_costo = det.cuenta_contable or config.cuenta_compras_default
+        descripcion_detallada = f'{det.descripcion[:150]} (Factura {factura.numero} Cant: {det.cantidad} x Precio Unit: {det.precio_unitario})'
         _add_linea(asiento, cuenta_costo, debe=subtotal,
-                   descripcion=det.descripcion[:200], orden=orden)
+                   descripcion=descripcion_detallada, orden=orden)
         if det.exento_iva:
             suma_exento += subtotal
         else:
@@ -134,9 +139,10 @@ def generar_asiento_factura_recibida(factura, usuario=None):
     iva_calculado = (suma_afecto * Decimal('0.19')).quantize(Decimal('0.01'))
     total_calculado = suma_afecto + suma_exento + iva_calculado
 
+    descripcion_iva_credito_detallada = f'IVA Crédito Fiscal (Factura {factura.numero} - Afecto: {suma_afecto} Exento: {suma_exento})'
     # Línea DEBE: IVA Crédito Fiscal
     _add_linea(asiento, config.cuenta_iva_credito, debe=iva_calculado,
-               descripcion='IVA Crédito Fiscal', orden=orden)
+               descripcion=descripcion_iva_credito_detallada, orden=orden)
 
     # Línea HABER: CxP por total
     _add_linea(asiento, config.cuenta_cxp, haber=total_calculado,
