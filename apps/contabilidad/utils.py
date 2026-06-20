@@ -81,7 +81,7 @@ def generar_asiento_factura_emitida(factura, usuario=None):
 
     # Línea HABER: IVA Débito Fiscal
     _add_linea(asiento, config.cuenta_iva_debito, haber=iva_calculado,
-               descripcion=f'IVA Débito Fiscal (Factura {factura.numero} - Afecto: {suma_afecto} Exento: {suma_exento})',
+               descripcion=f'IVA Débito Fiscal (Factura {factura.numero})',
                orden=orden)
 
     return asiento
@@ -139,7 +139,7 @@ def generar_asiento_factura_recibida(factura, usuario=None):
     iva_calculado = (suma_afecto * Decimal('0.19')).quantize(Decimal('0.01'))
     total_calculado = suma_afecto + suma_exento + iva_calculado
 
-    descripcion_iva_credito_detallada = f'IVA Crédito Fiscal (Factura {factura.numero} - Afecto: {suma_afecto} Exento: {suma_exento})'
+    descripcion_iva_credito_detallada = f'IVA Crédito Fiscal (Factura {factura.numero})'
     # Línea DEBE: IVA Crédito Fiscal
     _add_linea(asiento, config.cuenta_iva_credito, debe=iva_calculado,
                descripcion=descripcion_iva_credito_detallada, orden=orden)
