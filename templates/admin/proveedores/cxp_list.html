@@ -3,6 +3,11 @@
 
 {% block title %}Cuentas por Pagar{% endblock %}
 
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/css/tom-select.bootstrap5.min.css" rel="stylesheet"/>
+<link href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css" rel="stylesheet"/>
+{% endblock %}
+
 {% block breadcrumb %}
   <li class="breadcrumb-item"><a href="{% url 'proveedores:proveedor_list' %}">Proveedores</a></li>
   <li class="breadcrumb-item active">Cuentas por Pagar</li>
@@ -13,7 +18,7 @@
   <div>
     <h4 class="page-title">Cuentas por Pagar</h4>
     <p class="page-subtitle mb-0">Total pendiente:
-      <span class="fw-700 text-danger">$ {{ total_pendiente|floatformat:0 }}</span>
+      <span class="fw-700 text-danger"> {{ total_pendiente|moneda_chilena }}</span>
     </p>
   </div>
 </div>
@@ -26,6 +31,14 @@
         <option value="pendiente" {% if request.GET.estado == "pendiente" %}selected{% endif %}>Pendiente</option>
         <option value="pagada" {% if request.GET.estado == "pagada" %}selected{% endif %}>Pagada</option>
         <option value="vencida" {% if request.GET.estado == "vencida" %}selected{% endif %}>Vencida</option>
+      </select>
+    </div>
+    <div class="col-sm-3">
+      <select name="proveedor" class="form-select form-select-sm" id="id_proveedor">
+        <option value="">Todos los proveedores</option>
+        {% for proveedor in proveedores %}
+          <option value="{{ proveedor.pk }}" {% if request.GET.proveedor == proveedor.pk|stringformat:"s" %}selected{% endif %}>{{ proveedor.razon_social }}</option>
+        {% endfor %}
       </select>
     </div>
     <div class="col-auto">
@@ -95,4 +108,24 @@
     </table>
   </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/js/tom-select.complete.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/l10n/es.js"></script>
+<script>
+  // Inicializar Tom Select
+ document.addEventListener('DOMContentLoaded', () => {
+
+  /* TomSelect en Proveedor */
+  new TomSelect('#id_proveedor', {
+    allowEmptyOption: true,
+    placeholder: 'Buscar proveedor…',
+    sortField: { field: 'text', direction: 'asc' },
+  });
+  });
+
+
+</script>
 {% endblock %}

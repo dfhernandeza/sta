@@ -55,6 +55,10 @@
             {% endif %}
           </td>
           <td class="text-center">
+            <a href="{% url 'contabilidad:centro_detalle' c.pk %}"
+               class="btn btn-sm btn-outline-info rounded-pill px-3 me-1">
+              <i class="bi bi-bar-chart me-1"></i>Detalle
+            </a>
             <a href="{% url 'contabilidad:centro_update' c.pk %}"
                class="btn btn-sm btn-outline-secondary rounded-pill px-3">
               <i class="bi bi-pencil me-1"></i>Editar

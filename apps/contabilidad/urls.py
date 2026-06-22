@@ -21,6 +21,7 @@ urlpatterns = [
     path('diario/<int:pk>/confirmar/', views.AsientoConfirmarView.as_view(), name='asiento_confirmar'),
     path('diario/<int:pk>/anular/', views.AsientoAnularView.as_view(), name='asiento_anular'),
     path('diario/<int:pk>/eliminar/', views.AsientoDeleteView.as_view(), name='asiento_delete'),
+    path('diario/exportar/', views.AsientosExcelView.as_view(), name='diario_export'),
 
     # Reportes
     path('mayor/', views.LibroMayorView.as_view(), name='libro_mayor'),
@@ -32,7 +33,8 @@ urlpatterns = [
     path('centros/', views.CentroCostoListView.as_view(), name='centro_list'),
     path('centros/crear/', views.CentroCostoCreateView.as_view(), name='centro_create'),
     path('centros/<int:pk>/editar/', views.CentroCostoUpdateView.as_view(), name='centro_update'),
-    path('centros/reporte/', views.CentroCostoReporteView.as_view(), name='centro_reporte'),
+    path('centros/reporte/', views.InformeCentroCostoView.as_view(), name='centro_reporte'),
+    path('centros/<int:pk>/detalle/', views.CentroCostoDetalleView.as_view(), name='centro_detalle'),
 
     # Saldos de Apertura
     path('apertura/', views.AperturaContableView.as_view(), name='apertura'),

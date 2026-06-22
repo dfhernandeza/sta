@@ -1,10 +1,22 @@
 from django.contrib.auth.views import LoginView, LogoutView
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.views.generic import TemplateView, ListView, CreateView, UpdateView
+from django.core.exceptions import PermissionDenied
+from django.views.generic import TemplateView, ListView, CreateView, UpdateView, View
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse_lazy
 from django.contrib import messages
+from apps.core.mixins import GestionMixin
 from .models import CustomUser
-from .forms import CustomUserCreationForm, CustomUserChangeForm
+from .forms import CustomUserCreationForm, CustomUserChangeForm, UsuarioPermisosForm, UsuarioSetPasswordForm
+
+
+class SuperuserRequiredMixin(GestionMixin):
+    def dispatch(self, request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return self.handle_no_permission()
+        if not request.user.is_superuser:
+            raise PermissionDenied
+        return super().dispatch(request, *args, **kwargs)
 
 
 class CustomLoginView(LoginView):
@@ -23,37 +35,70 @@ class CustomLogoutView(LogoutView):
     next_page = '/gestion/login/'
 
 
-class PerfilView(LoginRequiredMixin, TemplateView):
+class PerfilView(GestionMixin, TemplateView):
     template_name = 'admin/perfil.html'
-    login_url = '/gestion/login/'
 
 
-class UsuarioListView(LoginRequiredMixin, ListView):
+class UsuarioListView(GestionMixin, ListView):
     model = CustomUser
     template_name = 'admin/usuarios/lista.html'
     context_object_name = 'usuarios'
-    login_url = '/gestion/login/'
 
 
-class UsuarioCreateView(LoginRequiredMixin, CreateView):
+class UsuarioCreateView(SuperuserRequiredMixin, CreateView):
     model = CustomUser
     form_class = CustomUserCreationForm
     template_name = 'admin/usuarios/form.html'
     success_url = reverse_lazy('accounts:usuario_list')
-    login_url = '/gestion/login/'
 
     def form_valid(self, form):
         messages.success(self.request, 'Usuario creado exitosamente.')
         return super().form_valid(form)
 
 
-class UsuarioUpdateView(LoginRequiredMixin, UpdateView):
+class UsuarioUpdateView(SuperuserRequiredMixin, UpdateView):
     model = CustomUser
     form_class = CustomUserChangeForm
     template_name = 'admin/usuarios/form.html'
     success_url = reverse_lazy('accounts:usuario_list')
-    login_url = '/gestion/login/'
 
     def form_valid(self, form):
         messages.success(self.request, 'Usuario actualizado exitosamente.')
         return super().form_valid(form)
+
+
+class UsuarioPermisosView(SuperuserRequiredMixin, UpdateView):
+    model = CustomUser
+    form_class = UsuarioPermisosForm
+    template_name = 'admin/usuarios/permisos.html'
+    success_url = reverse_lazy('accounts:usuario_list')
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx['usuario'] = self.object
+        return ctx
+
+    def form_valid(self, form):
+        messages.success(self.request, f'Permisos de {self.object.username} actualizados.')
+        return super().form_valid(form)
+
+
+class UsuarioCambiarPasswordView(SuperuserRequiredMixin, View):
+    template_name = 'admin/usuarios/cambiar_password.html'
+
+    def get_usuario(self, pk):
+        return get_object_or_404(CustomUser, pk=pk)
+
+    def get(self, request, pk):
+        usuario = self.get_usuario(pk)
+        form = UsuarioSetPasswordForm(user=usuario)
+        return render(request, self.template_name, {'form': form, 'usuario': usuario})
+
+    def post(self, request, pk):
+        usuario = self.get_usuario(pk)
+        form = UsuarioSetPasswordForm(user=usuario, data=request.POST)
+        if form.is_valid():
+            form.save()
+            messages.success(request, f'Contraseña de {usuario.username} actualizada exitosamente.')
+            return redirect('accounts:usuario_list')
+        return render(request, self.template_name, {'form': form, 'usuario': usuario})

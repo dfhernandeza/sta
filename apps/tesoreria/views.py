@@ -3,11 +3,15 @@ from django.urls import reverse_lazy
 from django.contrib import messages
 from django.db.models import Sum
 from django.shortcuts import get_object_or_404, redirect
-from apps.core.mixins import GestionMixin
+from apps.core.mixins import GestionMixin, AppPermisoMixin
+
+class TesoreriaMixin(AppPermisoMixin):
+    app_name = 'tesoreria'
+
 from .models import Banco, CuentaBancaria, MovimientoBancario
 
 
-class TesoreriaResumenView(GestionMixin, TemplateView):
+class TesoreriaResumenView(TesoreriaMixin, TemplateView):
     template_name = 'admin/tesoreria/resumen.html'
 
     def get_context_data(self, **kwargs):
@@ -22,7 +26,7 @@ class TesoreriaResumenView(GestionMixin, TemplateView):
         return ctx
 
 
-class BancoListView(GestionMixin, ListView):
+class BancoListView(TesoreriaMixin, ListView):
     model = Banco
     template_name = 'admin/tesoreria/banco_list.html'
     context_object_name = 'bancos'
@@ -33,7 +37,7 @@ class BancoListView(GestionMixin, ListView):
         return ctx
 
 
-class BancoCreateView(GestionMixin, CreateView):
+class BancoCreateView(TesoreriaMixin, CreateView):
     model = Banco
     template_name = 'admin/tesoreria/banco_form.html'
     fields = ['nombre', 'codigo']
@@ -48,7 +52,7 @@ class BancoCreateView(GestionMixin, CreateView):
         ctx['titulo'] = 'Nuevo Banco'
         return ctx
     
-class BancoUpdateView(GestionMixin, UpdateView):
+class BancoUpdateView(TesoreriaMixin, UpdateView):
     model = Banco
     template_name = 'admin/tesoreria/banco_form.html'
     fields = ['nombre', 'codigo']
@@ -64,7 +68,7 @@ class BancoUpdateView(GestionMixin, UpdateView):
         return ctx
 
 
-class CuentaBancariaListView(GestionMixin, ListView):
+class CuentaBancariaListView(TesoreriaMixin, ListView):
     model = CuentaBancaria
     template_name = 'admin/tesoreria/cuenta_list.html'
     context_object_name = 'cuentas'
@@ -78,7 +82,7 @@ class CuentaBancariaListView(GestionMixin, ListView):
         return ctx
 
 
-class CuentaBancariaCreateView(GestionMixin, CreateView):
+class CuentaBancariaCreateView(TesoreriaMixin, CreateView):
     model = CuentaBancaria
     template_name = 'admin/tesoreria/cuenta_form.html'
     fields = ['banco', 'numero', 'tipo', 'descripcion', 'saldo_inicial', 'activa' , 'cuenta_contable']
@@ -94,7 +98,7 @@ class CuentaBancariaCreateView(GestionMixin, CreateView):
         return ctx
 
 
-class CuentaBancariaUpdateView(GestionMixin, UpdateView):
+class CuentaBancariaUpdateView(TesoreriaMixin, UpdateView):
     model = CuentaBancaria
     template_name = 'admin/tesoreria/cuenta_form.html'
     fields = ['banco', 'numero', 'tipo', 'descripcion', 'saldo_inicial', 'activa' , 'cuenta_contable']
@@ -110,7 +114,7 @@ class CuentaBancariaUpdateView(GestionMixin, UpdateView):
         return ctx
 
 
-class MovimientoListView(GestionMixin, ListView):
+class MovimientoListView(TesoreriaMixin, ListView):
     model = MovimientoBancario
     template_name = 'admin/tesoreria/movimiento_list.html'
     context_object_name = 'movimientos'
@@ -133,7 +137,7 @@ class MovimientoListView(GestionMixin, ListView):
         return ctx
 
 
-class MovimientoCreateView(GestionMixin, CreateView):
+class MovimientoCreateView(TesoreriaMixin, CreateView):
     model = MovimientoBancario
     template_name = 'admin/tesoreria/movimiento_form.html'
     fields = ['cuenta', 'fecha', 'tipo', 'monto', 'descripcion', 'documento', 'cuenta_contable', 'proyecto', 'conciliado']
@@ -161,7 +165,7 @@ class MovimientoCreateView(GestionMixin, CreateView):
         return ctx
 
 
-class MovimientoUpdateView(GestionMixin, UpdateView):
+class MovimientoUpdateView(TesoreriaMixin, UpdateView):
     model = MovimientoBancario
     template_name = 'admin/tesoreria/movimiento_form.html'
     fields = ['cuenta', 'fecha', 'tipo', 'monto', 'descripcion', 'documento', 'cuenta_contable', 'proyecto', 'conciliado']
@@ -190,7 +194,7 @@ class MovimientoUpdateView(GestionMixin, UpdateView):
         return ctx
 
 
-class MovimientoDeleteView(GestionMixin, DeleteView):
+class MovimientoDeleteView(TesoreriaMixin, DeleteView):
     model = MovimientoBancario
     template_name = 'admin/confirm_delete.html'
     success_url = reverse_lazy('tesoreria:movimiento_list')
@@ -221,7 +225,7 @@ class MovimientoDeleteView(GestionMixin, DeleteView):
         return super().form_valid(form)
 
 
-class GenerarAsientoMovimientoView(GestionMixin, View):
+class GenerarAsientoMovimientoView(TesoreriaMixin, View):
     def post(self, request, pk):
         from apps.contabilidad.utils import generar_asiento_movimiento_bancario, get_config
         movimiento = get_object_or_404(MovimientoBancario, pk=pk)

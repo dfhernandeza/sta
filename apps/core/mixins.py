@@ -1,4 +1,5 @@
 from django.contrib.auth.mixins import LoginRequiredMixin as DjangoLoginRequired
+from django.core.exceptions import PermissionDenied
 from django.contrib import messages
 
 
@@ -54,3 +55,20 @@ class LoginRequiredMixin(DjangoLoginRequired, BootstrapFormMixin):
 class GestionMixin(LoginRequiredMixin):
     """Mixin base para todas las vistas del panel de gestión."""
     pass
+
+
+class AppPermisoMixin(GestionMixin):
+    """
+    Restringe el acceso a usuarios que tengan 'app_name' en sus app_permisos,
+    o que sean superusuarios. Defina 'app_name' en la subclase o vista.
+    """
+    app_name: str = ''
+
+    def dispatch(self, request, *args, **kwargs):
+        result = super().dispatch(request, *args, **kwargs)
+        # Si super() devolvió un redirect (no autenticado), respetarlo
+        if not request.user.is_authenticated:
+            return result
+        if not request.user.is_superuser and self.app_name not in (request.user.app_permisos or []):
+            raise PermissionDenied
+        return result

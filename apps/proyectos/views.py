@@ -2,11 +2,15 @@ from django.views.generic import ListView, CreateView, UpdateView, DetailView, T
 from django.urls import reverse_lazy
 from django.contrib import messages
 from django.shortcuts import get_object_or_404
-from apps.core.mixins import GestionMixin
+from apps.core.mixins import GestionMixin, AppPermisoMixin
+
+class ProyectosMixin(AppPermisoMixin):
+    app_name = 'proyectos'
+
 from .models import Proyecto, CostoProyecto, Presupuesto
 
 
-class ProyectoListView(GestionMixin, ListView):
+class ProyectoListView(ProyectosMixin, ListView):
     model = Proyecto
     template_name = 'admin/proyectos/proyecto_list.html'
     context_object_name = 'proyectos'
@@ -29,7 +33,7 @@ class ProyectoListView(GestionMixin, ListView):
         return ctx
 
 
-class ProyectoCreateView(GestionMixin, CreateView):
+class ProyectoCreateView(ProyectosMixin, CreateView):
     model = Proyecto
     template_name = 'admin/proyectos/proyecto_form.html'
     fields = ['codigo', 'nombre', 'cliente', 'estado', 'fecha_inicio', 'fecha_termino',
@@ -47,7 +51,7 @@ class ProyectoCreateView(GestionMixin, CreateView):
         return ctx
 
 
-class ProyectoUpdateView(GestionMixin, UpdateView):
+class ProyectoUpdateView(ProyectosMixin, UpdateView):
     model = Proyecto
     template_name = 'admin/proyectos/proyecto_form.html'
     fields = ['codigo', 'nombre', 'cliente', 'estado', 'fecha_inicio', 'fecha_termino',
@@ -64,7 +68,7 @@ class ProyectoUpdateView(GestionMixin, UpdateView):
         return ctx
 
 
-class ProyectoDetailView(GestionMixin, DetailView):
+class ProyectoDetailView(ProyectosMixin, DetailView):
     model = Proyecto
     template_name = 'admin/proyectos/proyecto_detail.html'
     context_object_name = 'proyecto'
@@ -89,7 +93,7 @@ class ProyectoDetailView(GestionMixin, DetailView):
         return ctx
 
 
-class CostoCreateView(GestionMixin, CreateView):
+class CostoCreateView(ProyectosMixin, CreateView):
     model = CostoProyecto
     template_name = 'admin/proyectos/costo_form.html'
     fields = ['fecha', 'descripcion', 'tipo', 'monto', 'centro_costo', 'cuenta_contable', 'proveedor', 'factura']
@@ -109,7 +113,7 @@ class CostoCreateView(GestionMixin, CreateView):
         return ctx
 
 
-class PresupuestoView(GestionMixin, DetailView):
+class PresupuestoView(ProyectosMixin, DetailView):
     model = Proyecto
     template_name = 'admin/proyectos/presupuesto.html'
     context_object_name = 'proyecto'

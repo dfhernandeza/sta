@@ -9,9 +9,14 @@
 {% block content %}
 <div class="page-header">
   <h4 class="page-title">Libro Diario</h4>
-  <a href="{% url 'contabilidad:asiento_create' %}" class="btn btn-sta rounded-pill px-4">
-    <i class="bi bi-plus-circle me-1"></i>Nuevo asiento
-  </a>
+  <div class="d-flex gap-2">
+    <a href="{% url 'contabilidad:diario_export' %}?{{ request.GET.urlencode }}" class="btn btn-outline-success rounded-pill px-4">
+      <i class="bi bi-file-earmark-excel me-1"></i>Exportar Excel
+    </a>
+    <a href="{% url 'contabilidad:asiento_create' %}" class="btn btn-sta rounded-pill px-4">
+      <i class="bi bi-plus-circle me-1"></i>Nuevo asiento
+    </a>
+  </div>
 </div>
 
 <div class="card-sta p-3 mb-4">

@@ -11,7 +11,13 @@ from datetime import timedelta
 from django.db.models import Sum
 from django.forms import CheckboxInput, inlineformset_factory, ModelForm, TextInput, Select, NumberInput
 from apps.contabilidad.utils import generar_asiento_factura_recibida, generar_asiento_rendicion_gastos_recibida
-from apps.core.mixins import GestionMixin
+from apps.core.mixins import GestionMixin, AppPermisoMixin
+
+
+class ProveedoresMixin(AppPermisoMixin):
+    app_name = 'proveedores'
+
+
 from apps.web import forms
 from .models import DetalleRendicion, Proveedor, FacturaRecibida, DetalleFacturaRecibida, CuentaPorPagar, Anticipo, RendicionGastos
 from apps.tributario.models import RegistroCompra
@@ -104,7 +110,7 @@ DetalleFormSet = inlineformset_factory(
 
 
 
-class ProveedorListView(GestionMixin, ListView):
+class ProveedorListView(ProveedoresMixin, ListView):
     model = Proveedor
     template_name = 'admin/proveedores/proveedor_list.html'
     context_object_name = 'proveedores'
@@ -123,7 +129,7 @@ class ProveedorListView(GestionMixin, ListView):
         return ctx
 
 
-class ProveedorCreateView(GestionMixin, CreateView):
+class ProveedorCreateView(ProveedoresMixin, CreateView):
     model = Proveedor
     template_name = 'admin/proveedores/proveedor_form.html'
     fields = ['rut', 'razon_social', 'giro', 'direccion', 'comuna', 'ciudad', 'telefono', 'email', 'contacto', 'banco', 'tipo_cuenta', 'numero_cuenta', 'notas', 'activo']
@@ -141,7 +147,7 @@ class ProveedorCreateView(GestionMixin, CreateView):
         return ctx
 
 
-class ProveedorUpdateView(GestionMixin, UpdateView):
+class ProveedorUpdateView(ProveedoresMixin, UpdateView):
     model = Proveedor
     template_name = 'admin/proveedores/proveedor_form.html'
     fields = ['rut', 'razon_social', 'giro', 'direccion', 'comuna', 'ciudad', 'telefono', 'email', 'contacto', 'banco', 'tipo_cuenta', 'numero_cuenta', 'activo', 'notas']
@@ -159,7 +165,7 @@ class ProveedorUpdateView(GestionMixin, UpdateView):
         return ctx
 
 
-class ProveedorDetailView(GestionMixin, DetailView):
+class ProveedorDetailView(ProveedoresMixin, DetailView):
     model = Proveedor
     template_name = 'admin/proveedores/proveedor_detail.html'
     context_object_name = 'proveedor'
@@ -170,7 +176,7 @@ class ProveedorDetailView(GestionMixin, DetailView):
         return ctx
 
 
-class FacturaRecibidaListView(GestionMixin, ListView):
+class FacturaRecibidaListView(ProveedoresMixin, ListView):
     model = FacturaRecibida
     template_name = 'admin/proveedores/factura_list.html'
     context_object_name = 'facturas'
@@ -193,7 +199,7 @@ class FacturaRecibidaListView(GestionMixin, ListView):
         return ctx
 
 
-class FacturaRecibidaCreateView(GestionMixin, CreateView):
+class FacturaRecibidaCreateView(ProveedoresMixin, CreateView):
     model = FacturaRecibida
     template_name = 'admin/proveedores/factura_form.html'
     fields = ['numero', 'fecha_emision', 'fecha_vencimiento', 'proveedor', 'proyecto', 'pago_por_trabajador', 'neto', 'exento', 'iva', 'total', 'estado', 'observaciones']
@@ -251,7 +257,7 @@ class FacturaRecibidaCreateView(GestionMixin, CreateView):
         return ctx
 
 
-class FacturaRecibidaUpdateView(GestionMixin, UpdateView):
+class FacturaRecibidaUpdateView(ProveedoresMixin, UpdateView):
     model = FacturaRecibida
     template_name = 'admin/proveedores/factura_form.html'
     fields = ['numero', 'fecha_emision', 'fecha_vencimiento', 'proveedor', 'proyecto', 'pago_por_trabajador', 'neto', 'exento', 'iva', 'total', 'estado', 'observaciones']
@@ -313,13 +319,13 @@ class FacturaRecibidaUpdateView(GestionMixin, UpdateView):
         return ctx
 
 
-class FacturaRecibidaDetailView(GestionMixin, DetailView):
+class FacturaRecibidaDetailView(ProveedoresMixin, DetailView):
     model = FacturaRecibida
     template_name = 'admin/proveedores/factura_detail.html'
     context_object_name = 'factura'
 
 
-class FacturaRecibidaDeleteView(GestionMixin, DeleteView):
+class FacturaRecibidaDeleteView(ProveedoresMixin, DeleteView):
     model = FacturaRecibida
     template_name = 'admin/confirm_delete.html'
     success_url = reverse_lazy('proveedores:factura_list')
@@ -353,24 +359,42 @@ class FacturaRecibidaDeleteView(GestionMixin, DeleteView):
         return super().form_valid(form)
 
 
-class CuentaPorPagarListView(GestionMixin, ListView):
+class CuentaPorPagarListView(ProveedoresMixin, ListView):
     model = CuentaPorPagar
     template_name = 'admin/proveedores/cxp_list.html'
     context_object_name = 'cuentas'
     paginate_by = 25
 
     def get_queryset(self):
-        return CuentaPorPagar.objects.select_related(
+
+        # Filtramos por estado si se pasa en GET
+        estado = self.request.GET.get('estado')
+        proveedor = self.request.GET.get('proveedor')
+
+        cuentas = CuentaPorPagar.objects.select_related(
             'factura__proveedor', 'factura__pago_por_trabajador', 'rendicion__trabajador'
-        ).order_by('fecha_vencimiento')
+        ).order_by('fecha_vencimiento') 
+
+        if estado:
+            cuentas = cuentas.filter(estado=estado)
+        
+        if proveedor:
+            cuentas = cuentas.filter(factura__proveedor_id=proveedor)
+        
+        return cuentas
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         ctx['titulo'] = 'Cuentas por Pagar'
+        ctx['proveedores'] = Proveedor.objects.filter(facturas__cuenta_pagar__isnull=False).distinct()
+
+        total_pendiente = self.get_queryset().filter(estado='pendiente').aggregate(total=Sum('monto'))['total'] or 0
+        ctx['total_pendiente'] = total_pendiente
+
         return ctx
 
 
-class CxPPagarView(GestionMixin, View):
+class CxPPagarView(ProveedoresMixin, View):
     template_name = 'admin/proveedores/cxp_pagar.html'
 
     def _build_form(self, data=None, initial=None):
@@ -521,7 +545,7 @@ class CxPPagarView(GestionMixin, View):
         return redirect('proveedores:cxp_list')
 
 
-class AnularPagoCxPView(GestionMixin, View):
+class AnularPagoCxPView(ProveedoresMixin, View):
     """Revierte un pago: elimina el movimiento bancario y su asiento (borrador),
     y deja la CxP y la factura/rendición en estado pendiente."""
 
@@ -572,7 +596,7 @@ class AnularPagoCxPView(GestionMixin, View):
         return redirect('proveedores:cxp_list')
 
 
-class GenerarAsientoFacturaRecibidaView(GestionMixin, View):
+class GenerarAsientoFacturaRecibidaView(ProveedoresMixin, View):
     def post(self, request, pk):
         from apps.contabilidad.utils import generar_asiento_factura_recibida, get_config
         factura = get_object_or_404(FacturaRecibida, pk=pk)
@@ -591,7 +615,7 @@ class GenerarAsientoFacturaRecibidaView(GestionMixin, View):
         return redirect('proveedores:factura_detail', pk=factura.pk)
 
 
-class AnticipoListView(GestionMixin, ListView):
+class AnticipoListView(ProveedoresMixin, ListView):
     model = Anticipo
     template_name = 'admin/proveedores/anticipo_list.html'
     context_object_name = 'anticipos'
@@ -603,7 +627,7 @@ class AnticipoListView(GestionMixin, ListView):
         return ctx
 
 
-class AnticipoCreateView(GestionMixin, CreateView):
+class AnticipoCreateView(ProveedoresMixin, CreateView):
     model = Anticipo
     template_name = 'admin/proveedores/anticipo_form.html'
     fields = ['proveedor', 'fecha', 'monto', 'descripcion', 'proyecto', 'estado']
@@ -619,7 +643,7 @@ class AnticipoCreateView(GestionMixin, CreateView):
         return ctx
 
 
-class AnticipoProveedorPagarView(GestionMixin, View):
+class AnticipoProveedorPagarView(ProveedoresMixin, View):
     template_name = 'admin/proveedores/anticipo_pagar.html'
 
     def _build_form(self, data=None, initial=None):
@@ -714,7 +738,7 @@ class AnticipoProveedorPagarView(GestionMixin, View):
 
         return redirect('proveedores:anticipo_list')
 
-class RendicionGastosListView(GestionMixin, ListView):
+class RendicionGastosListView(ProveedoresMixin, ListView):
     model = RendicionGastos
     template_name = 'admin/proveedores/rendicion_list.html'
     context_object_name = 'rendiciones'
@@ -756,7 +780,7 @@ DetalleRendicionFormSet = inlineformset_factory(
 )
 
 
-class RendicionGastosCreateView(GestionMixin, CreateView):
+class RendicionGastosCreateView(ProveedoresMixin, CreateView):
     model = RendicionGastos
     template_name = 'admin/proveedores/rendicion_form.html'
     fields = ['trabajador', 'proyecto', 'fecha', 'motivo_del_gasto']
@@ -800,7 +824,7 @@ _TRANSICIONES_RENDICION = {
 }
 
 
-class RendicionGastosDetailView(GestionMixin, DetailView):
+class RendicionGastosDetailView(ProveedoresMixin, DetailView):
     model = RendicionGastos
     template_name = 'admin/proveedores/rendicion_detail.html'
     context_object_name = 'rendicion'
@@ -832,7 +856,7 @@ class RendicionGastosDetailView(GestionMixin, DetailView):
         return redirect('proveedores:rendicion_detail', pk=rendicion.pk)
 
 
-class GenerarAsientoRendicionView(GestionMixin, View):
+class GenerarAsientoRendicionView(ProveedoresMixin, View):
     def post(self, request, pk):
         from apps.contabilidad.utils import generar_asiento_rendicion_gastos_recibida, get_config
         rendicion = get_object_or_404(RendicionGastos, pk=pk)

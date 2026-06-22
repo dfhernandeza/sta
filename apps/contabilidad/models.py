@@ -295,6 +295,10 @@ class LineaAsiento(models.Model):
     debe = models.DecimalField(max_digits=15, decimal_places=2, default=0, verbose_name='Debe')
     haber = models.DecimalField(max_digits=15, decimal_places=2, default=0, verbose_name='Haber')
     orden = models.PositiveSmallIntegerField(default=0, verbose_name='Orden')
+    centro_costo = models.ForeignKey(
+        CentroCosto, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='lineas_asiento', verbose_name='Centro de Costo'
+    )
 
     class Meta:
         verbose_name = 'Línea de Asiento'

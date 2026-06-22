@@ -1,0 +1,355 @@
+{% extends 'base_admin.html' %}
+{% load custom_tags %}
+
+{% block title %}Detalle Centro de Costo{% endblock %}
+
+{% block breadcrumb %}
+  <li class="breadcrumb-item"><a href="{% url 'contabilidad:plan_list' %}">Contabilidad</a></li>
+  <li class="breadcrumb-item"><a href="{% url 'contabilidad:centro_list' %}">Centros de Costo</a></li>
+  <li class="breadcrumb-item active">{{ centro.codigo }} — {{ centro.nombre }}</li>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h4 class="page-title"><i class="bi bi-diagram-3 me-2"></i>{{ titulo }}</h4>
+    <p class="text-muted small mb-0">{{ centro.descripcion }}</p>
+  </div>
+  <a href="{% url 'contabilidad:centro_list' %}" class="btn btn-outline-secondary rounded-pill px-4">
+    <i class="bi bi-arrow-left me-1"></i>Volver
+  </a>
+</div>
+
+{# ── Filtros ───────────────────────────────────────────────────────── #}
+<form method="get" class="mb-4">
+  <div class="card-sta p-3">
+    <div class="row g-2 align-items-end">
+      <div class="col-sm-3">
+        <label class="form-label small fw-600 mb-1">Desde</label>
+        <input type="date" name="fecha_desde" value="{{ fecha_desde }}" class="form-control form-control-sm">
+      </div>
+      <div class="col-sm-3">
+        <label class="form-label small fw-600 mb-1">Hasta</label>
+        <input type="date" name="fecha_hasta" value="{{ fecha_hasta }}" class="form-control form-control-sm">
+      </div>
+      <div class="col-sm-3">
+        <button type="submit" class="btn btn-sta btn-sm rounded-pill px-4">
+          <i class="bi bi-search me-1"></i>Filtrar
+        </button>
+        <a href="{% url 'contabilidad:centro_detalle' centro.pk %}" class="btn btn-outline-secondary btn-sm rounded-pill px-3 ms-1">
+          <i class="bi bi-x me-1"></i>Limpiar
+        </a>
+      </div>
+    </div>
+  </div>
+</form>
+
+{# ── Cards resumen ─────────────────────────────────────────────────── #}
+<div class="row g-3 mb-4">
+  <div class="col-sm-6 col-lg-3">
+    <div class="card-sta p-3 text-center" style="border-left:4px solid #198754">
+      <div class="small text-muted mb-1">Total Ingresos</div>
+      <h5 class="mb-0 fw-700 text-success">{{ total_ingresos|moneda_chilena }}</h5>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card-sta p-3 text-center" style="border-left:4px solid #dc3545">
+      <div class="small text-muted mb-1">Total Egresos</div>
+      <h5 class="mb-0 fw-700 text-danger">{{ total_egresos|moneda_chilena }}</h5>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card-sta p-3 text-center" style="border-left:4px solid {% if resultado >= 0 %}#198754{% else %}#dc3545{% endif %}">
+      <div class="small text-muted mb-1">Resultado</div>
+      <h5 class="mb-0 fw-700 {% if resultado >= 0 %}text-success{% else %}text-danger{% endif %}">
+        {{ resultado|moneda_chilena }}
+      </h5>
+    </div>
+  </div>
+  {% if centro.presupuesto_mensual %}
+  <div class="col-sm-6 col-lg-3">
+    <div class="card-sta p-3 text-center" style="border-left:4px solid #6c757d">
+      <div class="small text-muted mb-1">Presupuesto Mensual</div>
+      <h5 class="mb-0 fw-700">{{ centro.presupuesto_mensual|moneda_chilena }}</h5>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+{# ── Desglose egresos ─────────────────────────────────────────────── #}
+<div class="row g-3 mb-4">
+  <div class="col-sm-6 col-lg-3">
+    <div class="card-sta p-3 text-center">
+      <div class="small text-muted mb-1">Fact. recibidas</div>
+      <div class="fw-600">{{ total_fact_recibidas|moneda_chilena }}</div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card-sta p-3 text-center">
+      <div class="small text-muted mb-1">Rendiciones</div>
+      <div class="fw-600">{{ total_rendiciones|moneda_chilena }}</div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card-sta p-3 text-center">
+      <div class="small text-muted mb-1">Remuneraciones</div>
+      <div class="fw-600">{{ total_remuneraciones|moneda_chilena }}</div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card-sta p-3 text-center">
+      <div class="small text-muted mb-1">Costos proyecto</div>
+      <div class="fw-600">{{ total_costos_proyecto|moneda_chilena }}</div>
+    </div>
+  </div>
+</div>
+
+{# ── Facturas Emitidas (Ingresos) ─────────────────────────────────── #}
+<div class="card-sta p-0 mb-4">
+  <div class="p-3 border-bottom d-flex justify-content-between align-items-center">
+    <h6 class="mb-0 fw-700 text-success"><i class="bi bi-arrow-down-circle me-2"></i>Facturas Emitidas — Ingresos</h6>
+    <span class="badge bg-success fs-6">{{ total_ingresos|moneda_chilena }}</span>
+  </div>
+  {% if facturas_emitidas %}
+  <div class="table-responsive">
+    <table class="table table-sm table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Fecha</th>
+          <th>N° Factura</th>
+          <th>Cliente</th>
+          <th>Descripción</th>
+          <th>Cuenta contable</th>
+          <th class="text-end">Subtotal</th>
+          <th class="text-center">Estado</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in facturas_emitidas %}
+        <tr>
+          <td class="text-nowrap">{{ row.obj.factura.fecha_emision }}</td>
+          <td class="font-monospace">{{ row.obj.factura.numero }}</td>
+          <td>{{ row.obj.factura.cliente.razon_social }}</td>
+          <td class="text-muted small">{{ row.obj.descripcion|truncatechars:50 }}</td>
+          <td class="small text-muted">{{ row.obj.cuenta_contable|default:"—" }}</td>
+          <td class="text-end fw-600">{{ row.subtotal|moneda_chilena }}</td>
+          <td class="text-center">
+            <span class="badge
+              {% if row.obj.factura.estado == 'pagada' %}bg-success
+              {% elif row.obj.factura.estado == 'pendiente' %}bg-warning text-dark
+              {% elif row.obj.factura.estado == 'vencida' %}bg-danger
+              {% else %}bg-secondary{% endif %}">
+              {{ row.obj.factura.get_estado_display }}
+            </span>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot class="table-light fw-700">
+        <tr>
+          <td colspan="5" class="text-end">Total Ingresos</td>
+          <td class="text-end text-success">{{ total_ingresos|moneda_chilena }}</td>
+          <td></td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+  {% else %}
+  <p class="text-muted small p-3 mb-0">No hay facturas emitidas para este centro de costo en el período seleccionado.</p>
+  {% endif %}
+</div>
+
+{# ── Facturas Recibidas (Egresos) ─────────────────────────────────── #}
+<div class="card-sta p-0 mb-4">
+  <div class="p-3 border-bottom d-flex justify-content-between align-items-center">
+    <h6 class="mb-0 fw-700 text-danger"><i class="bi bi-arrow-up-circle me-2"></i>Facturas Recibidas — Egresos</h6>
+    <span class="badge bg-danger fs-6">{{ total_fact_recibidas|moneda_chilena }}</span>
+  </div>
+  {% if facturas_recibidas %}
+  <div class="table-responsive">
+    <table class="table table-sm table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Fecha</th>
+          <th>N° Factura</th>
+          <th>Proveedor</th>
+          <th>Descripción</th>
+          <th>Cuenta contable</th>
+          <th class="text-end">Subtotal</th>
+          <th class="text-center">Estado</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in facturas_recibidas %}
+        <tr>
+          <td class="text-nowrap">{{ row.obj.factura.fecha_emision }}</td>
+          <td class="font-monospace">{{ row.obj.factura.numero }}</td>
+          <td>{{ row.obj.factura.proveedor.razon_social }}</td>
+          <td class="text-muted small">{{ row.obj.descripcion|truncatechars:50 }}</td>
+          <td class="small text-muted">{{ row.obj.cuenta_contable|default:"—" }}</td>
+          <td class="text-end fw-600">{{ row.subtotal|moneda_chilena }}</td>
+          <td class="text-center">
+            <span class="badge
+              {% if row.obj.factura.estado == 'pagada' %}bg-success
+              {% elif row.obj.factura.estado == 'pendiente' %}bg-warning text-dark
+              {% elif row.obj.factura.estado == 'vencida' %}bg-danger
+              {% else %}bg-secondary{% endif %}">
+              {{ row.obj.factura.get_estado_display }}
+            </span>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot class="table-light fw-700">
+        <tr>
+          <td colspan="5" class="text-end">Total Fact. Recibidas</td>
+          <td class="text-end text-danger">{{ total_fact_recibidas|moneda_chilena }}</td>
+          <td></td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+  {% else %}
+  <p class="text-muted small p-3 mb-0">No hay facturas recibidas para este centro de costo en el período seleccionado.</p>
+  {% endif %}
+</div>
+
+{# ── Rendiciones (Egresos) ────────────────────────────────────────── #}
+<div class="card-sta p-0 mb-4">
+  <div class="p-3 border-bottom d-flex justify-content-between align-items-center">
+    <h6 class="mb-0 fw-700 text-danger"><i class="bi bi-receipt me-2"></i>Rendiciones de Gastos — Egresos</h6>
+    <span class="badge bg-danger fs-6">{{ total_rendiciones|moneda_chilena }}</span>
+  </div>
+  {% if rendiciones %}
+  <div class="table-responsive">
+    <table class="table table-sm table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Fecha</th>
+          <th>N° Doc.</th>
+          <th>Trabajador</th>
+          <th>Descripción</th>
+          <th>Cuenta contable</th>
+          <th class="text-end">Monto</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rendiciones %}
+        <tr>
+          <td class="text-nowrap">{{ r.fecha_gasto }}</td>
+          <td class="font-monospace">{{ r.n_boleta_factura }}</td>
+          <td>{{ r.rendicion.trabajador.nombre_completo }}</td>
+          <td class="text-muted small">{{ r.descripcion|truncatechars:50 }}</td>
+          <td class="small text-muted">{{ r.cuenta_contable|default:"—" }}</td>
+          <td class="text-end fw-600">{{ r.monto|moneda_chilena }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot class="table-light fw-700">
+        <tr>
+          <td colspan="5" class="text-end">Total Rendiciones</td>
+          <td class="text-end text-danger">{{ total_rendiciones|moneda_chilena }}</td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+  {% else %}
+  <p class="text-muted small p-3 mb-0">No hay rendiciones para este centro de costo en el período seleccionado.</p>
+  {% endif %}
+</div>
+
+{# ── Remuneraciones (Egresos) ─────────────────────────────────────── #}
+<div class="card-sta p-0 mb-4">
+  <div class="p-3 border-bottom d-flex justify-content-between align-items-center">
+    <h6 class="mb-0 fw-700 text-danger"><i class="bi bi-people me-2"></i>Remuneraciones — Egresos</h6>
+    <span class="badge bg-danger fs-6">{{ total_remuneraciones|moneda_chilena }}</span>
+  </div>
+  {% if remuneraciones %}
+  <div class="table-responsive">
+    <table class="table table-sm table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Período</th>
+          <th>Trabajador</th>
+          <th class="text-end">Sueldo Bruto</th>
+          <th class="text-end">Líquido Pagado</th>
+          <th class="text-center">Estado</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in remuneraciones %}
+        <tr>
+          <td class="text-nowrap font-monospace">{{ r.periodo_mes|stringformat:"02d" }}/{{ r.periodo_anio }}</td>
+          <td>{{ r.trabajador.nombre_completo }}</td>
+          <td class="text-end fw-600">{{ r.sueldo_bruto|moneda_chilena }}</td>
+          <td class="text-end">{{ r.liquido_pagar|moneda_chilena }}</td>
+          <td class="text-center">
+            <span class="badge
+              {% if r.estado == 'pagado' %}bg-success
+              {% elif r.estado == 'aprobado' %}bg-primary
+              {% else %}bg-secondary{% endif %}">
+              {{ r.get_estado_display }}
+            </span>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot class="table-light fw-700">
+        <tr>
+          <td colspan="2" class="text-end">Total Remuneraciones (bruto)</td>
+          <td class="text-end text-danger">{{ total_remuneraciones|moneda_chilena }}</td>
+          <td colspan="2"></td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+  {% else %}
+  <p class="text-muted small p-3 mb-0">No hay remuneraciones para trabajadores de este centro de costo en el período seleccionado.</p>
+  {% endif %}
+</div>
+
+{# ── Costos de Proyecto (Egresos) ─────────────────────────────────── #}
+<div class="card-sta p-0 mb-4">
+  <div class="p-3 border-bottom d-flex justify-content-between align-items-center">
+    <h6 class="mb-0 fw-700 text-danger"><i class="bi bi-tools me-2"></i>Costos de Proyecto — Egresos</h6>
+    <span class="badge bg-danger fs-6">{{ total_costos_proyecto|moneda_chilena }}</span>
+  </div>
+  {% if costos_proyecto %}
+  <div class="table-responsive">
+    <table class="table table-sm table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Fecha</th>
+          <th>Proyecto</th>
+          <th>Descripción</th>
+          <th>Tipo</th>
+          <th>Cuenta contable</th>
+          <th class="text-end">Monto</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in costos_proyecto %}
+        <tr>
+          <td class="text-nowrap">{{ c.fecha }}</td>
+          <td>{{ c.proyecto }}</td>
+          <td class="text-muted small">{{ c.descripcion|truncatechars:50 }}</td>
+          <td><span class="badge bg-secondary">{{ c.get_tipo_display }}</span></td>
+          <td class="small text-muted">{{ c.cuenta_contable|default:"—" }}</td>
+          <td class="text-end fw-600">{{ c.monto|moneda_chilena }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot class="table-light fw-700">
+        <tr>
+          <td colspan="5" class="text-end">Total Costos Proyecto</td>
+          <td class="text-end text-danger">{{ total_costos_proyecto|moneda_chilena }}</td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+  {% else %}
+  <p class="text-muted small p-3 mb-0">No hay costos de proyecto para este centro de costo en el período seleccionado.</p>
+  {% endif %}
+</div>
+
+{% endblock %}

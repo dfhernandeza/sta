@@ -8,7 +8,11 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from decimal import Decimal
 import json
-from apps.core.mixins import GestionMixin
+from apps.core.mixins import GestionMixin, AppPermisoMixin
+
+class RrhhMixin(AppPermisoMixin):
+    app_name = 'rrhh'
+
 from .models import Trabajador, Remuneracion, AnticipoLaboral, CargoTrabajador
 
 # Tasas AFP vigentes (cotización obligatoria empleado)
@@ -43,7 +47,7 @@ def _generar_periodos(n=15):
     return periods
 
 
-class CargoTrabajadorListView(GestionMixin, ListView):
+class CargoTrabajadorListView(RrhhMixin, ListView):
     model = CargoTrabajador
     template_name = 'admin/rrhh/cargo_list.html'
     context_object_name = 'cargos'
@@ -54,7 +58,7 @@ class CargoTrabajadorListView(GestionMixin, ListView):
         ctx['titulo'] = 'Cargos de Trabajadores'
         return ctx
 
-class CargoTrabajadorCreateView(GestionMixin, CreateView):
+class CargoTrabajadorCreateView(RrhhMixin, CreateView):
     model = CargoTrabajador
     template_name = 'admin/rrhh/cargo_form.html'
     fields = ['nombre', 'descripcion']
@@ -69,7 +73,7 @@ class CargoTrabajadorCreateView(GestionMixin, CreateView):
         ctx['titulo'] = 'Nuevo Cargo de Trabajador'
         return ctx
     
-class CargoTrabajadorUpdateView(GestionMixin, UpdateView):
+class CargoTrabajadorUpdateView(RrhhMixin, UpdateView):
     model = CargoTrabajador
     template_name = 'admin/rrhh/cargo_form.html'
     fields = ['nombre', 'descripcion']
@@ -84,7 +88,7 @@ class CargoTrabajadorUpdateView(GestionMixin, UpdateView):
         ctx['titulo'] = f'Editar Cargo: {self.object.nombre}'
         return ctx
 
-class CargoTrabajadorDetailView(GestionMixin, DetailView):
+class CargoTrabajadorDetailView(RrhhMixin, DetailView):
     model = CargoTrabajador
     template_name = 'admin/rrhh/cargo_detail.html'
     context_object_name = 'cargo'
@@ -95,7 +99,7 @@ class CargoTrabajadorDetailView(GestionMixin, DetailView):
         return ctx
 
 
-class TrabajadorListView(GestionMixin, ListView):
+class TrabajadorListView(RrhhMixin, ListView):
     model = Trabajador
     template_name = 'admin/rrhh/trabajador_list.html'
     context_object_name = 'trabajadores'
@@ -118,7 +122,7 @@ class TrabajadorListView(GestionMixin, ListView):
         return ctx
 
 
-class TrabajadorCreateView(GestionMixin, CreateView):
+class TrabajadorCreateView(RrhhMixin, CreateView):
     model = Trabajador
     template_name = 'admin/rrhh/trabajador_form.html'
     fields = ['rut', 'nombres', 'apellidos', 'cargo', 'fecha_ingreso', 'fecha_termino', 'fecha_nacimiento', 'sueldo_base',
@@ -136,7 +140,7 @@ class TrabajadorCreateView(GestionMixin, CreateView):
         return ctx
 
 
-class TrabajadorUpdateView(GestionMixin, UpdateView):
+class TrabajadorUpdateView(RrhhMixin, UpdateView):
     model = Trabajador
     template_name = 'admin/rrhh/trabajador_form.html'
     fields = ['rut', 'nombres', 'apellidos', 'cargo', 'fecha_ingreso', 'fecha_termino', 'fecha_nacimiento',
@@ -154,7 +158,7 @@ class TrabajadorUpdateView(GestionMixin, UpdateView):
         return ctx
 
 
-class TrabajadorDetailView(GestionMixin, DetailView):
+class TrabajadorDetailView(RrhhMixin, DetailView):
     model = Trabajador
     template_name = 'admin/rrhh/trabajador_detail.html'
     context_object_name = 'trabajador'
@@ -167,7 +171,7 @@ class TrabajadorDetailView(GestionMixin, DetailView):
         return ctx
 
 
-class RemuneracionListView(GestionMixin, ListView):
+class RemuneracionListView(RrhhMixin, ListView):
     model = Remuneracion
     template_name = 'admin/rrhh/remuneracion_list.html'
     context_object_name = 'remuneraciones'
@@ -189,7 +193,7 @@ class RemuneracionListView(GestionMixin, ListView):
         return ctx
 
 
-class RemuneracionCreateView(GestionMixin, CreateView):
+class RemuneracionCreateView(RrhhMixin, CreateView):
     model = Remuneracion
     template_name = 'admin/rrhh/remuneracion_form.html'
     fields = ['trabajador', 'periodo_mes', 'periodo_anio', 'sueldo_base', 'horas_extra',
@@ -268,7 +272,7 @@ class RemuneracionCreateView(GestionMixin, CreateView):
         return ctx
 
 
-class RemuneracionDatosAPI(GestionMixin, View):
+class RemuneracionDatosAPI(RrhhMixin, View):
     """Retorna datos del trabajador en JSON para auto-rellenar el formulario de remuneración."""
     def get(self, request, pk):
         t = get_object_or_404(Trabajador, pk=pk)
@@ -292,7 +296,7 @@ class RemuneracionDatosAPI(GestionMixin, View):
         })
 
 
-class RemuneracionUpdateView(GestionMixin, UpdateView):
+class RemuneracionUpdateView(RrhhMixin, UpdateView):
     model = Remuneracion
     template_name = 'admin/rrhh/remuneracion_form.html'
     fields = ['trabajador', 'periodo_mes', 'periodo_anio', 'sueldo_base', 'horas_extra',
@@ -328,7 +332,7 @@ class RemuneracionUpdateView(GestionMixin, UpdateView):
         return ctx
 
 
-class RemuneracionPeriodoView(GestionMixin, View):
+class RemuneracionPeriodoView(RrhhMixin, View):
     """Paso 1: selección de período para procesar remuneraciones."""
     template_name = 'admin/rrhh/remuneracion_periodo.html'
 
@@ -364,7 +368,7 @@ class RemuneracionPeriodoView(GestionMixin, View):
         })
 
 
-class RemuneracionPeriodoDetalleView(GestionMixin, View):
+class RemuneracionPeriodoDetalleView(RrhhMixin, View):
     """Paso 2: listado de trabajadores con estado de remuneración para el período."""
     template_name = 'admin/rrhh/remuneracion_periodo_detalle.html'
 
@@ -393,7 +397,7 @@ class RemuneracionPeriodoDetalleView(GestionMixin, View):
         })
 
 
-class AnticipoLaboralListView(GestionMixin, ListView):
+class AnticipoLaboralListView(RrhhMixin, ListView):
     model = AnticipoLaboral
     template_name = 'admin/rrhh/anticipo_list.html'
     context_object_name = 'anticipos'
@@ -405,7 +409,7 @@ class AnticipoLaboralListView(GestionMixin, ListView):
         return ctx
 
 
-class AnticipoLaboralCreateView(GestionMixin, CreateView):
+class AnticipoLaboralCreateView(RrhhMixin, CreateView):
     model = AnticipoLaboral
     template_name = 'admin/rrhh/anticipo_form.html'
     fields = ['trabajador', 'fecha', 'monto', 'descripcion', 'estado']
@@ -425,7 +429,7 @@ class AnticipoLaboralCreateView(GestionMixin, CreateView):
 # Pago de Anticipo Laboral con automatismo contable
 # ---------------------------------------------------------------------------
 
-class AnticipoLaboralPagarView(GestionMixin, View):
+class AnticipoLaboralPagarView(RrhhMixin, View):
     template_name = 'admin/rrhh/anticipo_pagar.html'
 
     def _build_form(self, data=None, initial=None):
@@ -523,7 +527,7 @@ class AnticipoLaboralPagarView(GestionMixin, View):
 
         return redirect('rrhh:anticipo_list')
 
-class RemuneracionPagarView(GestionMixin, View):
+class RemuneracionPagarView(RrhhMixin, View):
     template_name = 'admin/rrhh/remuneracion_pagar.html'
 
     def _build_form(self, data=None, initial=None):

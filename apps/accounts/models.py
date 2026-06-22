@@ -18,6 +18,7 @@ class CustomUser(AbstractUser):
     cargo = models.CharField(max_length=100, blank=True, verbose_name='Cargo')
     telefono = models.CharField(max_length=20, blank=True, verbose_name='Teléfono')
     avatar = models.ImageField(upload_to='avatars/', null=True, blank=True, verbose_name='Avatar')
+    app_permisos = models.JSONField(default=list, blank=True, verbose_name='Permisos de aplicaciones')
 
     class Meta:
         verbose_name = 'Usuario'

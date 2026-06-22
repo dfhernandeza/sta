@@ -4,7 +4,11 @@ from django.contrib import messages
 from django.shortcuts import get_object_or_404, redirect
 from django.utils import timezone
 from django.forms import inlineformset_factory, ModelForm, TextInput, NumberInput, Select, Textarea, DateInput
-from apps.core.mixins import GestionMixin
+from apps.core.mixins import GestionMixin, AppPermisoMixin
+
+class ClientesMixin(AppPermisoMixin):
+    app_name = 'clientes'
+
 from apps.contabilidad.utils import generar_asiento_factura_emitida
 from apps.tributario.models import RegistroVenta
 from .models import Cliente, FacturaEmitida, CuentaPorCobrar, DetalleFacturaEmitida
@@ -76,7 +80,7 @@ DetalleEmitidaFormSet = inlineformset_factory(
 )
 
 
-class ClienteListView(GestionMixin, ListView):
+class ClienteListView(ClientesMixin, ListView):
     model = Cliente
     template_name = 'admin/clientes/cliente_list.html'
     context_object_name = 'clientes'
@@ -95,7 +99,7 @@ class ClienteListView(GestionMixin, ListView):
         return ctx
 
 
-class ClienteCreateView(GestionMixin, CreateView):
+class ClienteCreateView(ClientesMixin, CreateView):
     model = Cliente
     template_name = 'admin/clientes/cliente_form.html'
     fields = ['rut', 'razon_social', 'giro', 'direccion', 'comuna', 'ciudad', 'telefono', 'email', 'contacto', 'notas', 'activo']
@@ -111,7 +115,7 @@ class ClienteCreateView(GestionMixin, CreateView):
         return ctx
 
 
-class ClienteUpdateView(GestionMixin, UpdateView):
+class ClienteUpdateView(ClientesMixin, UpdateView):
     model = Cliente
     template_name = 'admin/clientes/cliente_form.html'
     fields = ['rut', 'razon_social', 'giro', 'direccion', 'comuna', 'ciudad', 'telefono', 'email', 'contacto', 'activo', 'notas']
@@ -127,7 +131,7 @@ class ClienteUpdateView(GestionMixin, UpdateView):
         return ctx
 
 
-class ClienteDetailView(GestionMixin, DetailView):
+class ClienteDetailView(ClientesMixin, DetailView):
     model = Cliente
     template_name = 'admin/clientes/cliente_detail.html'
     context_object_name = 'cliente'
@@ -138,7 +142,7 @@ class ClienteDetailView(GestionMixin, DetailView):
         return ctx
 
 
-class FacturaEmitidaListView(GestionMixin, ListView):
+class FacturaEmitidaListView(ClientesMixin, ListView):
     model = FacturaEmitida
     template_name = 'admin/clientes/factura_list.html'
     context_object_name = 'facturas'
@@ -161,7 +165,7 @@ class FacturaEmitidaListView(GestionMixin, ListView):
         return ctx
 
 
-class FacturaEmitidaCreateView(GestionMixin, CreateView):
+class FacturaEmitidaCreateView(ClientesMixin, CreateView):
     model = FacturaEmitida
     template_name = 'admin/clientes/factura_form.html'
     form_class = FacturaEmitidaForm
@@ -210,7 +214,7 @@ class FacturaEmitidaCreateView(GestionMixin, CreateView):
         return ctx
 
 
-class FacturaEmitidaUpdateView(GestionMixin, UpdateView):
+class FacturaEmitidaUpdateView(ClientesMixin, UpdateView):
     model = FacturaEmitida
     template_name = 'admin/clientes/factura_form.html'
     form_class = FacturaEmitidaForm
@@ -254,7 +258,7 @@ class FacturaEmitidaUpdateView(GestionMixin, UpdateView):
         return ctx
 
 
-class FacturaEmitidaDetailView(GestionMixin, DetailView):
+class FacturaEmitidaDetailView(ClientesMixin, DetailView):
     model = FacturaEmitida
     template_name = 'admin/clientes/factura_detail.html'
     context_object_name = 'factura'
@@ -265,7 +269,7 @@ class FacturaEmitidaDetailView(GestionMixin, DetailView):
         return ctx
 
 
-class FacturaEmitidaDeleteView(GestionMixin, DeleteView):
+class FacturaEmitidaDeleteView(ClientesMixin, DeleteView):
     model = FacturaEmitida
     template_name = 'admin/confirm_delete.html'
     success_url = reverse_lazy('clientes:factura_list')
@@ -298,7 +302,7 @@ class FacturaEmitidaDeleteView(GestionMixin, DeleteView):
         return super().form_valid(form)
 
 
-class CuentaPorCobrarListView(GestionMixin, ListView):
+class CuentaPorCobrarListView(ClientesMixin, ListView):
     model = CuentaPorCobrar
     template_name = 'admin/clientes/cxc_list.html'
     context_object_name = 'cuentas'
@@ -315,7 +319,7 @@ class CuentaPorCobrarListView(GestionMixin, ListView):
         return ctx
 
 
-class CxCPagarView(GestionMixin, View):
+class CxCPagarView(ClientesMixin, View):
     template_name = 'admin/clientes/cxc_cobrar.html'
 
     def _build_form(self, data=None, initial=None):
@@ -442,7 +446,7 @@ class CxCPagarView(GestionMixin, View):
         return redirect('clientes:cxc_list')
 
 
-class AnularPagoCxCView(GestionMixin, View):
+class AnularPagoCxCView(ClientesMixin, View):
     """Revierte un cobro: elimina el movimiento bancario y su asiento (borrador),
     y deja la CxC y la factura en estado pendiente."""
 
@@ -488,7 +492,7 @@ class AnularPagoCxCView(GestionMixin, View):
         return redirect('clientes:cxc_list')
 
 
-class GenerarAsientoFacturaEmitidaView(GestionMixin, View):
+class GenerarAsientoFacturaEmitidaView(ClientesMixin, View):
     def post(self, request, pk):
         from apps.contabilidad.utils import generar_asiento_factura_emitida, get_config
         factura = get_object_or_404(FacturaEmitida, pk=pk)

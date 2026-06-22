@@ -16,7 +16,7 @@ def get_config():
         return None
 
 
-def _add_linea(asiento, cuenta, debe=0, haber=0, descripcion='', orden=0):
+def _add_linea(asiento, cuenta, debe=0, haber=0, descripcion='', orden=0, centro_costo=None):
     """Helper para crear una LineaAsiento."""
     if cuenta is None:
         raise ValueError(
@@ -30,6 +30,7 @@ def _add_linea(asiento, cuenta, debe=0, haber=0, descripcion='', orden=0):
         haber=Decimal(str(haber)),
         descripcion=descripcion,
         orden=orden,
+        centro_costo=centro_costo,
     )
 
 
@@ -56,7 +57,7 @@ def generar_asiento_factura_emitida(factura, usuario=None):
 
     # Líneas HABER: ingresos por detalle
     orden = 10
-    detalles = factura.detalles.select_related('cuenta_contable').all()
+    detalles = factura.detalles.select_related('cuenta_contable', 'centro_costo').all()
     suma_afecto = Decimal('0')
     suma_exento = Decimal('0')
     for det in detalles:
@@ -64,7 +65,8 @@ def generar_asiento_factura_emitida(factura, usuario=None):
         cuenta_ingreso = det.cuenta_contable or config.cuenta_ventas_default
         descripcion_detallada = f'{det.descripcion[:150]} (Factura {factura.numero} Cant: {det.cantidad} x Precio Unit: {det.precio_unitario})'
         _add_linea(asiento, cuenta_ingreso, haber=subtotal,
-                   descripcion=descripcion_detallada, orden=orden)
+                   descripcion=descripcion_detallada, orden=orden,
+                   centro_costo=det.centro_costo)
         if getattr(det, 'exento_iva', False):
             suma_exento += subtotal
         else:
@@ -120,7 +122,7 @@ def generar_asiento_factura_recibida(factura, usuario=None):
 
     # Líneas DEBE: costos/gastos por detalle (afectos y exentos a sus propias cuentas)
     orden = 1
-    detalles = factura.detalles.select_related('cuenta_contable').all()
+    detalles = factura.detalles.select_related('cuenta_contable', 'centro_costo').all()
     suma_afecto = Decimal('0')
     suma_exento = Decimal('0')
     for det in detalles:
@@ -128,7 +130,8 @@ def generar_asiento_factura_recibida(factura, usuario=None):
         cuenta_costo = det.cuenta_contable or config.cuenta_compras_default
         descripcion_detallada = f'{det.descripcion[:150]} (Factura {factura.numero} Cant: {det.cantidad} x Precio Unit: {det.precio_unitario})'
         _add_linea(asiento, cuenta_costo, debe=subtotal,
-                   descripcion=descripcion_detallada, orden=orden)
+                   descripcion=descripcion_detallada, orden=orden,
+                   centro_costo=det.centro_costo)
         if det.exento_iva:
             suma_exento += subtotal
         else:
@@ -176,7 +179,8 @@ def generar_asiento_rendicion_gastos_recibida(rendicion, usuario=None):
     monto_total = Decimal('0.00')
     for det in detalles:
         _add_linea(asiento, det.cuenta_contable, debe=det.monto,
-                   descripcion=det.descripcion[:200], orden=orden)
+                   descripcion=det.descripcion[:200], orden=orden,
+                   centro_costo=det.centro_costo)
         monto_total += det.monto
         orden += 1
 
@@ -377,10 +381,11 @@ def generar_asiento_devengamiento_remuneracion(remuneracion, usuario=None):
     )
 
     orden = 1
+    centro_costo_trab = getattr(remuneracion.trabajador, 'centro_costo', None)
     # DEBE: gasto sueldos por el bruto completo
     _add_linea(asiento, cuenta_gasto, debe=remuneracion.sueldo_bruto,
                descripcion=f'Gasto sueldo bruto — {remuneracion.trabajador.nombre_completo}',
-               orden=orden)
+               orden=orden, centro_costo=centro_costo_trab)
     orden += 1
 
     # HABER: AFP por Pagar

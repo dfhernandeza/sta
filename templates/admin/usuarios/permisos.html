@@ -1,0 +1,60 @@
+{% extends 'base_admin.html' %}
+
+{% block title %}Permisos — {{ usuario.username }}{% endblock %}
+
+{% block breadcrumb %}
+  <li class="breadcrumb-item"><a href="{% url 'accounts:usuario_list' %}">Usuarios</a></li>
+  <li class="breadcrumb-item active">Permisos</li>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h4 class="page-title">Permisos: {{ usuario.get_full_name|default:usuario.username }}</h4>
+  <a href="{% url 'accounts:usuario_list' %}" class="btn btn-outline-secondary rounded-pill px-4">
+    <i class="bi bi-arrow-left me-1"></i>Volver
+  </a>
+</div>
+
+<div class="row justify-content-center">
+  <div class="col-lg-6">
+    <div class="card-sta p-4">
+      <p class="text-muted small mb-3">
+        Selecciona los módulos a los que <strong>{{ usuario.username }}</strong> tendrá acceso.
+        Los superusuarios siempre tienen acceso a todo.
+      </p>
+      <form method="post" novalidate>
+        {% csrf_token %}
+        <div class="row g-2">
+          {% for value, label in form.app_permisos.field.choices %}
+          <div class="col-sm-6">
+            <div class="form-check p-3 border rounded-3 {% if value in form.app_permisos.value %}bg-light{% endif %}">
+              <input
+                class="form-check-input"
+                type="checkbox"
+                name="app_permisos"
+                value="{{ value }}"
+                id="perm_{{ value }}"
+                {% if value in form.app_permisos.value %}checked{% endif %}
+              >
+              <label class="form-check-label fw-600 w-100" for="perm_{{ value }}">
+                <i class="bi bi-grid me-2 text-secondary"></i>{{ label }}
+              </label>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+
+        {% if form.app_permisos.errors %}
+        <div class="invalid-feedback d-block mt-2">{{ form.app_permisos.errors.0 }}</div>
+        {% endif %}
+
+        <div class="pt-3 mt-3 border-top">
+          <button type="submit" class="btn btn-sta px-5 rounded-pill">
+            <i class="bi bi-shield-check me-1"></i>Guardar permisos
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

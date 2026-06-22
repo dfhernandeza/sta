@@ -42,7 +42,7 @@
     <table class="table table-sta mb-0">
       <thead>
         <tr>
-          <th>N° Factura</th><th>Proveedor</th><th>Proyecto</th>
+          <th>N° Factura</th><th>Fecha Emisión</th><th>Fecha Vencimiento</th><th>Proveedor</th><th>Proyecto</th>
           <th class="text-end">Neto</th><th class="text-end">IVA</th><th class="text-end">Total</th>
           <th class="text-center">Estado</th><th class="text-center">Acciones</th>
         </tr>
@@ -51,6 +51,8 @@
         {% for f in facturas %}
         <tr>
           <td class="fw-700 font-monospace">{{ f.numero }}</td>
+          <td>{{ f.fecha_emision }}</td>
+          <td>{{ f.fecha_vencimiento }}</td>
           <td>{{ f.proveedor.razon_social|truncatechars:25 }}</td>
           <td class="small text-muted">{{ f.proyecto|default:"—" }}</td>
           <td class="text-end small">{{ f.neto| moneda_chilena }}</td>

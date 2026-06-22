@@ -1,7 +1,11 @@
 from django.views.generic import TemplateView
 from django.db.models import Sum, Count, Q
 from django.utils import timezone
-from apps.core.mixins import GestionMixin
+from apps.core.mixins import GestionMixin, AppPermisoMixin
+
+class DashboardMixin(AppPermisoMixin):
+    app_name = 'dashboard'
+
 from apps.clientes.models import FacturaEmitida, CuentaPorCobrar
 from apps.proveedores.models import FacturaRecibida, CuentaPorPagar
 from apps.tesoreria.models import CuentaBancaria
@@ -11,7 +15,7 @@ from apps.rrhh.models import Trabajador, Remuneracion
 import json
 
 
-class DashboardView(GestionMixin, TemplateView):
+class DashboardView(DashboardMixin, TemplateView):
     template_name = 'admin/dashboard/index.html'
 
     def get_context_data(self, **kwargs):

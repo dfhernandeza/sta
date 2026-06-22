@@ -6,7 +6,11 @@ from django.db.models import Sum
 from django import forms
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
-from apps.core.mixins import GestionMixin
+from apps.core.mixins import GestionMixin, AppPermisoMixin
+
+class TributarioMixin(AppPermisoMixin):
+    app_name = 'tributario'
+
 from apps.core.templatetags.custom_tags import moneda_chilena
 from .models import RegistroCompra, RegistroVenta, DeclaracionIVA, PPM, FormularioF29
 
@@ -75,7 +79,7 @@ class F29Form(forms.ModelForm):
         }
 
 
-class TributarioResumenView(GestionMixin, TemplateView):
+class TributarioResumenView(TributarioMixin, TemplateView):
     template_name = 'admin/tributario/resumen.html'
 
     def get_context_data(self, **kwargs):
@@ -97,7 +101,7 @@ class TributarioResumenView(GestionMixin, TemplateView):
         return ctx
 
 
-class RegistroCompraListView(GestionMixin, ListView):
+class RegistroCompraListView(TributarioMixin, ListView):
     model = RegistroCompra
     template_name = 'admin/tributario/compra_list.html'
     context_object_name = 'registros'
@@ -123,7 +127,7 @@ class RegistroCompraListView(GestionMixin, ListView):
         return ctx
 
 
-class RegistroVentaListView(GestionMixin, ListView):
+class RegistroVentaListView(TributarioMixin, ListView):
     model = RegistroVenta
     template_name = 'admin/tributario/venta_list.html'
     context_object_name = 'registros'
@@ -149,7 +153,7 @@ class RegistroVentaListView(GestionMixin, ListView):
         return ctx
 
 
-class DeclaracionIVAListView(GestionMixin, ListView):
+class DeclaracionIVAListView(TributarioMixin, ListView):
     model = DeclaracionIVA
     template_name = 'admin/tributario/iva_list.html'
     context_object_name = 'declaraciones'
@@ -160,7 +164,7 @@ class DeclaracionIVAListView(GestionMixin, ListView):
         return ctx
 
 
-class DeclaracionIVACreateView(GestionMixin, CreateView):
+class DeclaracionIVACreateView(TributarioMixin, CreateView):
     model = DeclaracionIVA
     template_name = 'admin/tributario/iva_form.html'
     form_class = IVAForm
@@ -218,7 +222,7 @@ class DeclaracionIVACreateView(GestionMixin, CreateView):
         return ctx
 
 
-class DeclaracionIVAUpdateView(GestionMixin, UpdateView):
+class DeclaracionIVAUpdateView(TributarioMixin, UpdateView):
     model = DeclaracionIVA
     template_name = 'admin/tributario/iva_form.html'
     form_class = IVAForm
@@ -234,7 +238,7 @@ class DeclaracionIVAUpdateView(GestionMixin, UpdateView):
         return ctx
 
 
-class PPMListView(GestionMixin, ListView):
+class PPMListView(TributarioMixin, ListView):
     model = PPM
     template_name = 'admin/tributario/ppm_list.html'
     context_object_name = 'ppms'
@@ -245,7 +249,7 @@ class PPMListView(GestionMixin, ListView):
         return ctx
 
 
-class PPMCreateView(GestionMixin, CreateView):
+class PPMCreateView(TributarioMixin, CreateView):
     model = PPM
     template_name = 'admin/tributario/ppm_form.html'
     form_class = PPMForm
@@ -300,7 +304,7 @@ class PPMCreateView(GestionMixin, CreateView):
                 pass
         return ctx
 
-class PPMUpdateView(GestionMixin, UpdateView):
+class PPMUpdateView(TributarioMixin, UpdateView):
     model = PPM
     template_name = 'admin/tributario/ppm_form.html'
     form_class = PPMForm
@@ -316,7 +320,7 @@ class PPMUpdateView(GestionMixin, UpdateView):
         return ctx
 
 
-class PPMPagarView(GestionMixin, View):
+class PPMPagarView(TributarioMixin, View):
     template_name = 'admin/tributario/ppm_pagar.html'
 
     def _build_form(self, data=None, initial=None):
@@ -409,7 +413,7 @@ class PPMPagarView(GestionMixin, View):
         return redirect('tributario:ppm_list')
 
 
-class F29ListView(GestionMixin, ListView):
+class F29ListView(TributarioMixin, ListView):
     model = FormularioF29
     template_name = 'admin/tributario/f29_list.html'
     context_object_name = 'f29s'
@@ -420,7 +424,7 @@ class F29ListView(GestionMixin, ListView):
         return ctx
 
 
-class F29CreateView(GestionMixin, CreateView):
+class F29CreateView(TributarioMixin, CreateView):
     model = FormularioF29
     template_name = 'admin/tributario/f29_form.html'
     form_class = F29Form
@@ -487,7 +491,7 @@ class F29CreateView(GestionMixin, CreateView):
         return ctx
 
 
-class F29UpdateView(GestionMixin, UpdateView):
+class F29UpdateView(TributarioMixin, UpdateView):
     model = FormularioF29
     template_name = 'admin/tributario/f29_form.html'
     form_class = F29Form
@@ -507,7 +511,7 @@ class F29UpdateView(GestionMixin, UpdateView):
 # Pago F29 con automatismo contable
 # ---------------------------------------------------------------------------
 
-class F29PagarView(GestionMixin, View):
+class F29PagarView(TributarioMixin, View):
     template_name = 'admin/tributario/f29_pagar.html'
 
     def _build_form(self, data=None, initial=None):

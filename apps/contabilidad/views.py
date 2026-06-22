@@ -1,19 +1,24 @@
 from django.views.generic import ListView, CreateView, UpdateView, DeleteView, DetailView, View
 from django.urls import reverse_lazy, reverse
 from django.contrib import messages
-from django.shortcuts import get_object_or_404, redirect
-from django.db.models import Sum, Q, Value, DecimalField
+from django.shortcuts import get_object_or_404, redirect, render
+from django.db.models import Sum, Q, Value, DecimalField, ExpressionWrapper, F
 from django.db.models.functions import Coalesce
 from django.utils.dateparse import parse_date
-from apps.core.mixins import GestionMixin
-from .models import PlanCuentas, AsientoContable, LineaAsiento, ConfiguracionContable, CentroCosto
+from apps.core.mixins import GestionMixin, AppPermisoMixin
 
+class ContabilidadMixin(AppPermisoMixin):
+    app_name = 'contabilidad'
+
+from apps.proveedores.models import DetalleFacturaRecibida, DetalleRendicion
+from .models import PlanCuentas, AsientoContable, LineaAsiento, ConfiguracionContable, CentroCosto
+from decimal import Decimal
 
 # ---------------------------------------------------------------------------
 # Plan de Cuentas
 # ---------------------------------------------------------------------------
 
-class PlanCuentasListView(GestionMixin, ListView):
+class PlanCuentasListView(ContabilidadMixin, ListView):
     model = PlanCuentas
     template_name = 'admin/contabilidad/plan_list.html'
     context_object_name = 'cuentas'
@@ -41,7 +46,7 @@ class PlanCuentasListView(GestionMixin, ListView):
         return ctx
 
 
-class PlanCuentasCreateView(GestionMixin, CreateView):
+class PlanCuentasCreateView(ContabilidadMixin, CreateView):
     model = PlanCuentas
     template_name = 'admin/contabilidad/plan_form.html'
     fields = ['codigo', 'nombre', 'tipo', 'nivel', 'parent', 'descripcion', 'acepta_movimientos', 'activa']
@@ -57,7 +62,7 @@ class PlanCuentasCreateView(GestionMixin, CreateView):
         return ctx
 
 
-class PlanCuentasUpdateView(GestionMixin, UpdateView):
+class PlanCuentasUpdateView(ContabilidadMixin, UpdateView):
     model = PlanCuentas
     template_name = 'admin/contabilidad/plan_form.html'
     fields = ['codigo', 'nombre', 'tipo', 'nivel', 'parent', 'descripcion', 'acepta_movimientos', 'activa']
@@ -73,7 +78,7 @@ class PlanCuentasUpdateView(GestionMixin, UpdateView):
         return ctx
 
 
-class PlanCuentasDeleteView(GestionMixin, DeleteView):
+class PlanCuentasDeleteView(ContabilidadMixin, DeleteView):
     model = PlanCuentas
     template_name = 'admin/confirm_delete.html'
     success_url = reverse_lazy('contabilidad:plan_list')
@@ -90,7 +95,7 @@ class PlanCuentasDeleteView(GestionMixin, DeleteView):
 
 
 
-class ConfiguracionContableView(GestionMixin, View):
+class ConfiguracionContableView(ContabilidadMixin, View):
     template_name = 'admin/contabilidad/configuracion_form.html'
 
     def _get_form_class(self):
@@ -153,7 +158,7 @@ class ConfiguracionContableView(GestionMixin, View):
 # Libro Diario — CRUD Asientos
 # ---------------------------------------------------------------------------
 
-class LibroDiarioListView(GestionMixin, ListView):
+class LibroDiarioListView(ContabilidadMixin, ListView):
     model = AsientoContable
     template_name = 'admin/contabilidad/diario_list.html'
     context_object_name = 'asientos'
@@ -183,7 +188,7 @@ class LibroDiarioListView(GestionMixin, ListView):
         return ctx
 
 
-class AsientoDetailView(GestionMixin, DetailView):
+class AsientoDetailView(ContabilidadMixin, DetailView):
     model = AsientoContable
     template_name = 'admin/contabilidad/asiento_detail.html'
     context_object_name = 'asiento'
@@ -197,7 +202,7 @@ class AsientoDetailView(GestionMixin, DetailView):
         return ctx
 
 
-class AsientoCreateView(GestionMixin, View):
+class AsientoCreateView(ContabilidadMixin, View):
     template_name = 'admin/contabilidad/asiento_form.html'
 
     def _forms(self, data=None):
@@ -217,12 +222,13 @@ class AsientoCreateView(GestionMixin, View):
         class LineaForm(forms.ModelForm):
             class Meta:
                 model = LineaAsiento
-                fields = ['cuenta', 'descripcion', 'debe', 'haber']
+                fields = ['cuenta', 'descripcion', 'debe', 'haber', 'centro_costo']
                 widgets = {
                     'cuenta': forms.Select(attrs={'class': 'form-select form-select-sm cuenta-select'}),
                     'descripcion': forms.TextInput(attrs={'class': 'form-control form-control-sm'}),
                     'debe': forms.NumberInput(attrs={'class': 'form-control form-control-sm text-end', 'step': '0.01', 'min': '0'}),
                     'haber': forms.NumberInput(attrs={'class': 'form-control form-control-sm text-end', 'step': '0.01', 'min': '0'}),
+                    'centro_costo': forms.Select(attrs={'class': 'form-select form-select-sm'}),
                 }
 
         LineaFormSet = inlineformset_factory(AsientoContable, LineaAsiento, form=LineaForm, extra=0, can_delete=True, min_num=2)
@@ -234,8 +240,10 @@ class AsientoCreateView(GestionMixin, View):
         from django.shortcuts import render
         form, formset = self._forms()
         cuentas = PlanCuentas.objects.filter(activa=True, acepta_movimientos=True).order_by('codigo')
+        centros_costo = CentroCosto.objects.filter(activo=True).order_by('codigo')
         return render(request, self.template_name, {
             'form': form, 'formset': formset, 'cuentas': cuentas,
+            'centros_costo': centros_costo,
             'titulo': 'Nuevo Asiento Manual',
         })
 
@@ -251,7 +259,7 @@ class AsientoCreateView(GestionMixin, View):
         class LineaForm(__import__('django').forms.ModelForm):
             class Meta:
                 model = LineaAsiento
-                fields = ['cuenta', 'descripcion', 'debe', 'haber']
+                fields = ['cuenta', 'descripcion', 'debe', 'haber', 'centro_costo']
 
         LineaFormSet = inlineformset_factory(AsientoContable, LineaAsiento, form=LineaForm, extra=0, can_delete=True)
         form = AsientoForm(request.POST)
@@ -270,13 +278,15 @@ class AsientoCreateView(GestionMixin, View):
             formset = LineaFormSet(request.POST)
 
         cuentas = PlanCuentas.objects.filter(activa=True, acepta_movimientos=True).order_by('codigo')
+        centros_costo = CentroCosto.objects.filter(activo=True).order_by('codigo')
         return render(request, self.template_name, {
             'form': form, 'formset': formset, 'cuentas': cuentas,
+            'centros_costo': centros_costo,
             'titulo': 'Nuevo Asiento Manual',
         })
 
 
-class AsientoUpdateView(GestionMixin, View):
+class AsientoUpdateView(ContabilidadMixin, View):
     template_name = 'admin/contabilidad/asiento_form.html'
 
     def _get_asiento(self, pk):
@@ -289,12 +299,13 @@ class AsientoUpdateView(GestionMixin, View):
         class LineaForm(forms.ModelForm):
             class Meta:
                 model = LineaAsiento
-                fields = ['cuenta', 'descripcion', 'debe', 'haber']
+                fields = ['cuenta', 'descripcion', 'debe', 'haber', 'centro_costo']
                 widgets = {
                     'cuenta': forms.Select(attrs={'class': 'form-select form-select-sm cuenta-select'}),
                     'descripcion': forms.TextInput(attrs={'class': 'form-control form-control-sm'}),
                     'debe': forms.NumberInput(attrs={'class': 'form-control form-control-sm text-end', 'step': '0.01', 'min': '0'}),
                     'haber': forms.NumberInput(attrs={'class': 'form-control form-control-sm text-end', 'step': '0.01', 'min': '0'}),
+                    'centro_costo': forms.Select(attrs={'class': 'form-select form-select-sm'}),
                 }
 
         return inlineformset_factory(AsientoContable, LineaAsiento, form=LineaForm, extra=1, can_delete=True)
@@ -317,8 +328,10 @@ class AsientoUpdateView(GestionMixin, View):
         form = AsientoForm(instance=asiento)
         formset = self._formset_class()(instance=asiento)
         cuentas = PlanCuentas.objects.filter(activa=True, acepta_movimientos=True).order_by('codigo')
+        centros_costo = CentroCosto.objects.filter(activo=True).order_by('codigo')
         return render(request, self.template_name, {
             'form': form, 'formset': formset, 'cuentas': cuentas,
+            'centros_costo': centros_costo,
             'asiento': asiento, 'titulo': f'Editar Asiento {asiento.numero}',
         })
 
@@ -341,13 +354,15 @@ class AsientoUpdateView(GestionMixin, View):
             return redirect('contabilidad:asiento_detail', pk=asiento.pk)
 
         cuentas = PlanCuentas.objects.filter(activa=True, acepta_movimientos=True).order_by('codigo')
+        centros_costo = CentroCosto.objects.filter(activo=True).order_by('codigo')
         return render(request, self.template_name, {
             'form': form, 'formset': formset, 'cuentas': cuentas,
+            'centros_costo': centros_costo,
             'asiento': asiento, 'titulo': f'Editar Asiento {asiento.numero}',
         })
 
 
-class AsientoConfirmarView(GestionMixin, View):
+class AsientoConfirmarView(ContabilidadMixin, View):
     def post(self, request, pk):
         asiento = get_object_or_404(AsientoContable, pk=pk)
         if asiento.estado != 'borrador':
@@ -363,7 +378,7 @@ class AsientoConfirmarView(GestionMixin, View):
         return redirect('contabilidad:asiento_detail', pk=asiento.pk)
 
 
-class AsientoAnularView(GestionMixin, View):
+class AsientoAnularView(ContabilidadMixin, View):
     def post(self, request, pk):
         asiento = get_object_or_404(AsientoContable, pk=pk)
         if asiento.estado == 'anulado':
@@ -374,7 +389,7 @@ class AsientoAnularView(GestionMixin, View):
             messages.success(request, f'Asiento {asiento.numero} anulado.')
         return redirect('contabilidad:asiento_detail', pk=asiento.pk)
 
-class AsientoDeleteView(GestionMixin, DeleteView):
+class AsientoDeleteView(ContabilidadMixin, DeleteView):
     model = AsientoContable
     template_name = 'admin/confirm_delete.html'
     success_url = reverse_lazy('contabilidad:diario_list')
@@ -386,11 +401,182 @@ class AsientoDeleteView(GestionMixin, DeleteView):
         messages.success(self.request, f'Asiento {self.object.numero} eliminado.')
         return super().form_valid(form)
 
+
+class AsientosExcelView(ContabilidadMixin, View):
+    """
+    Descarga el libro diario con sus líneas como archivo Excel (.xlsx).
+    Acepta los mismos filtros GET que LibroDiarioListView: tipo, estado, desde, hasta.
+    Genera dos hojas:
+        - Resumen: una fila por asiento
+        - Detalle Líneas: una fila por línea de asiento
+    """
+
+    def get(self, request):
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment
+        from openpyxl.utils import get_column_letter
+        from django.http import HttpResponse
+        from django.utils import timezone as tz
+
+        # ── Filtros (idénticos a LibroDiarioListView) ─────────────────────
+        qs = (
+            AsientoContable.objects
+            .prefetch_related('lineas__cuenta', 'lineas__centro_costo')
+            .order_by('fecha', 'numero')
+        )
+        tipo   = request.GET.get('tipo')
+        estado = request.GET.get('estado')
+        desde  = request.GET.get('desde')
+        hasta  = request.GET.get('hasta')
+        if tipo:
+            qs = qs.filter(tipo=tipo)
+        if estado:
+            qs = qs.filter(estado=estado)
+        if desde:
+            qs = qs.filter(fecha__gte=parse_date(desde))
+        if hasta:
+            qs = qs.filter(fecha__lte=parse_date(hasta))
+
+        # ── Estilos ───────────────────────────────────────────────────────
+        font_header  = Font(bold=True, color='FFFFFF')
+        font_bold    = Font(bold=True)
+        fill_header  = PatternFill('solid', fgColor='1F3864')
+        fill_asiento = PatternFill('solid', fgColor='D9E1F2')
+        fill_anulado = PatternFill('solid', fgColor='FFD7D7')
+        fill_total   = PatternFill('solid', fgColor='EBF3E8')
+        align_center = Alignment(horizontal='center', vertical='center')
+        align_right  = Alignment(horizontal='right')
+        fmt_num      = '#,##0.00'
+        fmt_date     = 'DD/MM/YYYY'
+
+        wb = openpyxl.Workbook()
+
+        # ═══════════════════════════════════════════════════════════════════
+        # Hoja 1 — Resumen (una fila por asiento)
+        # ═══════════════════════════════════════════════════════════════════
+        ws1 = wb.active
+        ws1.title = 'Resumen'
+
+        h1 = ['N° Asiento', 'Fecha', 'Descripción', 'Tipo', 'Estado',
+              'Total Debe', 'Total Haber', 'Cuadrado']
+        for col, val in enumerate(h1, 1):
+            c = ws1.cell(row=1, column=col, value=val)
+            c.font = font_header
+            c.fill = fill_header
+            c.alignment = align_center
+
+        for col, w in enumerate([18, 14, 55, 28, 14, 18, 18, 12], 1):
+            ws1.column_dimensions[get_column_letter(col)].width = w
+        ws1.row_dimensions[1].height = 20
+
+        for r, asiento in enumerate(qs, start=2):
+            fill = fill_anulado if asiento.estado == 'anulado' else None
+            cuadrado = asiento.esta_cuadrado
+            fila = [
+                asiento.numero,
+                asiento.fecha,
+                asiento.descripcion,
+                asiento.get_tipo_display(),
+                asiento.get_estado_display(),
+                float(asiento.total_debe),
+                float(asiento.total_haber),
+                'Sí' if cuadrado else 'No',
+            ]
+            for col, val in enumerate(fila, 1):
+                cell = ws1.cell(row=r, column=col, value=val)
+                if fill:
+                    cell.fill = fill
+                if col == 2:
+                    cell.number_format = fmt_date
+                if col in (6, 7):
+                    cell.number_format = fmt_num
+                    cell.alignment = align_right
+                if col == 8:
+                    cell.alignment = align_center
+                    cell.font = Font(bold=True, color='006100' if cuadrado else 'C00000')
+
+        ws1.freeze_panes = 'A2'
+        ws1.auto_filter.ref = f'A1:{get_column_letter(len(h1))}1'
+
+        # ═══════════════════════════════════════════════════════════════════
+        # Hoja 2 — Detalle líneas (una fila por línea de asiento)
+        # ═══════════════════════════════════════════════════════════════════
+        ws2 = wb.create_sheet('Detalle Líneas')
+
+        h2 = ['N° Asiento', 'Fecha', 'Desc. Asiento', 'Tipo', 'Estado',
+              'Orden', 'Cód. Cuenta', 'Nombre Cuenta', 'Desc. Línea', 'Centro Costo', 'Debe', 'Haber']
+        for col, val in enumerate(h2, 1):
+            c = ws2.cell(row=1, column=col, value=val)
+            c.font = font_header
+            c.fill = fill_header
+            c.alignment = align_center
+
+        for col, w in enumerate([18, 14, 50, 28, 14, 8, 15, 40, 50, 20, 18, 18], 1):
+            ws2.column_dimensions[get_column_letter(col)].width = w
+        ws2.row_dimensions[1].height = 20
+
+        row = 2
+        for asiento in qs:
+            lineas = list(asiento.lineas.all())
+            fill = fill_anulado if asiento.estado == 'anulado' else None
+            for linea in lineas:
+                fila = [
+                    asiento.numero,
+                    asiento.fecha,
+                    asiento.descripcion,
+                    asiento.get_tipo_display(),
+                    asiento.get_estado_display(),
+                    linea.orden,
+                    linea.cuenta.codigo,
+                    linea.cuenta.nombre,
+                    linea.descripcion,
+                    str(linea.centro_costo) if linea.centro_costo_id else '',
+                    float(linea.debe),
+                    float(linea.haber),
+                ]
+                for col, val in enumerate(fila, 1):
+                    cell = ws2.cell(row=row, column=col, value=val)
+                    if fill:
+                        cell.fill = fill
+                    if col == 2:
+                        cell.number_format = fmt_date
+                    if col in (11, 12):
+                        cell.number_format = fmt_num
+                        cell.alignment = align_right
+                row += 1
+
+            # Fila subtotal por asiento
+            if lineas:
+                for col in range(1, len(h2) + 1):
+                    ws2.cell(row=row, column=col).fill = fill_total
+                lbl = ws2.cell(row=row, column=9, value=f'Subtotal {asiento.numero}')
+                lbl.font = font_bold
+                lbl.fill = fill_total
+                for col, val in [(11, float(asiento.total_debe)), (12, float(asiento.total_haber))]:
+                    c = ws2.cell(row=row, column=col, value=val)
+                    c.font = font_bold
+                    c.fill = fill_total
+                    c.number_format = fmt_num
+                    c.alignment = align_right
+                row += 1
+
+        ws2.freeze_panes = 'A2'
+        ws2.auto_filter.ref = f'A1:{get_column_letter(len(h2))}1'
+
+        # ── Respuesta ─────────────────────────────────────────────────────
+        filename = f'libro_diario_{tz.now().strftime("%Y%m%d")}.xlsx'
+        response = HttpResponse(
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        wb.save(response)
+        return response
+
 # ---------------------------------------------------------------------------
 # Reportes Contables
 # ---------------------------------------------------------------------------
 
-class LibroMayorView(GestionMixin, View):
+class LibroMayorView(ContabilidadMixin, View):
     template_name = 'admin/contabilidad/libro_mayor.html'
 
     def get(self, request):
@@ -430,7 +616,7 @@ class LibroMayorView(GestionMixin, View):
         })
 
 
-class BalanceComprobacionView(GestionMixin, View):
+class BalanceComprobacionView(ContabilidadMixin, View):
     template_name = 'admin/contabilidad/balance_comprobacion.html'
 
     def get(self, request):
@@ -476,7 +662,7 @@ class BalanceComprobacionView(GestionMixin, View):
         })
 
 
-class BalanceGeneralView(GestionMixin, View):
+class BalanceGeneralView(ContabilidadMixin, View):
     template_name = 'admin/contabilidad/balance_general.html'
 
     def get(self, request):
@@ -528,7 +714,7 @@ class BalanceGeneralView(GestionMixin, View):
         })
 
 
-class EstadoResultadosView(GestionMixin, View):
+class EstadoResultadosView(ContabilidadMixin, View):
     template_name = 'admin/contabilidad/estado_resultados.html'
 
     def get(self, request):
@@ -590,7 +776,7 @@ class EstadoResultadosView(GestionMixin, View):
 # Centros de Costo
 # ---------------------------------------------------------------------------
 
-class CentroCostoListView(GestionMixin, ListView):
+class CentroCostoListView(ContabilidadMixin, ListView):
     model = CentroCosto
     template_name = 'admin/contabilidad/centro_costo_list.html'
     context_object_name = 'centros'
@@ -601,7 +787,7 @@ class CentroCostoListView(GestionMixin, ListView):
         return ctx
 
 
-class CentroCostoCreateView(GestionMixin, CreateView):
+class CentroCostoCreateView(ContabilidadMixin, CreateView):
     model = CentroCosto
     template_name = 'admin/contabilidad/centro_costo_form.html'
     fields = ['codigo', 'nombre', 'descripcion', 'presupuesto_mensual', 'activo']
@@ -617,7 +803,7 @@ class CentroCostoCreateView(GestionMixin, CreateView):
         return ctx
 
 
-class CentroCostoUpdateView(GestionMixin, UpdateView):
+class CentroCostoUpdateView(ContabilidadMixin, UpdateView):
     model = CentroCosto
     template_name = 'admin/contabilidad/centro_costo_form.html'
     fields = ['codigo', 'nombre', 'descripcion', 'presupuesto_mensual', 'activo']
@@ -633,7 +819,143 @@ class CentroCostoUpdateView(GestionMixin, UpdateView):
         return ctx
 
 
-class CentroCostoReporteView(GestionMixin, View):
+class CentroCostoDetalleView(ContabilidadMixin, View):
+    """Reporte detallado de un centro de costo: ingresos, egresos y todos los movimientos."""
+    template_name = 'admin/contabilidad/centro_costo_detalle.html'
+
+    def get(self, request, pk):
+        from django.shortcuts import render
+        from decimal import Decimal
+        from apps.clientes.models import DetalleFacturaEmitida
+        from apps.proveedores.models import DetalleFacturaRecibida, DetalleRendicion
+        from apps.rrhh.models import Remuneracion
+        from apps.proyectos.models import CostoProyecto
+
+        centro = get_object_or_404(CentroCosto, pk=pk)
+        fecha_desde = request.GET.get('fecha_desde')
+        fecha_hasta = request.GET.get('fecha_hasta')
+
+        # ── Facturas emitidas (ingresos) ──────────────────────────────────
+        fe_qs = (
+            DetalleFacturaEmitida.objects
+            .filter(centro_costo=centro)
+            .exclude(factura__estado='anulada')
+            .select_related('factura', 'factura__cliente', 'cuenta_contable')
+            .order_by('factura__fecha_emision')
+        )
+        if fecha_desde:
+            fe_qs = fe_qs.filter(factura__fecha_emision__gte=fecha_desde)
+        if fecha_hasta:
+            fe_qs = fe_qs.filter(factura__fecha_emision__lte=fecha_hasta)
+        facturas_emitidas = [
+            {'obj': d, 'subtotal': d.cantidad * d.precio_unitario}
+            for d in fe_qs
+        ]
+        total_ingresos = sum(r['subtotal'] for r in facturas_emitidas)
+
+        # ── Facturas recibidas (egresos) ──────────────────────────────────
+        fr_qs = (
+            DetalleFacturaRecibida.objects
+            .filter(centro_costo=centro)
+            .exclude(factura__estado='anulada')
+            .select_related('factura', 'factura__proveedor', 'cuenta_contable')
+            .order_by('factura__fecha_emision')
+        )
+        if fecha_desde:
+            fr_qs = fr_qs.filter(factura__fecha_emision__gte=fecha_desde)
+        if fecha_hasta:
+            fr_qs = fr_qs.filter(factura__fecha_emision__lte=fecha_hasta)
+        facturas_recibidas = [
+            {'obj': d, 'subtotal': d.cantidad * d.precio_unitario}
+            for d in fr_qs
+        ]
+        total_fact_recibidas = sum(r['subtotal'] for r in facturas_recibidas)
+
+        # ── Rendiciones (egresos) ─────────────────────────────────────────
+        rend_qs = (
+            DetalleRendicion.objects
+            .filter(centro_costo=centro, rendicion__estado='aprobado')
+            .select_related('rendicion', 'rendicion__trabajador', 'cuenta_contable')
+            .order_by('fecha_gasto')
+        )
+        if fecha_desde:
+            rend_qs = rend_qs.filter(fecha_gasto__gte=fecha_desde)
+        if fecha_hasta:
+            rend_qs = rend_qs.filter(fecha_gasto__lte=fecha_hasta)
+        rendiciones = list(rend_qs)
+        total_rendiciones = sum(r.monto for r in rendiciones)
+
+        # ── Remuneraciones (egresos) ──────────────────────────────────────
+        rem_qs = (
+            Remuneracion.objects
+            .filter(trabajador__centro_costo=centro)
+            .exclude(estado='borrador')
+            .select_related('trabajador')
+            .order_by('periodo_anio', 'periodo_mes')
+        )
+        if fecha_desde:
+            from django.utils.dateparse import parse_date as _pd
+            d = _pd(fecha_desde)
+            if d:
+                rem_qs = rem_qs.filter(
+                    periodo_anio__gte=d.year
+                ).exclude(
+                    periodo_anio=d.year, periodo_mes__lt=d.month
+                )
+        if fecha_hasta:
+            from django.utils.dateparse import parse_date as _pd2
+            h = _pd2(fecha_hasta)
+            if h:
+                rem_qs = rem_qs.filter(
+                    periodo_anio__lte=h.year
+                ).exclude(
+                    periodo_anio=h.year, periodo_mes__gt=h.month
+                )
+        remuneraciones = list(rem_qs)
+        total_remuneraciones = sum(r.sueldo_bruto for r in remuneraciones)
+
+        # ── Costos de proyecto (egresos) ──────────────────────────────────
+        cp_qs = (
+            CostoProyecto.objects
+            .filter(centro_costo=centro)
+            .select_related('proyecto', 'cuenta_contable', 'proveedor')
+            .order_by('fecha')
+        )
+        if fecha_desde:
+            cp_qs = cp_qs.filter(fecha__gte=fecha_desde)
+        if fecha_hasta:
+            cp_qs = cp_qs.filter(fecha__lte=fecha_hasta)
+        costos_proyecto = list(cp_qs)
+        total_costos_proyecto = sum(c.monto for c in costos_proyecto)
+
+        # ── Totals ────────────────────────────────────────────────────────
+        total_egresos = total_fact_recibidas + total_rendiciones + total_remuneraciones + total_costos_proyecto
+        resultado = total_ingresos - total_egresos
+
+        return render(request, self.template_name, {
+            'titulo': f'Detalle Centro de Costo: {centro}',
+            'centro': centro,
+            'fecha_desde': fecha_desde or '',
+            'fecha_hasta': fecha_hasta or '',
+            # ingresos
+            'facturas_emitidas': facturas_emitidas,
+            'total_ingresos': total_ingresos,
+            # egresos
+            'facturas_recibidas': facturas_recibidas,
+            'total_fact_recibidas': total_fact_recibidas,
+            'rendiciones': rendiciones,
+            'total_rendiciones': total_rendiciones,
+            'remuneraciones': remuneraciones,
+            'total_remuneraciones': total_remuneraciones,
+            'costos_proyecto': costos_proyecto,
+            'total_costos_proyecto': total_costos_proyecto,
+            # summary
+            'total_egresos': total_egresos,
+            'resultado': resultado,
+        })
+
+
+class CentroCostoReporteView(ContabilidadMixin, View):
     template_name = 'admin/contabilidad/centro_costo_reporte.html'
 
     def get(self, request):
@@ -764,12 +1086,139 @@ class CentroCostoReporteView(GestionMixin, View):
             'desv_total': desv_total,
         })
 
+    
+class InformeCentroCostoView(ContabilidadMixin, View):
+    template_name = "admin/contabilidad/informe_centro_costo.html"
+
+    def get(self, request, *args, **kwargs):
+        centro_id = request.GET.get("centro_costo")
+        fecha_desde = request.GET.get("fecha_desde")
+        fecha_hasta = request.GET.get("fecha_hasta")
+
+        centros = CentroCosto.objects.filter(activo=True).order_by("codigo")
+
+        detalles_facturas = DetalleFacturaRecibida.objects.select_related(
+            "factura",
+            "factura__proveedor",
+            "centro_costo",
+            "cuenta_contable",
+        ).filter(
+            centro_costo__isnull=False,
+            factura__estado__in=["pendiente", "pagada", "vencida"],
+        )
+
+        detalles_rendiciones = DetalleRendicion.objects.select_related(
+            "rendicion",
+            "rendicion__trabajador",
+            "centro_costo",
+            "cuenta_contable",
+        ).filter(
+            centro_costo__isnull=False,
+            rendicion__estado="aprobado",
+        )
+
+        if centro_id:
+            detalles_facturas = detalles_facturas.filter(centro_costo_id=centro_id)
+            detalles_rendiciones = detalles_rendiciones.filter(centro_costo_id=centro_id)
+
+        if fecha_desde:
+            detalles_facturas = detalles_facturas.filter(factura__fecha_emision__gte=fecha_desde)
+            detalles_rendiciones = detalles_rendiciones.filter(rendicion__fecha__gte=fecha_desde)
+
+        if fecha_hasta:
+            detalles_facturas = detalles_facturas.filter(factura__fecha_emision__lte=fecha_hasta)
+            detalles_rendiciones = detalles_rendiciones.filter(rendicion__fecha__lte=fecha_hasta)
+
+        monto_factura_expr = ExpressionWrapper(
+            F("cantidad") * F("precio_unitario"),
+            output_field=DecimalField(max_digits=15, decimal_places=2),
+        )
+
+        resumen_facturas = (
+            detalles_facturas
+            .annotate(monto_linea=monto_factura_expr)
+            .values(
+                "centro_costo_id",
+                "centro_costo__codigo",
+                "centro_costo__nombre",
+                "centro_costo__presupuesto_mensual",
+            )
+            .annotate(total=Coalesce(Sum("monto_linea"), Decimal("0.00")))
+        )
+
+        resumen_rendiciones = (
+            detalles_rendiciones
+            .values(
+                "centro_costo_id",
+                "centro_costo__codigo",
+                "centro_costo__nombre",
+                "centro_costo__presupuesto_mensual",
+            )
+            .annotate(total=Coalesce(Sum("monto"), Decimal("0.00")))
+        )
+
+        data = {}
+
+        for item in resumen_facturas:
+            cc_id = item["centro_costo_id"]
+
+            data.setdefault(cc_id, {
+                "centro_costo_id": cc_id,
+                "codigo": item["centro_costo__codigo"],
+                "nombre": item["centro_costo__nombre"],
+                "presupuesto": item["centro_costo__presupuesto_mensual"] or Decimal("0.00"),
+                "facturas": Decimal("0.00"),
+                "rendiciones": Decimal("0.00"),
+            })
+
+            data[cc_id]["facturas"] += item["total"] or Decimal("0.00")
+
+        for item in resumen_rendiciones:
+            cc_id = item["centro_costo_id"]
+
+            data.setdefault(cc_id, {
+                "centro_costo_id": cc_id,
+                "codigo": item["centro_costo__codigo"],
+                "nombre": item["centro_costo__nombre"],
+                "presupuesto": item["centro_costo__presupuesto_mensual"] or Decimal("0.00"),
+                "facturas": Decimal("0.00"),
+                "rendiciones": Decimal("0.00"),
+            })
+
+            data[cc_id]["rendiciones"] += item["total"] or Decimal("0.00")
+
+        informe = []
+        total_general = Decimal("0.00")
+
+        for item in data.values():
+            total_real = item["facturas"] + item["rendiciones"]
+            diferencia = item["presupuesto"] - total_real
+
+            item["total_real"] = total_real
+            item["diferencia"] = diferencia
+
+            informe.append(item)
+            total_general += total_real
+
+        informe.sort(key=lambda x: x["codigo"])
+
+        context = {
+            "centros": centros,
+            "informe": informe,
+            "total_general": total_general,
+            "centro_id": centro_id,
+            "fecha_desde": fecha_desde,
+            "fecha_hasta": fecha_hasta,
+        }
+
+        return render(request, self.template_name, context)
+
 
 # ---------------------------------------------------------------------------
 # Asiento de Apertura — Saldos Iniciales
 # ---------------------------------------------------------------------------
 
-class AperturaContableView(GestionMixin, View):
+class AperturaContableView(ContabilidadMixin, View):
     """
     Permite ingresar los saldos de apertura contable de la empresa.
 

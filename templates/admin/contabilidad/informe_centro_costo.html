@@ -1,0 +1,130 @@
+{% extends "base_admin.html" %}
+{% load custom_tags %}
+
+{% block title %}Informe Centros de Costo{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item">Contabilidad</li>
+<li class="breadcrumb-item active">Informe Centros de Costo</li>
+{% endblock %}
+
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-start mb-4">
+  <div>
+    <h1 class="h3 mb-1">Informe por Centro de Costo</h1>
+    <p class="text-muted mb-0">
+      Resumen de facturas recibidas y rendiciones aprobadas asociadas a centros de costo.
+    </p>
+  </div>
+</div>
+
+<div class="card shadow-sm border-0 mb-4">
+  <div class="card-body">
+    <form method="get" class="row g-3 align-items-end">
+
+      <div class="col-md-4">
+        <label class="form-label">Centro de costo</label>
+        <select name="centro_costo" class="form-select">
+          <option value="">Todos</option>
+          {% for centro in centros %}
+            <option value="{{ centro.id }}" {% if centro_id|stringformat:"s" == centro.id|stringformat:"s" %}selected{% endif %}>
+              {{ centro.codigo }} — {{ centro.nombre }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-md-3">
+        <label class="form-label">Desde</label>
+        <input type="date" name="fecha_desde" value="{{ fecha_desde }}" class="form-control">
+      </div>
+
+      <div class="col-md-3">
+        <label class="form-label">Hasta</label>
+        <input type="date" name="fecha_hasta" value="{{ fecha_hasta }}" class="form-control">
+      </div>
+
+      <div class="col-md-2 d-grid">
+        <button type="submit" class="btn btn-primary">
+          <i class="bi bi-search me-1"></i> Filtrar
+        </button>
+      </div>
+
+    </form>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm">
+      <div class="card-body">
+        <div class="text-muted small">Total real</div>
+        <div class="h4 mb-0">{{ total_general|moneda_chilena }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card shadow-sm border-0">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center">
+    <strong>Detalle por centro de costo</strong>
+    <span class="text-muted small">{{ informe|length }} registro(s)</span>
+  </div>
+
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Código</th>
+          <th>Centro de costo</th>
+          <th class="text-end">Facturas</th>
+          <th class="text-end">Rendiciones</th>
+          <th class="text-end">Total real</th>
+          <th class="text-end">Presupuesto</th>
+          <th class="text-end">Diferencia</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in informe %}
+          <tr>
+            <td>
+              <span class="badge bg-secondary">{{ item.codigo }}</span>
+            </td>
+            <td>{{ item.nombre }}</td>
+            <td class="text-end">{{ item.facturas|moneda_chilena }}</td>
+            <td class="text-end">{{ item.rendiciones|moneda_chilena }}</td>
+            <td class="text-end fw-semibold">{{ item.total_real|moneda_chilena }}</td>
+            <td class="text-end">{{ item.presupuesto|moneda_chilena }}</td>
+            <td class="text-end">
+              {% if item.diferencia < 0 %}
+                <span class="text-danger fw-semibold">{{ item.diferencia|moneda_chilena }}</span>
+              {% else %}
+                <span class="text-success fw-semibold">{{ item.diferencia|moneda_chilena }}</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="7" class="text-center py-5 text-muted">
+              <i class="bi bi-inbox fs-3 d-block mb-2"></i>
+              No hay movimientos para los filtros seleccionados.
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+
+      {% if informe %}
+      <tfoot class="table-light">
+        <tr>
+          <th colspan="4" class="text-end">Total general</th>
+          <th class="text-end">{{ total_general|moneda_chilena }}</th>
+          <th colspan="2"></th>
+        </tr>
+      </tfoot>
+      {% endif %}
+    </table>
+  </div>
+</div>
+
+{% endblock %}
