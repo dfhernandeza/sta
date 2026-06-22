@@ -97,11 +97,13 @@
           <dd class="col-sm-7"><span class="badge-{{ cxp.estado }}">{{ cxp.get_estado_display }}</span></dd>
         </dl>
         {% if cxp.estado != 'pagada' %}
+        {% if es_superusuario %}
         <div class="mt-2 mb-3">
           <a href="{% url 'proveedores:cxp_pagar' cxp.pk %}" class="btn btn-success btn-sm rounded-pill px-4">
             <i class="bi bi-cash-coin me-1"></i>Registrar pago
           </a>
         </div>
+        {% endif %}
         {% endif %}
         {% endfor %}
       {% else %}
@@ -119,12 +121,14 @@
             {% elif asiento.estado == 'confirmado' %}<span class="badge bg-success">Confirmado</span>{% endif %}
           </div>
         {% else %}
+          {% if es_superusuario %}
           <form method="post" action="{% url 'rendiciones:rendicion_asiento' rendicion.pk %}">
             {% csrf_token %}
             <button type="submit" class="btn btn-outline-primary btn-sm rounded-pill w-100">
               <i class="bi bi-journal-plus me-1"></i>Generar asiento contable
             </button>
           </form>
+          {% endif %}
         {% endif %}
       </div>
 

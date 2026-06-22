@@ -65,7 +65,7 @@
             {% if cxp.factura %}
             <a href="{% url 'proveedores:factura_detail' cxp.factura.pk %}" class="text-sta text-decoration-none">{{ cxp.factura.numero }}</a>
             {% else %}
-            <a href="{% url 'proveedores:rendicion_detail' cxp.rendicion.pk %}" class="text-sta text-decoration-none">{{ cxp.rendicion.id }}</a>
+            <a href="{% url 'rendiciones:rendicion_detail' cxp.rendicion.pk %}" class="text-sta text-decoration-none">{{ cxp.rendicion.id }}</a>
             {% endif %}
           </td>
           <td>

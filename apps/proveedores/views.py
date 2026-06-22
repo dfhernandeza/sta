@@ -10,7 +10,7 @@ from django.utils import timezone
 from datetime import timedelta
 from django.db.models import Sum
 from django.forms import CheckboxInput, inlineformset_factory, ModelForm, TextInput, Select, NumberInput
-from apps.contabilidad.utils import generar_asiento_factura_recibida, generar_asiento_rendicion_gastos_recibida
+from apps.contabilidad.utils import generar_asiento_factura_recibida
 from apps.core.mixins import GestionMixin, AppPermisoMixin
 
 
@@ -19,7 +19,7 @@ class ProveedoresMixin(AppPermisoMixin):
 
 
 from apps.web import forms
-from .models import DetalleRendicion, Proveedor, FacturaRecibida, DetalleFacturaRecibida, CuentaPorPagar, Anticipo, RendicionGastos
+from .models import Proveedor, FacturaRecibida, DetalleFacturaRecibida, CuentaPorPagar, Anticipo
 from apps.tributario.models import RegistroCompra
 
 
@@ -738,138 +738,3 @@ class AnticipoProveedorPagarView(ProveedoresMixin, View):
 
         return redirect('proveedores:anticipo_list')
 
-class RendicionGastosListView(ProveedoresMixin, ListView):
-    model = RendicionGastos
-    template_name = 'admin/proveedores/rendicion_list.html'
-    context_object_name = 'rendiciones'
-    paginate_by = 20
-
-    def get_context_data(self, **kwargs):
-        ctx = super().get_context_data(**kwargs)
-        ctx['titulo'] = 'Rendiciones de Gastos'
-        return ctx
-
-
-class DetalleRendicionForm(ModelForm):
-    class Meta:
-        model = DetalleRendicion    
-        fields = ['fecha_gasto', 'n_boleta_factura', 'descripcion', 'monto', 'centro_costo', 'cuenta_contable' , 'proveedor']
-        widgets = { 
-            'fecha_gasto': TextInput(attrs={'type': 'date', 'class': 'form-control form-control-sm'}),
-            'n_boleta_factura': TextInput(attrs={'class': 'form-control form-control-sm'}),
-            'descripcion': TextInput(attrs={'class': 'form-control form-control-sm'}),
-            'monto': NumberInput(attrs={'class': 'form-control form-control-sm', 'step': '1'}),
-            'centro_costo': Select(attrs={'class': 'form-select form-select-sm'}),
-            'cuenta_contable': Select(attrs={'class': 'form-select form-select-sm'}),
-            'proveedor': Select(attrs={'class': 'form-select form-select-sm'}),
-        }
-    
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        # Filtrar cuentas contables para mostrar solo las de tipo 'gasto' o 'costo' y de nivel 4
-        self.fields['cuenta_contable'].queryset = self.fields['cuenta_contable'].queryset.filter(
-            tipo__in=['gasto', 'costo'],
-            nivel=4
-        )
-
-
-DetalleRendicionFormSet = inlineformset_factory(
-    RendicionGastos, DetalleRendicion,
-    form=DetalleRendicionForm,
-    extra=0, can_delete=True,
-)
-
-
-class RendicionGastosCreateView(ProveedoresMixin, CreateView):
-    model = RendicionGastos
-    template_name = 'admin/proveedores/rendicion_form.html'
-    fields = ['trabajador', 'proyecto', 'fecha', 'motivo_del_gasto']
-    success_url = reverse_lazy('proveedores:rendicion_list')
-
-    def form_valid(self, form):
-        formset = DetalleRendicionFormSet(self.request.POST)
-        if not formset.is_valid():
-            return self.form_invalid(form)
-        response = super().form_valid(form)
-        formset.instance = self.object
-        formset.save()
-        # Creamos la cuenta por pagar usando los detalles ya guardados
-        total_rendicion = self.object.detalles.aggregate(t=Sum('monto'))['t'] or 0
-        if total_rendicion > 0:
-            CuentaPorPagar.objects.create(
-                rendicion=self.object,
-                fecha_vencimiento=_viernes_proxima_semana(self.object.fecha),
-                monto=total_rendicion,
-            )
-
-        logger.info('Rendición de gastos creada: pk=%s, trabajador=%s, total=%s por %s', self.object.pk, self.object.trabajador, total_rendicion, self.request.user)
-        messages.success(self.request, 'Rendición de gastos creada.')
-        return response
-
-    def get_context_data(self, **kwargs):
-        ctx = super().get_context_data(**kwargs)
-        ctx['titulo'] = 'Nueva Rendición de Gastos'
-        if self.request.POST:
-            ctx['detalle_formset'] = DetalleRendicionFormSet(self.request.POST)
-        else:
-            ctx['detalle_formset'] = DetalleRendicionFormSet()
-        return ctx
-
-# Transiciones válidas de estado para RendicionGastos
-_TRANSICIONES_RENDICION = {
-    'borrador':  ['enviado'],
-    'enviado':   ['aprobado', 'rechazado'],
-    'rechazado': ['borrador'],
-    'aprobado':  [],
-}
-
-
-class RendicionGastosDetailView(ProveedoresMixin, DetailView):
-    model = RendicionGastos
-    template_name = 'admin/proveedores/rendicion_detail.html'
-    context_object_name = 'rendicion'
-
-    def get_context_data(self, **kwargs):
-        ctx = super().get_context_data(**kwargs)
-        ctx['detalles'] = self.object.detalles.select_related(
-            'centro_costo', 'cuenta_contable', 'proveedor'
-        ).all()
-        ctx['total'] = self.object.detalles.aggregate(t=Sum('monto'))['t'] or 0
-        ctx['cuentas_pagar'] = self.object.cuentas_pagar.all()
-        ctx['asiento'] = self.object.asientos.exclude(estado='anulado').first()
-        ctx['transiciones'] = _TRANSICIONES_RENDICION.get(self.object.estado, [])
-        return ctx
-
-    def post(self, request, pk):
-        rendicion = get_object_or_404(RendicionGastos, pk=pk)
-        nuevo_estado = request.POST.get('estado')
-        transiciones_validas = _TRANSICIONES_RENDICION.get(rendicion.estado, [])
-        if nuevo_estado in transiciones_validas:
-            rendicion.estado = nuevo_estado
-            rendicion.save(update_fields=['estado'])
-            labels = dict(RendicionGastos.ESTADO_CHOICES)
-            logger.info('Rendición pk=%s cambio de estado a "%s" por %s', rendicion.pk, nuevo_estado, request.user)
-            messages.success(request, f'Estado actualizado a "{labels[nuevo_estado]}".') 
-        else:
-            logger.warning('Transición inválida para rendición pk=%s: estado=%s, solicitado=%s por %s', rendicion.pk, rendicion.estado, nuevo_estado, request.user)
-            messages.error(request, f'Transición de estado no permitida.')
-        return redirect('proveedores:rendicion_detail', pk=rendicion.pk)
-
-
-class GenerarAsientoRendicionView(ProveedoresMixin, View):
-    def post(self, request, pk):
-        from apps.contabilidad.utils import generar_asiento_rendicion_gastos_recibida, get_config
-        rendicion = get_object_or_404(RendicionGastos, pk=pk)
-        asiento_activo = rendicion.asientos.exclude(estado='anulado').first()
-        if asiento_activo:
-            messages.info(request, f'Esta rendición ya tiene un asiento: {asiento_activo.numero}.')
-            return redirect('contabilidad:asiento_detail', pk=asiento_activo.pk)
-        if not get_config():
-            messages.warning(request, 'Configure primero las cuentas contables antes de generar asientos.')
-            return redirect('contabilidad:configuracion')
-        asiento = generar_asiento_rendicion_gastos_recibida(rendicion, usuario=request.user)
-        if asiento:
-            messages.success(request, f'Asiento {asiento.numero} generado en borrador.')
-            return redirect('contabilidad:asiento_detail', pk=asiento.pk)
-        messages.error(request, 'No se pudo generar el asiento. Verifique la configuración contable.')
-        return redirect('proveedores:rendicion_detail', pk=rendicion.pk)

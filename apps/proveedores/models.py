@@ -3,7 +3,6 @@ from django.db import models
 from apps.tesoreria.models import Banco, TIPO_CHOICES
 from apps.core.models import TimeStampedModel
 from apps.core.validators import validar_rut
-from apps.contabilidad.models import PlanCuentas, CentroCosto
 
 
 class Proveedor(TimeStampedModel):
@@ -130,7 +129,7 @@ class CuentaPorPagar(TimeStampedModel):
         related_name='cuenta_pagar', verbose_name='Factura', null=True, blank=True
     )
     rendicion = models.ForeignKey(
-        'RendicionGastos', null=True, blank=True, on_delete=models.SET_NULL,
+        'rendiciones.RendicionGastos', null=True, blank=True, on_delete=models.SET_NULL,
         related_name='cuentas_pagar', verbose_name='Rendición de Gastos'
     )
     fecha_vencimiento = models.DateField(verbose_name='Fecha Vencimiento')
@@ -198,51 +197,4 @@ class Anticipo(TimeStampedModel):
 
     def __str__(self):
         return f'Anticipo {self.proveedor.razon_social} - ${self.monto:,.0f}'
-
-class RendicionGastos(TimeStampedModel):
-    ESTADO_CHOICES = [
-        ('borrador', 'Borrador'),
-        ('enviado', 'Enviado para revisión'),
-        ('aprobado', 'Aprobado'),
-        ('rechazado', 'Rechazado'),
-    ]
-
-    trabajador = models.ForeignKey(
-        'rrhh.Trabajador', on_delete=models.PROTECT,
-        related_name='rendiciones', verbose_name='Trabajador'
-    )
-    proyecto = models.ForeignKey(
-        'proyectos.Proyecto', null=True, blank=True,
-        on_delete=models.SET_NULL, verbose_name='Proyecto'
-    )
-    fecha = models.DateField(verbose_name='Fecha de Rendición')
-    motivo_del_gasto = models.CharField(max_length=300, verbose_name='Motivo del gasto')
-    estado = models.CharField(max_length=15, choices=ESTADO_CHOICES, default='borrador', verbose_name='Estado')
-
-    class Meta:
-        verbose_name = 'Rendición de Gastos'
-        verbose_name_plural = 'Rendiciones de Gastos'
-        ordering = ['-id']
-
-    def __str__(self):
-        return f'Rendición de {self.trabajador.nombre_completo} - {self.fecha}'
-
-class DetalleRendicion(models.Model):
-    rendicion = models.ForeignKey(
-        RendicionGastos, on_delete=models.CASCADE,
-        related_name='detalles', verbose_name='Rendición de Gastos'
-    )
-    fecha_gasto = models.DateField(verbose_name='Fecha del gasto')
-    n_boleta_factura = models.CharField(max_length=100, verbose_name='N° Boleta o Factura')
-    descripcion = models.CharField(max_length=300, verbose_name='Descripción del gasto')
-    monto = models.DecimalField(max_digits=15, decimal_places=2, verbose_name='Monto del gasto')
-    centro_costo = models.ForeignKey(CentroCosto, null=True, blank=True, on_delete=models.SET_NULL, verbose_name='Centro de Costo')
-    cuenta_contable = models.ForeignKey(PlanCuentas, null=True, blank=True, on_delete=models.SET_NULL, verbose_name='Cuenta contable')
-    proveedor = models.ForeignKey('proveedores.Proveedor', null=True, blank=True, on_delete=models.SET_NULL, verbose_name='Proveedor')
-    class Meta:
-        verbose_name = 'Detalle de Rendición'
-        verbose_name_plural = 'Detalles de Rendiciones'
-
-    def __str__(self):
-        return f'{self.descripcion} - ${self.monto:,.0f}'
 

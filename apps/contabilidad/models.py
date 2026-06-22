@@ -217,7 +217,7 @@ class AsientoContable(TimeStampedModel):
         related_name='asientos', verbose_name='Movimiento Bancario'
     )
     rendicion_gastos = models.ForeignKey(
-        'proveedores.RendicionGastos', null=True, blank=True, on_delete=models.SET_NULL,
+        'rendiciones.RendicionGastos', null=True, blank=True, on_delete=models.SET_NULL,
         related_name='asientos', verbose_name='Rendición de Gastos'
     )
     remuneracion = models.ForeignKey(

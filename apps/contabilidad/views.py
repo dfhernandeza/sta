@@ -10,7 +10,8 @@ from apps.core.mixins import GestionMixin, AppPermisoMixin
 class ContabilidadMixin(AppPermisoMixin):
     app_name = 'contabilidad'
 
-from apps.proveedores.models import DetalleFacturaRecibida, DetalleRendicion
+from apps.proveedores.models import DetalleFacturaRecibida
+from apps.rendiciones.models import DetalleRendicion
 from .models import PlanCuentas, AsientoContable, LineaAsiento, ConfiguracionContable, CentroCosto
 from decimal import Decimal
 
@@ -228,7 +229,7 @@ class AsientoCreateView(ContabilidadMixin, View):
                     'descripcion': forms.TextInput(attrs={'class': 'form-control form-control-sm'}),
                     'debe': forms.NumberInput(attrs={'class': 'form-control form-control-sm text-end', 'step': '0.01', 'min': '0'}),
                     'haber': forms.NumberInput(attrs={'class': 'form-control form-control-sm text-end', 'step': '0.01', 'min': '0'}),
-                    'centro_costo': forms.Select(attrs={'class': 'form-select form-select-sm'}),
+                    'centro_costo': forms.Select(attrs={'class': 'centro-select'}),
                 }
 
         LineaFormSet = inlineformset_factory(AsientoContable, LineaAsiento, form=LineaForm, extra=0, can_delete=True, min_num=2)
@@ -263,19 +264,33 @@ class AsientoCreateView(ContabilidadMixin, View):
 
         LineaFormSet = inlineformset_factory(AsientoContable, LineaAsiento, form=LineaForm, extra=0, can_delete=True)
         form = AsientoForm(request.POST)
-        if form.is_valid():
-            asiento = form.save(commit=False)
-            asiento.creado_por = request.user
-            asiento.save()
-            formset = LineaFormSet(request.POST, instance=asiento)
-            if formset.is_valid():
-                formset.save()
-                messages.success(request, f'Asiento {asiento.numero} creado.')
-                return redirect('contabilidad:asiento_detail', pk=asiento.pk)
+        formset = LineaFormSet(request.POST)
+        if form.is_valid() and formset.is_valid():
+            # Validate balance before persisting
+            total_debe = Decimal('0')
+            total_haber = Decimal('0')
+            for f in formset.forms:
+                if f.cleaned_data and not f.cleaned_data.get('DELETE', False):
+                    total_debe += f.cleaned_data.get('debe', Decimal('0')) or Decimal('0')
+                    total_haber += f.cleaned_data.get('haber', Decimal('0')) or Decimal('0')
+            if total_debe != total_haber:
+                messages.error(
+                    request,
+                    f'El asiento no está cuadrado (Debe={total_debe} / Haber={total_haber}). '
+                    'Corrija los montos antes de guardar.'
+                )
             else:
-                asiento.delete()
-        else:
-            formset = LineaFormSet(request.POST)
+                asiento = form.save(commit=False)
+                asiento.creado_por = request.user
+                asiento.save()
+                bound_formset = LineaFormSet(request.POST, instance=asiento)
+                if bound_formset.is_valid():
+                    bound_formset.save()
+                    messages.success(request, f'Asiento {asiento.numero} creado.')
+                    return redirect('contabilidad:asiento_detail', pk=asiento.pk)
+                else:
+                    asiento.delete()
+                    formset = bound_formset
 
         cuentas = PlanCuentas.objects.filter(activa=True, acepta_movimientos=True).order_by('codigo')
         centros_costo = CentroCosto.objects.filter(activo=True).order_by('codigo')
@@ -305,7 +320,7 @@ class AsientoUpdateView(ContabilidadMixin, View):
                     'descripcion': forms.TextInput(attrs={'class': 'form-control form-control-sm'}),
                     'debe': forms.NumberInput(attrs={'class': 'form-control form-control-sm text-end', 'step': '0.01', 'min': '0'}),
                     'haber': forms.NumberInput(attrs={'class': 'form-control form-control-sm text-end', 'step': '0.01', 'min': '0'}),
-                    'centro_costo': forms.Select(attrs={'class': 'form-select form-select-sm'}),
+                    'centro_costo': forms.Select(attrs={'class': 'centro-select'}),
                 }
 
         return inlineformset_factory(AsientoContable, LineaAsiento, form=LineaForm, extra=1, can_delete=True)
@@ -827,7 +842,8 @@ class CentroCostoDetalleView(ContabilidadMixin, View):
         from django.shortcuts import render
         from decimal import Decimal
         from apps.clientes.models import DetalleFacturaEmitida
-        from apps.proveedores.models import DetalleFacturaRecibida, DetalleRendicion
+        from apps.proveedores.models import DetalleFacturaRecibida
+        from apps.rendiciones.models import DetalleRendicion
         from apps.rrhh.models import Remuneracion
         from apps.proyectos.models import CostoProyecto
 

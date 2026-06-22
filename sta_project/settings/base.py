@@ -22,6 +22,7 @@ INSTALLED_APPS = [
     'apps.tesoreria',
     'apps.clientes',
     'apps.proveedores',
+    'apps.rendiciones',
     'apps.proyectos',
     'apps.rrhh',
     'apps.tributario',

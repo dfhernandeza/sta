@@ -124,13 +124,15 @@
         <a href="{% url 'proveedores:factura_list' %}" class="nav-link ps-4 {% if request.resolver_match.url_name == 'factura_list' and request.resolver_match.namespace == 'proveedores' %}active{% endif %}" style="font-size:.82rem;">
           <i class="bi bi-file-earmark-minus"></i> Facturas Recibidas
         </a>
-        <a href="{% url 'proveedores:rendicion_list' %}" class="nav-link ps-4 {% if request.resolver_match.url_name == 'rendicion_list' and request.resolver_match.namespace == 'proveedores' %}active{% endif %}" style="font-size:.82rem;">
-          <i class="bi bi-journal-text"></i> Rendiciones de Gastos
-        </a>
         <a href="{% url 'proveedores:cxp_list' %}" class="nav-link ps-4 {% if request.resolver_match.url_name == 'cxp_list' and request.resolver_match.namespace == 'proveedores' %}active{% endif %}" style="font-size:.82rem;">
           <i class="bi bi-credit-card"></i> Cuentas por Pagar
         </a>
       </div>
+
+      <! -- Rendiciones de gastos -->
+      <a href="{% url 'rendiciones:rendicion_list' %}" class="nav-link {% if request.resolver_match.namespace == 'rendiciones' %}active{% endif %}">
+        <i class="bi bi-journal-check"></i> Rend. de Gastos
+      </a>
 
       <div class="nav-section-title">Operaciones</div>
 

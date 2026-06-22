@@ -9,6 +9,7 @@ APPS_DISPONIBLES = [
     ('clientes', 'Clientes'),
     ('proveedores', 'Proveedores'),
     ('proyectos', 'Proyectos'),
+    ('rendiciones', 'Rendiciones'),
     ('rrhh', 'Recursos Humanos'),
     ('tributario', 'Tributario'),
 ]

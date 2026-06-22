@@ -25,9 +25,4 @@ urlpatterns = [
     path('anticipos/', views.AnticipoListView.as_view(), name='anticipo_list'),
     path('anticipos/crear/', views.AnticipoCreateView.as_view(), name='anticipo_create'),
     path('anticipos/<int:pk>/pagar/', views.AnticipoProveedorPagarView.as_view(), name='anticipo_pagar'),
-    # Rendiciones de gastos
-    path('rendiciones/', views.RendicionGastosListView.as_view(), name='rendicion_list'),
-    path('rendiciones/crear/', views.RendicionGastosCreateView.as_view(), name='rendicion_create'),
-    path('rendiciones/<int:pk>/', views.RendicionGastosDetailView.as_view(), name='rendicion_detail'),
-    path('rendiciones/<int:pk>/asiento/', views.GenerarAsientoRendicionView.as_view(), name='rendicion_asiento'),
 ]

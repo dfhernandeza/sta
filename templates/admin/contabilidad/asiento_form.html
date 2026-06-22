@@ -65,6 +65,7 @@
                 </select>
               </div>
               <div class="col-12">
+                <label class="form-label small mb-1">Descripción</label>
                 {{ lform.descripcion }}
               </div>
               <div class="col-12">
@@ -106,11 +107,12 @@
                 </select>
               </div>
               <div class="col-12">
+                <label class="form-label small mb-1">Descripción</label>
                 <input type="text" name="lineas-__prefix__-descripcion" class="form-control form-control-sm" placeholder="Descripción (opcional)">
               </div>
               <div class="col-12">
                 <label class="form-label small mb-1">Centro de Costo</label>
-                <select name="lineas-__prefix__-centro_costo" class="form-select form-select-sm">
+                <select name="lineas-__prefix__-centro_costo" class="centro-select">
                   <option value="">— Sin centro de costo —</option>
                   {% for cc in centros_costo %}
                   <option value="{{ cc.pk }}">{{ cc }}</option>
@@ -176,8 +178,21 @@
     });
   }
 
+  function initCentroSelect(el) {
+    new TomSelect(el, {
+      maxItems: 1,
+      allowEmptyOption: true,
+      searchField: ['text'],
+      render: {
+        option: (data, escape) => `<div class="small">${escape(data.text)}</div>`,
+        item: (data, escape) => `<div class="small">${escape(data.text)}</div>`,
+      }
+    });
+  }
+
   // Init existing selects
   document.querySelectorAll('.cuenta-select').forEach(initTomSelect);
+  document.querySelectorAll('.centro-select').forEach(initCentroSelect);
 
   document.getElementById('btnAddLinea').addEventListener('click', () => {
     const tmpl = document.getElementById('lineaTemplate').innerHTML;
@@ -189,6 +204,8 @@
     // Init TomSelect on the new select
     const sel = row.querySelector('.cuenta-select');
     if (sel) initTomSelect(sel);
+    const centroSel = row.querySelector('.centro-select');
+    if (centroSel) initCentroSelect(centroSel);
     // Remove button handler
     row.querySelector('.btn-remove-linea')?.addEventListener('click', () => {
       row.remove();

@@ -14,6 +14,7 @@ urlpatterns = [
     path('gestion/tesoreria/', include('apps.tesoreria.urls', namespace='tesoreria')),
     path('gestion/clientes/', include('apps.clientes.urls', namespace='clientes')),
     path('gestion/proveedores/', include('apps.proveedores.urls', namespace='proveedores')),
+    path('gestion/rendiciones/', include('apps.rendiciones.urls', namespace='rendiciones')),
     path('gestion/proyectos/', include('apps.proyectos.urls', namespace='proyectos')),
     path('gestion/rrhh/', include('apps.rrhh.urls', namespace='rrhh')),
     path('gestion/tributario/', include('apps.tributario.urls', namespace='tributario')),
