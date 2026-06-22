@@ -126,15 +126,18 @@ class RendicionGastosDetailView(RendicionesMixin, DetailView):
         ctx['total'] = self.object.detalles.aggregate(t=Sum('monto'))['t'] or 0
         ctx['cuentas_pagar'] = self.object.cuentas_pagar.all()
         ctx['asiento'] = self.object.asientos.exclude(estado='anulado').first()
-        es_super = self.request.user.is_superuser
-        ctx['transiciones'] = _TRANSICIONES_RENDICION.get(self.object.estado, []) if es_super else []
-        ctx['es_superusuario'] = es_super
+        ctx['transiciones'] = _TRANSICIONES_RENDICION.get(self.object.estado, [])
         return ctx
 
     def post(self, request, pk):
-        if not request.user.is_superuser:
-            messages.error(request, 'No tiene permisos para realizar esta acción.')
-            return redirect('rendiciones:rendicion_detail', pk=pk)
+        rendicion = get_object_or_404(RendicionGastos, pk=pk)
+        nuevo_estado = request.POST.get('estado')
+        transiciones_validas = _TRANSICIONES_RENDICION.get(rendicion.estado, [])
+        if nuevo_estado in transiciones_validas:
+            rendicion.estado = nuevo_estado
+            rendicion.save(update_fields=['estado'])
+            labels = dict(RendicionGastos.ESTADO_CHOICES)
+            logger.info(
                 'Rendición pk=%s cambio de estado a "%s" por %s',
                 rendicion.pk, nuevo_estado, request.user
             )
@@ -150,9 +153,6 @@ class RendicionGastosDetailView(RendicionesMixin, DetailView):
 
 class GenerarAsientoRendicionView(RendicionesMixin, View):
     def post(self, request, pk):
-        if not request.user.is_superuser:
-            messages.error(request, 'No tiene permisos para generar asientos contables.')
-            return redirect('rendiciones:rendicion_detail', pk=pk)
         from apps.contabilidad.utils import generar_asiento_rendicion_gastos_recibida, get_config
         rendicion = get_object_or_404(RendicionGastos, pk=pk)
         asiento_activo = rendicion.asientos.exclude(estado='anulado').first()
