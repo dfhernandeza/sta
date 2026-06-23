@@ -12,6 +12,7 @@ from django.db.models import Sum
 from django.forms import CheckboxInput, inlineformset_factory, ModelForm, TextInput, Select, NumberInput
 from apps.contabilidad.utils import generar_asiento_factura_recibida
 from apps.core.mixins import GestionMixin, AppPermisoMixin
+from django.db import transaction
 
 
 class ProveedoresMixin(AppPermisoMixin):
@@ -59,23 +60,46 @@ def _generar_asiento_automatico_factura(request, factura, reemplazar_borrador=Fa
 
 
 def _sincronizar_cxp_factura(factura):
-    """Crea/actualiza CxP de factura cuando corresponde."""
-    requiere_cxp = bool(factura.pago_por_trabajador_id or factura.fecha_vencimiento)
+    """Crea, actualiza o elimina CxP de factura cuando corresponde."""
+
+    requiere_cxp = bool(
+        factura.pago_por_trabajador_id or factura.fecha_vencimiento
+    )
+
     if not requiere_cxp:
+        CuentaPorPagar.objects.filter(
+            factura=factura,
+            estado='pendiente',
+            monto_pagado=0
+        ).delete()
         return None
 
     fecha_venc = factura.fecha_vencimiento or factura.fecha_emision
+
     cxp, created = CuentaPorPagar.objects.get_or_create(
         factura=factura,
         defaults={
             'fecha_vencimiento': fecha_venc,
             'monto': factura.total,
+            'estado': 'pendiente',
         }
     )
+
     if not created:
         cxp.fecha_vencimiento = fecha_venc
         cxp.monto = factura.total
-        cxp.save(update_fields=['fecha_vencimiento', 'monto'])
+
+        if cxp.monto_pagado >= factura.total:
+            cxp.estado = 'pagada'
+        else:
+            cxp.estado = 'pendiente'
+
+        cxp.save(update_fields=[
+            'fecha_vencimiento',
+            'monto',
+            'estado',
+        ])
+
     return cxp
 
 
@@ -296,15 +320,48 @@ class FacturaRecibidaUpdateView(ProveedoresMixin, UpdateView):
 
     def form_valid(self, form):
         formset = DetalleFormSet(self.request.POST, instance=self.object)
+
         if not formset.is_valid():
             return self.render_to_response(
                 self.get_context_data(form=form, detalle_formset=formset)
             )
-        response = super().form_valid(form)
-        formset.save()
-        _sincronizar_cxp_factura(self.object)
-        _generar_asiento_automatico_factura(self.request, self.object, reemplazar_borrador=True)
-        logger.info('Factura recibida actualizada: %s (pk=%s) por %s', self.object.numero, self.object.pk, self.request.user)
+
+        with transaction.atomic():
+            response = super().form_valid(form)
+            formset.save()
+
+            factura = self.object
+
+            # Sincronizar Cuenta por Pagar
+            _sincronizar_cxp_factura(factura)
+
+            # Actualizar Registro de Compra
+            RegistroCompra.objects.update_or_create(
+                factura=factura,
+                defaults={
+                    'proveedor': factura.proveedor,
+                    'periodo_mes': factura.fecha_emision.month,
+                    'periodo_anio': factura.fecha_emision.year,
+                    'neto': factura.neto,
+                    'iva_credito': factura.iva,
+                    'total': factura.total,
+                }
+            )
+
+            # Regenerar asiento automático
+            _generar_asiento_automatico_factura(
+                self.request,
+                factura,
+                reemplazar_borrador=True
+            )
+
+        logger.info(
+            'Factura recibida actualizada: %s (pk=%s) por %s',
+            self.object.numero,
+            self.object.pk,
+            self.request.user
+        )
+
         messages.success(self.request, 'Factura actualizada.')
         return response
 

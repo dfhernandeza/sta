@@ -5,6 +5,7 @@ from django.shortcuts import get_object_or_404, redirect
 from django.utils import timezone
 from django.forms import inlineformset_factory, ModelForm, TextInput, NumberInput, Select, Textarea, DateInput
 from apps.core.mixins import GestionMixin, AppPermisoMixin
+from django.db import transaction
 
 class ClientesMixin(AppPermisoMixin):
     app_name = 'clientes'
@@ -37,6 +38,44 @@ def _generar_asiento_automatico_factura_emitida(request, factura, reemplazar_bor
         )
     return asiento
 
+def _sincronizar_cxc_factura(factura):
+    """Crea, actualiza o elimina CxC de factura emitida cuando corresponde."""
+
+    requiere_cxc = bool(factura.fecha_vencimiento)
+
+    if not requiere_cxc:
+        CuentaPorCobrar.objects.filter(
+            factura=factura,
+            estado='pendiente',
+            monto_pagado=0
+        ).delete()
+        return None
+
+    cxc, created = CuentaPorCobrar.objects.get_or_create(
+        factura=factura,
+        defaults={
+            'fecha_vencimiento': factura.fecha_vencimiento,
+            'monto': factura.total,
+            'estado': 'pendiente',
+        }
+    )
+
+    if not created:
+        cxc.fecha_vencimiento = factura.fecha_vencimiento
+        cxc.monto = factura.total
+
+        if cxc.monto_pagado >= factura.total:
+            cxc.estado = 'pagada'
+        else:
+            cxc.estado = 'pendiente'
+
+        cxc.save(update_fields=[
+            'fecha_vencimiento',
+            'monto',
+            'estado',
+        ])
+
+    return cxc
 
 class FacturaEmitidaForm(ModelForm):
     class Meta:
@@ -180,14 +219,9 @@ class FacturaEmitidaCreateView(ClientesMixin, CreateView):
         response = super().form_valid(form)
         formset.instance = self.object
         formset.save()
-        if form.instance.fecha_vencimiento:
-            CuentaPorCobrar.objects.get_or_create(
-                factura=form.instance,
-                defaults={
-                    'fecha_vencimiento': form.instance.fecha_vencimiento,
-                    'monto': form.instance.total,
-                }
-            )
+
+        _sincronizar_cxc_factura(form.instance)
+
         RegistroVenta.objects.get_or_create(
             factura=form.instance,
             defaults={
@@ -236,14 +270,41 @@ class FacturaEmitidaUpdateView(ClientesMixin, UpdateView):
             return redirect('clientes:factura_detail', pk=factura.pk)
         return super().dispatch(request, *args, **kwargs)
 
+
     def form_valid(self, form):
         formset = DetalleEmitidaFormSet(self.request.POST, instance=self.object)
+
         if not formset.is_valid():
             return self.render_to_response(
                 self.get_context_data(form=form, detalle_formset=formset)
             )
-        response = super().form_valid(form)
-        formset.save()
+
+        with transaction.atomic():
+            response = super().form_valid(form)
+            formset.save()
+
+            factura = self.object
+
+            _sincronizar_cxc_factura(factura)
+
+            RegistroVenta.objects.update_or_create(
+                factura=factura,
+                defaults={
+                    'cliente': factura.cliente,
+                    'periodo_mes': factura.fecha_emision.month,
+                    'periodo_anio': factura.fecha_emision.year,
+                    'neto': factura.neto,
+                    'iva_debito': factura.iva,
+                    'total': factura.total,
+                }
+            )
+
+            _generar_asiento_automatico_factura_emitida(
+                self.request,
+                factura,
+                reemplazar_borrador=True
+            )
+
         messages.success(self.request, 'Factura actualizada.')
         return response
 
