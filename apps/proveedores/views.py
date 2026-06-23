@@ -120,7 +120,7 @@ class DetalleFacturaForm(ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['cuenta_contable'].queryset = self.fields['cuenta_contable'].queryset.filter(
-            tipo__in=['gasto', 'costo'],
+            tipo__in=['gasto', 'costo', 'activo'],  # Incluimos 'activo' para permitir cuentas de activo si es necesario
             nivel=4
         )
 
