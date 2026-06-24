@@ -315,6 +315,10 @@ class Anticipo(TimeStampedModel):
         ('aplicado', 'Aplicado'),
         ('devuelto', 'Devuelto'),
     ]
+    ORIGEN_CHOICES = [
+        ('operacional', 'Operacional'),
+        ('apertura', 'Saldo de apertura'),
+    ]
 
     proveedor = models.ForeignKey(
         Proveedor, on_delete=models.PROTECT,
@@ -324,6 +328,15 @@ class Anticipo(TimeStampedModel):
     monto = models.DecimalField(max_digits=15, decimal_places=2, verbose_name='Monto')
     descripcion = models.CharField(max_length=300, verbose_name='Descripción')
     estado = models.CharField(max_length=15, choices=ESTADO_CHOICES, default='pendiente', verbose_name='Estado')
+    origen = models.CharField(
+        max_length=20, choices=ORIGEN_CHOICES, default='operacional',
+        verbose_name='Origen'
+    )
+    asiento_apertura = models.ForeignKey(
+        'contabilidad.AsientoContable', null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='anticipos_proveedores_apertura',
+        verbose_name='Asiento de apertura'
+    )
     proyecto = models.ForeignKey(
         'proyectos.Proyecto', null=True, blank=True,
         on_delete=models.SET_NULL, verbose_name='Proyecto'

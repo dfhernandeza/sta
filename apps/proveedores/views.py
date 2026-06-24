@@ -1205,8 +1205,20 @@ class AnticipoListView(ProveedoresMixin, ListView):
 class AnticipoCreateView(ProveedoresMixin, CreateView):
     model = Anticipo
     template_name = 'admin/proveedores/anticipo_form.html'
-    fields = ['proveedor', 'fecha', 'monto', 'descripcion', 'proyecto', 'estado']
+    fields = ['proveedor', 'fecha', 'monto', 'descripcion', 'proyecto', 'estado', 'origen']
     success_url = reverse_lazy('proveedores:anticipo_list')
+
+    def get_form(self, form_class=None):
+        from django.forms import DateInput
+        form = super().get_form(form_class)
+        for field in form.fields.values():
+            field.widget.attrs.setdefault('class', 'form-control')
+        for fname in ['proveedor', 'proyecto', 'estado', 'origen']:
+            if fname in form.fields:
+                form.fields[fname].widget.attrs.update({'class': 'form-select'})
+        if 'fecha' in form.fields:
+            form.fields['fecha'].widget = DateInput(attrs={'class': 'form-control'}, format='%Y-%m-%d')
+        return form
 
     def form_valid(self, form):
         messages.success(self.request, 'Anticipo registrado.')
@@ -1249,6 +1261,12 @@ class AnticipoProveedorPagarView(ProveedoresMixin, View):
     def get(self, request, pk):
         from django.shortcuts import render
         anticipo = get_object_or_404(Anticipo, pk=pk)
+        if anticipo.origen == 'apertura':
+            messages.info(
+                request,
+                'Este anticipo viene de saldo de apertura. No debe pagarse desde el sistema para evitar duplicar banco.'
+            )
+            return redirect('proveedores:anticipo_list')
         if anticipo.estado != 'pendiente':
             messages.info(request, f'Este anticipo ya está en estado "{anticipo.get_estado_display()}".')
             return redirect('proveedores:anticipo_list')
@@ -1261,6 +1279,12 @@ class AnticipoProveedorPagarView(ProveedoresMixin, View):
         from apps.contabilidad.utils import generar_asiento_pago_anticipo_proveedor
 
         anticipo = get_object_or_404(Anticipo, pk=pk)
+        if anticipo.origen == 'apertura':
+            messages.error(
+                request,
+                'No se puede pagar un anticipo de saldo de apertura. Registre el saldo en Apertura Contable.'
+            )
+            return redirect('proveedores:anticipo_list')
         form = self._build_form(data=request.POST)
 
         if not form.is_valid():

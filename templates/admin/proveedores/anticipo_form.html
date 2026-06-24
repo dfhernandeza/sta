@@ -2,6 +2,11 @@
 
 {% block title %}Nuevo Anticipo a Proveedor{% endblock %}
 
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/css/tom-select.bootstrap5.min.css" rel="stylesheet"/>
+<link href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css" rel="stylesheet"/>
+{% endblock %}
+
 {% block breadcrumb %}
   <li class="breadcrumb-item"><a href="{% url 'proveedores:proveedor_list' %}">Proveedores</a></li>
   <li class="breadcrumb-item"><a href="{% url 'proveedores:anticipo_list' %}">Anticipos</a></li>
@@ -40,6 +45,20 @@
             <label class="form-label fw-600">Estado</label>
             {{ form.estado }}
           </div>
+          <div class="col-sm-6">
+            <label class="form-label fw-600">Origen</label>
+            {{ form.origen }}
+            <div class="form-text">Use “Saldo de apertura” para anticipos anteriores al inicio del sistema. No genera pago bancario.</div>
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label fw-600">Proyecto</label>
+            {{ form.proyecto }}
+          </div>
+          <div class="col-12">
+            <label class="form-label fw-600">Descripción <span class="text-danger">*</span></label>
+            {{ form.descripcion }}
+            {% if form.descripcion.errors %}<div class="invalid-feedback d-block">{{ form.descripcion.errors.0 }}</div>{% endif %}
+          </div>
           <div class="col-12 pt-2 border-top">
             <button type="submit" class="btn btn-sta px-5 rounded-pill">
               <i class="bi bi-save me-1"></i>Registrar anticipo
@@ -50,4 +69,34 @@
     </div>
   </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/js/tom-select.complete.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/l10n/es.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  flatpickr('#id_fecha', {
+    locale: 'es',
+    dateFormat: 'Y-m-d',
+    altInput: true,
+    altFormat: 'd/m/Y',
+    allowInput: true,
+  });
+
+  const initTomSelect = (selector, placeholder) => {
+    const el = document.querySelector(selector);
+    if (!el) return;
+    new TomSelect(el, {
+      allowEmptyOption: true,
+      placeholder,
+      sortField: { field: 'text', direction: 'asc' },
+    });
+  };
+
+  initTomSelect('#id_proveedor', 'Buscar proveedor…');
+  initTomSelect('#id_proyecto', 'Buscar proyecto…');
+});
+</script>
 {% endblock %}
