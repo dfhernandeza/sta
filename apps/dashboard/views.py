@@ -97,7 +97,11 @@ class DashboardView(DashboardMixin, TemplateView):
         ctx['sueldos_por_pagar'] = self._saldo_config(config_contable, 'cuenta_sueldos_por_pagar')
         ctx['afp_por_pagar'] = self._saldo_config(config_contable, 'cuenta_afp_por_pagar')
         ctx['salud_por_pagar'] = self._saldo_config(config_contable, 'cuenta_salud_por_pagar')
-        ctx['previred_por_pagar'] = ctx['afp_por_pagar'] + ctx['salud_por_pagar']
+        ctx['previred_por_pagar'] = self._saldo_config(
+            config_contable,
+            'cuenta_afp_por_pagar',
+            'cuenta_salud_por_pagar',
+        )
         ctx['impuestos_sii_por_pagar'] = self._saldo_config(
             config_contable,
             'cuenta_impuestos_sii',

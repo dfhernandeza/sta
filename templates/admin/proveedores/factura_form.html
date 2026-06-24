@@ -44,18 +44,23 @@
             {{ form.proveedor }}
             {% if form.proveedor.errors %}<div class="invalid-feedback d-block">{{ form.proveedor.errors.0 }}</div>{% endif %}
           </div>
-          <div class="col-sm-4">
+          <div class="col-sm-2">
             <label class="form-label fw-600">Fecha Emisión <span class="text-danger">*</span></label>
             {{ form.fecha_emision }}
             {% if form.fecha_emision.errors %}<div class="invalid-feedback d-block">{{ form.fecha_emision.errors.0 }}</div>{% endif %}
           </div>
-          <div class="col-sm-4">
+          <div class="col-sm-2">
             <label class="form-label fw-600">Fecha Vencimiento</label>
             {{ form.fecha_vencimiento }}
           </div>
-          <div class="col-sm-4">
+          <div class="col-sm-3">
             <label class="form-label fw-600">Estado</label>
             {{ form.estado }}
+          </div>
+          <div class="col-sm-5">
+            <label class="form-label fw-600">Origen</label>
+            {{ form.origen }}
+            <div class="form-text">Use “Saldo de apertura” para facturas heredadas: crea CxP, pero no libro de compras ni asiento de compra.</div>
           </div>
           <div class="col-sm-6">
             <label class="form-label fw-600">Proyecto</label>

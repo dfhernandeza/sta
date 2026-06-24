@@ -39,6 +39,9 @@ def _viernes_proxima_semana(fecha):
 
 def _generar_asiento_automatico_factura(request, factura, reemplazar_borrador=False):
     """Genera asiento automático para facturas recibidas evitando duplicados."""
+    if getattr(factura, 'origen', 'operacional') == 'apertura':
+        return None
+
     asiento_activo = factura.asientos.exclude(estado='anulado').first()
 
     if asiento_activo:
@@ -62,6 +65,28 @@ def _generar_asiento_automatico_factura(request, factura, reemplazar_borrador=Fa
             'La factura se guardó, pero no se pudo generar el asiento automático. Revise la configuración contable.'
         )
     return asiento
+
+
+def _sincronizar_registro_compra_factura(factura):
+    if getattr(factura, 'origen', 'operacional') == 'apertura':
+        RegistroCompra.objects.filter(factura=factura, tipo_documento='factura').delete()
+        factura.asientos.filter(tipo='factura_compra', estado='borrador').delete()
+        return None
+
+    registro, _ = RegistroCompra.objects.update_or_create(
+        factura=factura,
+        tipo_documento='factura',
+        defaults={
+            'proveedor': factura.proveedor,
+            'nota_credito': None,
+            'periodo_mes': factura.fecha_emision.month,
+            'periodo_anio': factura.fecha_emision.year,
+            'neto': factura.neto,
+            'iva_credito': factura.iva,
+            'total': factura.total,
+        }
+    )
+    return registro
 
 
 def _generar_asiento_automatico_nota_credito(request, nota_credito, reemplazar_borrador=False):
@@ -129,7 +154,9 @@ def _sincronizar_cxp_factura(factura):
     """Crea, actualiza o elimina CxP de factura cuando corresponde."""
 
     requiere_cxp = bool(
-        factura.pago_por_trabajador_id or factura.fecha_vencimiento
+        factura.pago_por_trabajador_id or
+        factura.fecha_vencimiento or
+        getattr(factura, 'origen', 'operacional') == 'apertura'
     )
 
     if not requiere_cxp:
@@ -343,7 +370,7 @@ class FacturaRecibidaListView(ProveedoresMixin, ListView):
 class FacturaRecibidaCreateView(ProveedoresMixin, CreateView):
     model = FacturaRecibida
     template_name = 'admin/proveedores/factura_form.html'
-    fields = ['numero', 'fecha_emision', 'fecha_vencimiento', 'proveedor', 'proyecto', 'pago_por_trabajador', 'neto', 'exento', 'iva', 'total', 'estado', 'observaciones']
+    fields = ['numero', 'fecha_emision', 'fecha_vencimiento', 'proveedor', 'proyecto', 'pago_por_trabajador', 'neto', 'exento', 'iva', 'total', 'estado', 'origen', 'observaciones']
     success_url = reverse_lazy('proveedores:factura_list')
 
     def get_form(self, form_class=None):
@@ -352,6 +379,8 @@ class FacturaRecibidaCreateView(ProveedoresMixin, CreateView):
         for fname in ['fecha_emision', 'fecha_vencimiento']:
             if fname in form.fields:
                 form.fields[fname].widget = DateInput(attrs={'class': 'form-control'}, format='%Y-%m-%d')
+        if 'origen' in form.fields:
+            form.fields['origen'].widget = Select(attrs={'class': 'form-select'})
         for fname in ['neto', 'exento', 'iva', 'total']:
             if fname in form.fields:
                 form.fields[fname].required = False
@@ -379,18 +408,7 @@ class FacturaRecibidaCreateView(ProveedoresMixin, CreateView):
         formset.instance = self.object
         formset.save()
         _sincronizar_cxp_factura(self.object)
-        RegistroCompra.objects.get_or_create(
-            factura=self.object,
-            tipo_documento='factura',
-            defaults={
-                'proveedor': self.object.proveedor,
-                'periodo_mes': self.object.fecha_emision.month,
-                'periodo_anio': self.object.fecha_emision.year,
-                'neto': self.object.neto,
-                'iva_credito': self.object.iva,
-                'total': self.object.total,
-            }
-        )
+        _sincronizar_registro_compra_factura(self.object)
         _generar_asiento_automatico_factura(self.request, self.object, reemplazar_borrador=False)
         logger.info('Factura recibida creada: %s (proveedor: %s) por %s', self.object.numero, self.object.proveedor, self.request.user)
         messages.success(self.request, f'Factura {self.object.numero} registrada exitosamente.')
@@ -410,7 +428,7 @@ class FacturaRecibidaCreateView(ProveedoresMixin, CreateView):
 class FacturaRecibidaUpdateView(ProveedoresMixin, UpdateView):
     model = FacturaRecibida
     template_name = 'admin/proveedores/factura_form.html'
-    fields = ['numero', 'fecha_emision', 'fecha_vencimiento', 'proveedor', 'proyecto', 'pago_por_trabajador', 'neto', 'exento', 'iva', 'total', 'estado', 'observaciones']
+    fields = ['numero', 'fecha_emision', 'fecha_vencimiento', 'proveedor', 'proyecto', 'pago_por_trabajador', 'neto', 'exento', 'iva', 'total', 'estado', 'origen', 'observaciones']
     success_url = reverse_lazy('proveedores:factura_list')
 
     def dispatch(self, request, *args, **kwargs):
@@ -435,6 +453,8 @@ class FacturaRecibidaUpdateView(ProveedoresMixin, UpdateView):
         for fname in ['fecha_emision', 'fecha_vencimiento']:
             if fname in form.fields:
                 form.fields[fname].widget = DateInput(attrs={'class': 'form-control'}, format='%Y-%m-%d')
+        if 'origen' in form.fields:
+            form.fields['origen'].widget = Select(attrs={'class': 'form-select'})
         for fname in ['neto', 'exento', 'iva', 'total']:
             if fname in form.fields:
                 form.fields[fname].required = False
@@ -468,20 +488,8 @@ class FacturaRecibidaUpdateView(ProveedoresMixin, UpdateView):
             # Sincronizar Cuenta por Pagar
             _sincronizar_cxp_factura(factura)
 
-            # Actualizar Registro de Compra
-            RegistroCompra.objects.update_or_create(
-                factura=factura,
-                tipo_documento='factura',
-                defaults={
-                    'proveedor': factura.proveedor,
-                    'nota_credito': None,
-                    'periodo_mes': factura.fecha_emision.month,
-                    'periodo_anio': factura.fecha_emision.year,
-                    'neto': factura.neto,
-                    'iva_credito': factura.iva,
-                    'total': factura.total,
-                }
-            )
+            # Actualizar Registro de Compra si corresponde al período operacional.
+            _sincronizar_registro_compra_factura(factura)
 
             # Regenerar asiento automático
             _generar_asiento_automatico_factura(

@@ -167,6 +167,10 @@ def generar_asiento_nota_credito_recibida(nota_credito, usuario=None):
         return None
 
     factura = nota_credito.factura
+    es_factura_apertura = getattr(factura, 'origen', 'operacional') == 'apertura'
+    if es_factura_apertura and not config.cuenta_patrimonio_apertura:
+        return None
+
     asiento = AsientoContable.objects.create(
         fecha=nota_credito.fecha_emision,
         descripcion=(
@@ -186,25 +190,33 @@ def generar_asiento_nota_credito_recibida(nota_credito, usuario=None):
     suma_exento = Decimal('0')
     for det in detalles:
         subtotal = (det.cantidad * det.precio_unitario).quantize(Decimal('0.0001'))
-        cuenta_costo = det.cuenta_contable or config.cuenta_compras_default
-        descripcion_detallada = (
-            f'{det.descripcion[:150]} '
-            f'(NC {nota_credito.numero} Cant: {det.cantidad} x Precio Unit: {det.precio_unitario})'
-        )
-        _add_linea(asiento, cuenta_costo, haber=subtotal,
-                   descripcion=descripcion_detallada, orden=orden,
-                   centro_costo=det.centro_costo)
         if det.exento_iva:
             suma_exento += subtotal
         else:
             suma_afecto += subtotal
-        orden += 1
+
+        if not es_factura_apertura:
+            cuenta_costo = det.cuenta_contable or config.cuenta_compras_default
+            descripcion_detallada = (
+                f'{det.descripcion[:150]} '
+                f'(NC {nota_credito.numero} Cant: {det.cantidad} x Precio Unit: {det.precio_unitario})'
+            )
+            _add_linea(asiento, cuenta_costo, haber=subtotal,
+                       descripcion=descripcion_detallada, orden=orden,
+                       centro_costo=det.centro_costo)
+            orden += 1
 
     iva_calculado = (suma_afecto * Decimal('0.19')).quantize(Decimal('0.01'))
     total_calculado = suma_afecto + suma_exento + iva_calculado
 
     _add_linea(asiento, config.cuenta_cxp, debe=total_calculado,
                descripcion=f'Rebaja CxP por NC {nota_credito.numero}', orden=1)
+
+    if es_factura_apertura:
+        _add_linea(asiento, config.cuenta_patrimonio_apertura, haber=(suma_afecto + suma_exento),
+                   descripcion=f'Reverso saldo de apertura por NC {nota_credito.numero}',
+                   orden=orden)
+        orden += 1
 
     _add_linea(asiento, config.cuenta_iva_credito, haber=iva_calculado,
                descripcion=f'Reverso IVA Crédito Fiscal (NC {nota_credito.numero})',

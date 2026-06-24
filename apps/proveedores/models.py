@@ -42,6 +42,10 @@ class FacturaRecibida(TimeStampedModel):
         ('vencida', 'Vencida'),
         ('anulada', 'Anulada'),
     ]
+    ORIGEN_CHOICES = [
+        ('operacional', 'Operacional'),
+        ('apertura', 'Saldo de apertura'),
+    ]
 
     numero = models.CharField(max_length=20, verbose_name='N° Factura')
     fecha_emision = models.DateField(verbose_name='Fecha de Emisión')
@@ -65,6 +69,15 @@ class FacturaRecibida(TimeStampedModel):
     iva = models.DecimalField(max_digits=15, decimal_places=2, verbose_name='IVA (19%)')
     total = models.DecimalField(max_digits=15, decimal_places=2, verbose_name='Total')
     estado = models.CharField(max_length=15, choices=ESTADO_CHOICES, default='pendiente', verbose_name='Estado')
+    origen = models.CharField(
+        max_length=20, choices=ORIGEN_CHOICES, default='operacional',
+        verbose_name='Origen'
+    )
+    asiento_apertura = models.ForeignKey(
+        'contabilidad.AsientoContable', null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='facturas_apertura',
+        verbose_name='Asiento de apertura'
+    )
     observaciones = models.TextField(blank=True, verbose_name='Observaciones')
     correlativo_libro_compras = models.PositiveIntegerField(
         null=True, blank=True, editable=False,
