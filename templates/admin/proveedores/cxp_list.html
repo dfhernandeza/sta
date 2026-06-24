@@ -97,7 +97,7 @@
     <table class="table table-sta mb-0">
       <thead>
         <tr>
-          <th>Folio</th><th>Acreedor</th>
+          <th>Folio</th><th>Tipo</th><th>Acreedor</th>
           <th class="text-end">Monto</th><th class="text-end">Pagado</th>
           <th class="text-end">Saldo</th><th class="text-center">Estado</th><th class="text-center">Acción</th>
         </tr>
@@ -112,6 +112,21 @@
             <a href="{% url 'boletas:boleta_detail' cxp.boleta_honorarios.pk %}" class="text-sta text-decoration-none">{{ cxp.boleta_honorarios.numero }}</a>
             {% else %}
             <a href="{% url 'rendiciones:rendicion_detail' cxp.rendicion.pk %}" class="text-sta text-decoration-none">{{ cxp.rendicion.id }}</a>
+            {% endif %}
+          </td>
+          <td>
+            {% if cxp.factura %}
+              {% if cxp.factura.pago_por_trabajador %}
+                <span class="badge bg-info-subtle text-info-emphasis">Reembolso factura</span>
+              {% else %}
+                <span class="badge bg-primary-subtle text-primary-emphasis">Factura</span>
+              {% endif %}
+            {% elif cxp.boleta_honorarios %}
+              <span class="badge bg-warning-subtle text-warning-emphasis">Boleta honorarios</span>
+            {% elif cxp.rendicion %}
+              <span class="badge bg-success-subtle text-success-emphasis">Rendición</span>
+            {% else %}
+              <span class="badge bg-secondary-subtle text-secondary-emphasis">Otro</span>
             {% endif %}
           </td>
           <td>
@@ -151,7 +166,7 @@
           </td>
         </tr>
         {% empty %}
-        <tr><td colspan="7" class="text-center text-muted py-4">No hay cuentas por pagar.</td></tr>
+        <tr><td colspan="8" class="text-center text-muted py-4">No hay cuentas por pagar.</td></tr>
         {% endfor %}
       </tbody>
     </table>
