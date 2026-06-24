@@ -90,12 +90,10 @@
             {{ previred_por_pagar|moneda_chilena }}
           </span>
         </li>
-        {% if f29_pendientes %}
         <li class="list-group-item d-flex justify-content-between px-0">
-          <span class="text-muted"><i class="bi bi-receipt me-2 text-warning"></i>F29 Pendientes</span>
-          <span class="badge bg-warning text-dark rounded-pill">{{ f29_pendientes|length }}</span>
+          <span class="text-muted"><i class="bi bi-receipt me-2 text-warning"></i>Impuestos SII por Pagar</span>
+          <span class="fw-600 text-warning">{{ impuestos_sii_por_pagar|moneda_chilena }}</span>
         </li>
-        {% endif %}
       </ul>
       <div class="mt-3">
         <a href="{% url 'tesoreria:resumen' %}" class="btn btn-sta btn-sm w-100 rounded-pill mb-2">

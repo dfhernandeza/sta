@@ -1,6 +1,8 @@
 from decimal import Decimal
 
 from django.db import models
+from django.db.models import Max
+from django.utils import timezone
 from apps.core.models import TimeStampedModel
 from apps.core.validators import validar_rut
 
@@ -54,16 +56,59 @@ class FacturaEmitida(TimeStampedModel):
     total = models.DecimalField(max_digits=15, decimal_places=2, verbose_name='Total')
     estado = models.CharField(max_length=15, choices=ESTADO_CHOICES, default='pendiente', verbose_name='Estado')
     observaciones = models.TextField(blank=True, verbose_name='Observaciones')
+    correlativo_libro_ventas = models.PositiveIntegerField(
+        null=True, blank=True, editable=False,
+        verbose_name='Correlativo Libro de Ventas'
+    )
+    periodo_libro_ventas_mes = models.PositiveSmallIntegerField(
+        null=True, blank=True, editable=False,
+        verbose_name='Mes Libro de Ventas'
+    )
+    periodo_libro_ventas_anio = models.PositiveSmallIntegerField(
+        null=True, blank=True, editable=False,
+        verbose_name='Año Libro de Ventas'
+    )
 
     class Meta:
         verbose_name = 'Factura Emitida'
         verbose_name_plural = 'Facturas Emitidas'
         ordering = ['-fecha_emision', '-numero']
+        constraints = [
+            models.UniqueConstraint(
+                fields=[
+                    'periodo_libro_ventas_anio',
+                    'periodo_libro_ventas_mes',
+                    'correlativo_libro_ventas',
+                ],
+                name='uniq_factura_emitida_correlativo_libro_ventas',
+            ),
+        ]
 
     def __str__(self):
         return f'Factura {self.numero} - {self.cliente.razon_social}'
 
+    @property
+    def indice_libro_ventas(self):
+        if not self.correlativo_libro_ventas or not self.periodo_libro_ventas_mes:
+            return '—'
+        return f'{self.correlativo_libro_ventas}/{self.periodo_libro_ventas_mes}'
+
+    def _asignar_correlativo_libro_ventas(self):
+        if self.correlativo_libro_ventas:
+            return
+
+        fecha_ingreso = timezone.localdate()
+        self.periodo_libro_ventas_mes = fecha_ingreso.month
+        self.periodo_libro_ventas_anio = fecha_ingreso.year
+
+        ultimo = FacturaEmitida.objects.filter(
+            periodo_libro_ventas_anio=self.periodo_libro_ventas_anio,
+            periodo_libro_ventas_mes=self.periodo_libro_ventas_mes,
+        ).aggregate(maximo=Max('correlativo_libro_ventas'))['maximo'] or 0
+        self.correlativo_libro_ventas = ultimo + 1
+
     def save(self, *args, **kwargs):
+        self._asignar_correlativo_libro_ventas()
         if not self.iva:
             self.iva = round(self.neto * Decimal('0.19'), 2)
         if not self.total:

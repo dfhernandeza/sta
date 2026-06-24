@@ -6,6 +6,7 @@ from django.db.models import Sum
 from django import forms
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
+from decimal import Decimal
 from apps.core.mixins import GestionMixin, AppPermisoMixin
 
 class TributarioMixin(AppPermisoMixin):
@@ -57,9 +58,16 @@ class PPMForm(forms.ModelForm):
         widgets = {
             'base_imponible': forms.NumberInput(attrs={'class': 'form-control'}),
             'tasa':           forms.NumberInput(attrs={'class': 'form-control', 'step': '0.0001'}),
-            'monto':          forms.NumberInput(attrs={'class': 'form-control'}),
+            'monto':          forms.NumberInput(attrs={'class': 'form-control', 'readonly': 'readonly'}),
             'estado':         forms.Select(attrs={'class': 'form-select'}),
         }
+
+    def clean(self):
+        cleaned = super().clean()
+        base = cleaned.get('base_imponible') or Decimal('0')
+        tasa = cleaned.get('tasa') or Decimal('0')
+        cleaned['monto'] = (base * tasa).quantize(Decimal('0.01'))
+        return cleaned
 
 
 class F29Form(forms.ModelForm):
@@ -108,7 +116,7 @@ class RegistroCompraListView(TributarioMixin, ListView):
     paginate_by = 30
 
     def get_queryset(self):
-        qs = RegistroCompra.objects.select_related('proveedor', 'factura')
+        qs = RegistroCompra.objects.select_related('proveedor', 'factura', 'nota_credito')
         mes = self.request.GET.get('mes')
         anio = self.request.GET.get('anio')
         if mes:
@@ -443,7 +451,25 @@ class F29CreateView(TributarioMixin, CreateView):
             ppm_pagar = ppm.monto
         except PPM.DoesNotExist:
             pass
-        return iva_pagar, ppm_pagar
+        try:
+            from apps.boletas.models import BoletaHonorarios
+            retenciones = BoletaHonorarios.objects.filter(
+                fecha_emision__month=mes,
+                fecha_emision__year=anio,
+            ).exclude(estado='anulada').aggregate(s=Sum('retencion'))['s'] or 0
+        except Exception:
+            retenciones = 0
+        try:
+            from apps.rrhh.models import Remuneracion
+            impuesto_remuneraciones = Remuneracion.objects.filter(
+                periodo_mes=mes,
+                periodo_anio=anio,
+                estado__in=['aprobado', 'pagado'],
+            ).aggregate(s=Sum('impuesto_unico'))['s'] or 0
+            retenciones += impuesto_remuneraciones
+        except Exception:
+            pass
+        return iva_pagar, ppm_pagar, retenciones
 
     def get_initial(self):
         initial = super().get_initial()
@@ -452,12 +478,13 @@ class F29CreateView(TributarioMixin, CreateView):
         if mes and anio:
             try:
                 mes_int, anio_int = int(mes), int(anio)
-                iva_pagar, ppm_pagar = self._calcular_periodo(mes_int, anio_int)
+                iva_pagar, ppm_pagar, retenciones = self._calcular_periodo(mes_int, anio_int)
                 initial.update({
                     'periodo_mes': mes_int,
                     'periodo_anio': anio_int,
                     'iva_pagar': iva_pagar,
                     'ppm_pagar': ppm_pagar,
+                    'retenciones': retenciones,
                 })
             except (ValueError, TypeError):
                 pass
@@ -477,12 +504,13 @@ class F29CreateView(TributarioMixin, CreateView):
         if mes and anio:
             try:
                 mes_int, anio_int = int(mes), int(anio)
-                iva_pagar, ppm_pagar = self._calcular_periodo(mes_int, anio_int)
+                iva_pagar, ppm_pagar, retenciones = self._calcular_periodo(mes_int, anio_int)
                 ctx['calculado'] = {
                     'mes': mes_int, 'anio': anio_int,
                     'iva_pagar': iva_pagar,
                     'ppm_pagar': ppm_pagar,
-                    'total': float(iva_pagar) + float(ppm_pagar),
+                    'retenciones': retenciones,
+                    'total': float(iva_pagar) + float(ppm_pagar) + float(retenciones),
                     'tiene_iva': DeclaracionIVA.objects.filter(periodo_mes=mes_int, periodo_anio=anio_int).exists(),
                     'tiene_ppm': PPM.objects.filter(periodo_mes=mes_int, periodo_anio=anio_int).exists(),
                 }

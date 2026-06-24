@@ -9,7 +9,7 @@ class DetalleRendicionInline(admin.TabularInline):
 
 @admin.register(RendicionGastos)
 class RendicionGastosAdmin(admin.ModelAdmin):
-    list_display = ['id', 'trabajador', 'fecha', 'estado', 'motivo_del_gasto']
+    list_display = ['indice_rendicion', 'trabajador', 'fecha', 'estado', 'motivo_del_gasto']
     list_filter = ['estado']
     search_fields = ['trabajador__nombre_completo', 'motivo_del_gasto']
     inlines = [DetalleRendicionInline]

@@ -64,6 +64,8 @@
           <td class="fw-700 font-monospace">
             {% if cxp.factura %}
             <a href="{% url 'proveedores:factura_detail' cxp.factura.pk %}" class="text-sta text-decoration-none">{{ cxp.factura.numero }}</a>
+            {% elif cxp.boleta_honorarios %}
+            <a href="{% url 'boletas:boleta_detail' cxp.boleta_honorarios.pk %}" class="text-sta text-decoration-none">{{ cxp.boleta_honorarios.numero }}</a>
             {% else %}
             <a href="{% url 'rendiciones:rendicion_detail' cxp.rendicion.pk %}" class="text-sta text-decoration-none">{{ cxp.rendicion.id }}</a>
             {% endif %}
@@ -76,6 +78,9 @@
               {% else %}
               {{ cxp.factura.proveedor.razon_social|truncatechars:30 }}
               {% endif %}
+            {% elif cxp.boleta_honorarios %}
+            {{ cxp.boleta_honorarios.prestador.nombre|truncatechars:30 }}
+            <span class="badge bg-warning-subtle text-warning-emphasis">Honorarios</span>
             {% else %}
             {{ cxp.rendicion.trabajador.nombre_completo|truncatechars:30 }}
             {% endif %}

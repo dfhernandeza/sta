@@ -21,7 +21,7 @@
     <table class="table table-sta mb-0">
       <thead>
         <tr>
-          <th>#</th>
+          <th>Índice</th>
           <th>Trabajador</th>
           <th>Proyecto</th>
           <th>Fecha</th>
@@ -35,7 +35,7 @@
       <tbody>
         {% for r in rendiciones %}
         <tr>
-          <td class="small font-monospace text-muted">{{ r.id }}</td>
+          <td class="fw-700 font-monospace">{{ r.indice_rendicion }}</td>
           <td class="fw-600">{{ r.trabajador.nombre_completo }}</td>
           <td class="small">{{ r.proyecto|default:"—" }}</td>
           <td class="small">{{ r.fecha }}</td>
@@ -59,7 +59,7 @@
         </tr>
         {% empty %}
         <tr>
-          <td colspan="8" class="text-center text-muted py-4">
+          <td colspan="9" class="text-center text-muted py-4">
             <i class="bi bi-inbox display-6 d-block mb-2"></i>No hay rendiciones registradas.
           </td>
         </tr>

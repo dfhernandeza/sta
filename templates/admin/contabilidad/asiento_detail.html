@@ -90,6 +90,20 @@
         {{ asiento.factura_recibida.numero }} – {{ asiento.factura_recibida.proveedor.razon_social }}
       </a>
       {% endif %}
+      {% if asiento.nota_credito_recibida %}
+      <hr class="my-3">
+      <div class="small text-muted mb-1">Nota de Crédito Recibida</div>
+      <a href="{% url 'proveedores:nota_credito_detail' asiento.nota_credito_recibida.pk %}" class="fw-600 text-decoration-none">
+        {{ asiento.nota_credito_recibida.numero }} – {{ asiento.nota_credito_recibida.proveedor.razon_social }}
+      </a>
+      {% endif %}
+      {% if asiento.boleta_honorarios %}
+      <hr class="my-3">
+      <div class="small text-muted mb-1">Boleta de Honorarios</div>
+      <a href="{% url 'boletas:boleta_detail' asiento.boleta_honorarios.pk %}" class="fw-600 text-decoration-none">
+        {{ asiento.boleta_honorarios.numero }} – {{ asiento.boleta_honorarios.prestador.nombre }}
+      </a>
+      {% endif %}
       {% if asiento.movimiento_bancario %}
       <hr class="my-3">
       <div class="small text-muted mb-1">Movimiento Bancario</div>

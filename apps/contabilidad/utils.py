@@ -153,6 +153,106 @@ def generar_asiento_factura_recibida(factura, usuario=None):
 
     return asiento
 
+
+def generar_asiento_nota_credito_recibida(nota_credito, usuario=None):
+    """
+    Genera el asiento de una nota de crédito de compra:
+        DEBE  : cuenta_cxp          = nota_credito.total
+        HABER : cuenta por detalle  = monto (o cuenta_compras_default si no tiene)
+        HABER : cuenta_iva_credito  = nota_credito.iva
+    Retorna el AsientoContable creado (borrador) o None.
+    """
+    config = get_config()
+    if not config or not config.cuenta_cxp or not config.cuenta_iva_credito:
+        return None
+
+    factura = nota_credito.factura
+    asiento = AsientoContable.objects.create(
+        fecha=nota_credito.fecha_emision,
+        descripcion=(
+            f'Nota de crédito recibida N° {nota_credito.numero} '
+            f'aplicada a factura {factura.numero} - {nota_credito.proveedor.razon_social}'
+        ),
+        tipo='nota_credito_compra',
+        estado='borrador',
+        factura_recibida=factura,
+        nota_credito_recibida=nota_credito,
+        creado_por=usuario,
+    )
+
+    orden = 10
+    detalles = nota_credito.detalles.select_related('cuenta_contable', 'centro_costo').all()
+    suma_afecto = Decimal('0')
+    suma_exento = Decimal('0')
+    for det in detalles:
+        subtotal = (det.cantidad * det.precio_unitario).quantize(Decimal('0.0001'))
+        cuenta_costo = det.cuenta_contable or config.cuenta_compras_default
+        descripcion_detallada = (
+            f'{det.descripcion[:150]} '
+            f'(NC {nota_credito.numero} Cant: {det.cantidad} x Precio Unit: {det.precio_unitario})'
+        )
+        _add_linea(asiento, cuenta_costo, haber=subtotal,
+                   descripcion=descripcion_detallada, orden=orden,
+                   centro_costo=det.centro_costo)
+        if det.exento_iva:
+            suma_exento += subtotal
+        else:
+            suma_afecto += subtotal
+        orden += 1
+
+    iva_calculado = (suma_afecto * Decimal('0.19')).quantize(Decimal('0.01'))
+    total_calculado = suma_afecto + suma_exento + iva_calculado
+
+    _add_linea(asiento, config.cuenta_cxp, debe=total_calculado,
+               descripcion=f'Rebaja CxP por NC {nota_credito.numero}', orden=1)
+
+    _add_linea(asiento, config.cuenta_iva_credito, haber=iva_calculado,
+               descripcion=f'Reverso IVA Crédito Fiscal (NC {nota_credito.numero})',
+               orden=orden)
+
+    return asiento
+
+
+def generar_asiento_boleta_honorarios(boleta, usuario=None):
+    """
+    Genera el asiento de una boleta de honorarios:
+        DEBE  : gasto/costo honorarios       = bruto
+        HABER : cuenta_cxp                   = liquido a pagar
+        HABER : retenciones honorarios       = retencion
+    Retorna el AsientoContable creado (borrador) o None.
+    """
+    config = get_config()
+    if not config or not config.cuenta_cxp:
+        return None
+
+    cuenta_gasto = boleta.cuenta_contable or config.cuenta_honorarios_default or config.cuenta_compras_default
+    cuenta_retencion = config.cuenta_retenciones_honorarios or config.cuenta_impuestos_sii
+
+    if not cuenta_gasto or (boleta.retencion > 0 and not cuenta_retencion):
+        return None
+
+    asiento = AsientoContable.objects.create(
+        fecha=boleta.fecha_emision,
+        descripcion=f'Boleta honorarios N° {boleta.numero} - {boleta.prestador.nombre}',
+        tipo='boleta_honorarios',
+        estado='borrador',
+        boleta_honorarios=boleta,
+        creado_por=usuario,
+    )
+
+    _add_linea(asiento, cuenta_gasto, debe=boleta.bruto,
+               descripcion=boleta.descripcion[:200], orden=1,
+               centro_costo=boleta.centro_costo)
+    _add_linea(asiento, config.cuenta_cxp, haber=boleta.liquido,
+               descripcion=f'CxP Boleta {boleta.numero}', orden=2)
+
+    if boleta.retencion > 0:
+        _add_linea(asiento, cuenta_retencion, haber=boleta.retencion,
+                   descripcion=f'Retención honorarios Boleta {boleta.numero}', orden=3)
+
+    return asiento
+
+
 def generar_asiento_rendicion_gastos_recibida(rendicion, usuario=None):
     """
     Genera el asiento de reconocimiento de una rendición de gastos:
@@ -328,6 +428,7 @@ def generar_asiento_devengamiento_remuneracion(remuneracion, usuario=None):
         DEBE : Gasto Sueldos (operacional o administrativo)  = sueldo_bruto
         HABER: AFP por Pagar                                 = descuento_afp    (si > 0)
         HABER: Salud por Pagar                               = descuento_salud  (si > 0)
+        HABER: Impuestos SII por Pagar                       = impuesto_unico   (si > 0)
         HABER: Anticipos a Trabajadores (liquida el activo)  = anticipo_descontado (si > 0)
         HABER: Sueldos por Pagar (otros descuentos)          = otros_descuentos  (si > 0)
         HABER: Sueldos por Pagar (neto al trabajador)        = liquido_pagar
@@ -357,12 +458,15 @@ def generar_asiento_devengamiento_remuneracion(remuneracion, usuario=None):
 
     descuento_afp    = remuneracion.descuento_afp       or Decimal('0')
     descuento_salud  = remuneracion.descuento_salud     or Decimal('0')
+    impuesto_unico   = remuneracion.impuesto_unico      or Decimal('0')
     otros_descuentos = remuneracion.otros_descuentos    or Decimal('0')
     anticipo         = remuneracion.anticipo_descontado or Decimal('0')
 
     if descuento_afp > 0 and not config.cuenta_afp_por_pagar:
         return None
     if descuento_salud > 0 and not config.cuenta_salud_por_pagar:
+        return None
+    if impuesto_unico > 0 and not config.cuenta_impuestos_sii:
         return None
     if anticipo > 0 and not (config.cuenta_anticipos_trabajadores or config.cuenta_sueldos_por_pagar):
         return None
@@ -398,6 +502,12 @@ def generar_asiento_devengamiento_remuneracion(remuneracion, usuario=None):
     if descuento_salud > 0 and config.cuenta_salud_por_pagar:
         _add_linea(asiento, config.cuenta_salud_por_pagar, haber=descuento_salud,
                    descripcion='Salud por Pagar (Isapre/FONASA)', orden=orden)
+        orden += 1
+
+    # HABER: Impuesto Único de Segunda Categoría por Pagar
+    if impuesto_unico > 0 and config.cuenta_impuestos_sii:
+        _add_linea(asiento, config.cuenta_impuestos_sii, haber=impuesto_unico,
+                   descripcion='Impuesto Único por Pagar', orden=orden)
         orden += 1
 
     # HABER: Anticipos a Trabajadores — liquida el activo creado al entregar el anticipo
@@ -439,6 +549,7 @@ def generar_asiento_pago_remuneracion(remuneracion, movimiento, usuario=None):
         HABER: Banco              = liquido_pagar
         HABER: AFP por Pagar      = descuento_afp
         HABER: Salud por Pagar    = descuento_salud
+        HABER: Impuestos SII      = impuesto_unico
         HABER: Anticipos a Trab.  = anticipo_descontado
         HABER: Sueldos por Pagar  = otros_descuentos
 
@@ -485,6 +596,7 @@ def generar_asiento_pago_remuneracion(remuneracion, movimiento, usuario=None):
 
     descuento_afp    = remuneracion.descuento_afp       or Decimal('0')
     descuento_salud  = remuneracion.descuento_salud     or Decimal('0')
+    impuesto_unico   = remuneracion.impuesto_unico      or Decimal('0')
     otros_descuentos = remuneracion.otros_descuentos    or Decimal('0')
     anticipo         = remuneracion.anticipo_descontado or Decimal('0')
 
@@ -492,6 +604,8 @@ def generar_asiento_pago_remuneracion(remuneracion, movimiento, usuario=None):
     if descuento_afp > 0 and not config.cuenta_afp_por_pagar:
         puede_balancear = False
     if descuento_salud > 0 and not config.cuenta_salud_por_pagar:
+        puede_balancear = False
+    if impuesto_unico > 0 and not config.cuenta_impuestos_sii:
         puede_balancear = False
     if anticipo > 0 and not (config.cuenta_anticipos_trabajadores or config.cuenta_sueldos_por_pagar):
         puede_balancear = False
@@ -529,6 +643,11 @@ def generar_asiento_pago_remuneracion(remuneracion, movimiento, usuario=None):
     if descuento_salud > 0 and config.cuenta_salud_por_pagar:
         _add_linea(asiento, config.cuenta_salud_por_pagar, haber=descuento_salud,
                    descripcion='Salud por Pagar (Isapre/FONASA)', orden=orden)
+        orden += 1
+
+    if impuesto_unico > 0 and config.cuenta_impuestos_sii:
+        _add_linea(asiento, config.cuenta_impuestos_sii, haber=impuesto_unico,
+                   descripcion='Impuesto Único por Pagar', orden=orden)
         orden += 1
 
     if anticipo > 0:

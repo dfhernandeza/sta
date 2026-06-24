@@ -85,6 +85,10 @@
             {{ form.descuento_salud }}
           </div>
           <div class="col-sm-4">
+            <label class="form-label fw-600">Impuesto Único</label>
+            {{ form.impuesto_unico }}
+          </div>
+          <div class="col-sm-4">
             <label class="form-label fw-600">Otros Descuentos</label>
             {{ form.otros_descuentos }}
           </div>
@@ -145,16 +149,18 @@ function recalcular() {
   const anticipo  = v('id_anticipo_descontado');
   const afp       = v('id_descuento_afp');
   const salud     = v('id_descuento_salud');
-  setVal('id_liquido_pagar', Math.max(bruto - afp - salud - otros - anticipo, 0));
+  const impuesto  = v('id_impuesto_unico');
+  setVal('id_liquido_pagar', Math.max(bruto - afp - salud - impuesto - otros - anticipo, 0));
 }
 
 function recalcularLiquido() {
   const bruto    = v('id_sueldo_bruto');
   const afp      = v('id_descuento_afp');
   const salud    = v('id_descuento_salud');
+  const impuesto = v('id_impuesto_unico');
   const otros    = v('id_otros_descuentos');
   const anticipo = v('id_anticipo_descontado');
-  setVal('id_liquido_pagar', Math.max(bruto - afp - salud - otros - anticipo, 0));
+  setVal('id_liquido_pagar', Math.max(bruto - afp - salud - impuesto - otros - anticipo, 0));
 }
 
 function setExentoUI(exento) {
@@ -186,6 +192,7 @@ document.getElementById('id_trabajador')?.addEventListener('change', function ()
       setVal('id_sueldo_base', d.sueldo_base);
       setVal('id_horas_extra', 0);
       setVal('id_bono', 0);
+      setVal('id_impuesto_unico', d.impuesto_unico || 0);
       setVal('id_anticipo_descontado', d.anticipo_pendiente);
 
       // Info badge
@@ -207,7 +214,7 @@ document.getElementById('id_trabajador')?.addEventListener('change', function ()
 );
 
 // Recalcular líquido al cambiar descuentos manuales
-['id_descuento_afp','id_descuento_salud','id_otros_descuentos','id_anticipo_descontado'].forEach(id =>
+['id_descuento_afp','id_descuento_salud','id_impuesto_unico','id_otros_descuentos','id_anticipo_descontado'].forEach(id =>
   document.getElementById(id)?.addEventListener('input', recalcularLiquido)
 );
 </script>

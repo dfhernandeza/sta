@@ -3,13 +3,26 @@ from apps.core.models import TimeStampedModel
 
 
 class RegistroCompra(TimeStampedModel):
+    TIPO_DOCUMENTO_CHOICES = [
+        ('factura', 'Factura'),
+        ('nota_credito', 'Nota de Crédito'),
+    ]
+
+    tipo_documento = models.CharField(
+        max_length=20, choices=TIPO_DOCUMENTO_CHOICES,
+        default='factura', verbose_name='Tipo de documento'
+    )
     proveedor = models.ForeignKey(
         'proveedores.Proveedor', on_delete=models.PROTECT,
         verbose_name='Proveedor'
     )
     factura = models.ForeignKey(
-        'proveedores.FacturaRecibida', on_delete=models.CASCADE,
-        verbose_name='Factura'
+        'proveedores.FacturaRecibida', null=True, blank=True,
+        on_delete=models.CASCADE, verbose_name='Factura'
+    )
+    nota_credito = models.ForeignKey(
+        'proveedores.NotaCreditoRecibida', null=True, blank=True,
+        on_delete=models.CASCADE, verbose_name='Nota de Crédito'
     )
     periodo_mes = models.PositiveSmallIntegerField(verbose_name='Mes')
     periodo_anio = models.PositiveSmallIntegerField(verbose_name='Año')
@@ -23,7 +36,8 @@ class RegistroCompra(TimeStampedModel):
         ordering = ['-periodo_anio', '-periodo_mes']
 
     def __str__(self):
-        return f'Compra {self.proveedor.razon_social} - {self.periodo_mes:02d}/{self.periodo_anio}'
+        documento = self.nota_credito or self.factura or 'Sin documento'
+        return f'{self.get_tipo_documento_display()} {documento} - {self.periodo_mes:02d}/{self.periodo_anio}'
 
 
 class RegistroVenta(TimeStampedModel):
@@ -130,5 +144,5 @@ class FormularioF29(TimeStampedModel):
         return f'F29 {self.periodo_mes:02d}/{self.periodo_anio}'
 
     def save(self, *args, **kwargs):
-        self.total_pagar = self.iva_pagar + self.ppm_pagar - self.retenciones
+        self.total_pagar = self.iva_pagar + self.ppm_pagar + self.retenciones
         super().save(*args, **kwargs)

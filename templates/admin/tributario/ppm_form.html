@@ -110,3 +110,35 @@
 </div>
 </div>
 {% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const baseEl = document.getElementById('id_base_imponible');
+  const tasaEl = document.getElementById('id_tasa');
+  const montoEl = document.getElementById('id_monto');
+
+  const parseDecimal = value => {
+    const normalized = String(value || '').replace(',', '.');
+    const parsed = parseFloat(normalized);
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+
+  const formatDecimal = value => {
+    if (!Number.isFinite(value)) return '0.00';
+    return value.toFixed(2);
+  };
+
+  const recalcularPPM = () => {
+    if (!baseEl || !tasaEl || !montoEl) return;
+    const base = parseDecimal(baseEl.value);
+    const tasa = parseDecimal(tasaEl.value);
+    montoEl.value = formatDecimal(base * tasa);
+  };
+
+  baseEl?.addEventListener('input', recalcularPPM);
+  tasaEl?.addEventListener('input', recalcularPPM);
+  recalcularPPM();
+});
+</script>
+{% endblock %}

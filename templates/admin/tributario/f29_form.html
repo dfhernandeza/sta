@@ -21,7 +21,7 @@
 
     {% if not form.instance.pk %}
     <div class="card-sta p-3 mb-3">
-      <p class="small text-muted mb-2"><i class="bi bi-calculator me-1"></i>Selecciona el período para pre-cargar IVA a pagar (desde Declaración IVA) y PPM (desde PPM del período).</p>
+      <p class="small text-muted mb-2"><i class="bi bi-calculator me-1"></i>Selecciona el período para pre-cargar IVA, PPM y retenciones de boletas de honorarios.</p>
       <form method="get" class="row g-2 align-items-end">
         <div class="col-sm-4">
           <label class="form-label fw-600 small">Mes</label>
@@ -62,6 +62,7 @@
         {% if not calculado.tiene_iva %}<span class="text-warning">(sin declaración IVA)</span>{% endif %} |
         PPM: <strong>{{ calculado.ppm_pagar|moneda_chilena }}</strong>
         {% if not calculado.tiene_ppm %}<span class="text-warning">(sin PPM)</span>{% endif %} |
+        Retenciones: <strong>{{ calculado.retenciones|moneda_chilena }}</strong> |
         Total estimado: <strong>{{ calculado.total|moneda_chilena }}</strong>
         — Valores pre-cargados en el formulario.
       </div>

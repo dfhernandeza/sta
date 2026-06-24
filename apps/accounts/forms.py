@@ -8,6 +8,7 @@ APPS_DISPONIBLES = [
     ('tesoreria', 'Tesorería'),
     ('clientes', 'Clientes'),
     ('proveedores', 'Proveedores'),
+    ('boletas', 'Boletas de Honorarios'),
     ('proyectos', 'Proyectos'),
     ('rendiciones', 'Rendiciones'),
     ('rrhh', 'Recursos Humanos'),

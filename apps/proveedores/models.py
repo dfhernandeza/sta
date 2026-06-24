@@ -1,5 +1,7 @@
 from decimal import Decimal
 from django.db import models
+from django.db.models import Max
+from django.utils import timezone
 from apps.tesoreria.models import Banco, TIPO_CHOICES
 from apps.core.models import TimeStampedModel
 from apps.core.validators import validar_rut
@@ -64,19 +66,62 @@ class FacturaRecibida(TimeStampedModel):
     total = models.DecimalField(max_digits=15, decimal_places=2, verbose_name='Total')
     estado = models.CharField(max_length=15, choices=ESTADO_CHOICES, default='pendiente', verbose_name='Estado')
     observaciones = models.TextField(blank=True, verbose_name='Observaciones')
+    correlativo_libro_compras = models.PositiveIntegerField(
+        null=True, blank=True, editable=False,
+        verbose_name='Correlativo Libro de Compras'
+    )
+    periodo_libro_compras_mes = models.PositiveSmallIntegerField(
+        null=True, blank=True, editable=False,
+        verbose_name='Mes Libro de Compras'
+    )
+    periodo_libro_compras_anio = models.PositiveSmallIntegerField(
+        null=True, blank=True, editable=False,
+        verbose_name='Año Libro de Compras'
+    )
 
     class Meta:
         verbose_name = 'Factura Recibida'
         verbose_name_plural = 'Facturas Recibidas'
         ordering = ['-fecha_emision']
         unique_together = ('proveedor', 'numero')
+        constraints = [
+            models.UniqueConstraint(
+                fields=[
+                    'periodo_libro_compras_anio',
+                    'periodo_libro_compras_mes',
+                    'correlativo_libro_compras',
+                ],
+                name='uniq_factura_recibida_correlativo_libro_compras',
+            ),
+        ]
 
     def __str__(self):
         if self.pago_por_trabajador:
             return f'Factura {self.numero} - Reembolso {self.pago_por_trabajador.nombre_completo}'
         return f'Factura {self.numero} - {self.proveedor.razon_social}'
 
+    @property
+    def indice_libro_compras(self):
+        if not self.correlativo_libro_compras or not self.periodo_libro_compras_mes:
+            return '—'
+        return f'{self.correlativo_libro_compras}/{self.periodo_libro_compras_mes}'
+
+    def _asignar_correlativo_libro_compras(self):
+        if self.correlativo_libro_compras:
+            return
+
+        fecha_ingreso = timezone.localdate()
+        self.periodo_libro_compras_mes = fecha_ingreso.month
+        self.periodo_libro_compras_anio = fecha_ingreso.year
+
+        ultimo = FacturaRecibida.objects.filter(
+            periodo_libro_compras_anio=self.periodo_libro_compras_anio,
+            periodo_libro_compras_mes=self.periodo_libro_compras_mes,
+        ).aggregate(maximo=Max('correlativo_libro_compras'))['maximo'] or 0
+        self.correlativo_libro_compras = ultimo + 1
+
     def save(self, *args, **kwargs):
+        self._asignar_correlativo_libro_compras()
         if not self.iva:
             self.iva = round(self.neto * Decimal('0.19'), 2)
         if not self.total:
@@ -109,6 +154,81 @@ class DetalleFacturaRecibida(models.Model):
     def __str__(self):
         return f'{self.descripcion} - {self.cantidad} x ${self.precio_unitario:,.0f}'
 
+    @property
+    def subtotal(self):
+        return self.cantidad * self.precio_unitario
+
+
+class NotaCreditoRecibida(TimeStampedModel):
+    ESTADO_CHOICES = [
+        ('pendiente', 'Pendiente'),
+        ('aplicada', 'Aplicada'),
+        ('anulada', 'Anulada'),
+    ]
+
+    numero = models.CharField(max_length=20, verbose_name='N° Nota de Crédito')
+    fecha_emision = models.DateField(verbose_name='Fecha de Emisión')
+    factura = models.ForeignKey(
+        FacturaRecibida, on_delete=models.PROTECT,
+        related_name='notas_credito', verbose_name='Factura asociada'
+    )
+    proveedor = models.ForeignKey(
+        Proveedor, on_delete=models.PROTECT,
+        related_name='notas_credito', verbose_name='Proveedor'
+    )
+    neto = models.DecimalField(max_digits=15, decimal_places=2, verbose_name='Monto Neto Afecto')
+    exento = models.DecimalField(max_digits=15, decimal_places=2, default=0, verbose_name='Monto Exento')
+    iva = models.DecimalField(max_digits=15, decimal_places=2, verbose_name='IVA (19%)')
+    total = models.DecimalField(max_digits=15, decimal_places=2, verbose_name='Total')
+    estado = models.CharField(max_length=15, choices=ESTADO_CHOICES, default='aplicada', verbose_name='Estado')
+    observaciones = models.TextField(blank=True, verbose_name='Observaciones')
+
+    class Meta:
+        verbose_name = 'Nota de Crédito Recibida'
+        verbose_name_plural = 'Notas de Crédito Recibidas'
+        ordering = ['-fecha_emision']
+        unique_together = ('proveedor', 'numero')
+
+    def __str__(self):
+        return f'Nota de crédito {self.numero} - {self.proveedor.razon_social}'
+
+    def save(self, *args, **kwargs):
+        if not self.iva:
+            self.iva = round(self.neto * Decimal('0.19'), 2)
+        if not self.total:
+            self.total = self.neto + self.iva + (self.exento or Decimal('0'))
+        super().save(*args, **kwargs)
+
+
+class DetalleNotaCreditoRecibida(models.Model):
+    nota_credito = models.ForeignKey(
+        NotaCreditoRecibida, on_delete=models.CASCADE,
+        related_name='detalles', verbose_name='Nota de Crédito'
+    )
+    descripcion = models.CharField(max_length=300, verbose_name='Descripción')
+    cuenta_contable = models.ForeignKey(
+        'contabilidad.PlanCuentas', null=True, blank=True,
+        on_delete=models.SET_NULL, verbose_name='Cuenta contable'
+    )
+    cantidad = models.DecimalField(max_digits=10, decimal_places=4, default=1, verbose_name='Cantidad')
+    precio_unitario = models.DecimalField(max_digits=15, decimal_places=4, verbose_name='Precio Unitario')
+    centro_costo = models.ForeignKey(
+        'contabilidad.CentroCosto', null=True, blank=True,
+        on_delete=models.SET_NULL, verbose_name='Centro de Costo'
+    )
+    exento_iva = models.BooleanField(default=False, verbose_name='Exento de IVA')
+
+    class Meta:
+        verbose_name = 'Detalle Nota de Crédito Recibida'
+        verbose_name_plural = 'Detalles Notas de Crédito Recibidas'
+
+    def __str__(self):
+        return f'{self.descripcion} - {self.cantidad} x ${self.precio_unitario:,.0f}'
+
+    @property
+    def subtotal(self):
+        return self.cantidad * self.precio_unitario
+
 
 class CuentaPorPagar(TimeStampedModel):
     ESTADO_CHOICES = [
@@ -131,6 +251,10 @@ class CuentaPorPagar(TimeStampedModel):
     rendicion = models.ForeignKey(
         'rendiciones.RendicionGastos', null=True, blank=True, on_delete=models.SET_NULL,
         related_name='cuentas_pagar', verbose_name='Rendición de Gastos'
+    )
+    boleta_honorarios = models.OneToOneField(
+        'boletas.BoletaHonorarios', on_delete=models.CASCADE,
+        related_name='cuenta_pagar', verbose_name='Boleta de Honorarios', null=True, blank=True
     )
     fecha_vencimiento = models.DateField(verbose_name='Fecha Vencimiento')
     monto = models.DecimalField(max_digits=15, decimal_places=2, verbose_name='Monto')
@@ -163,11 +287,13 @@ class CuentaPorPagar(TimeStampedModel):
             return f'CxP {self.factura.numero} - {self.factura.proveedor.razon_social}'
         if self.rendicion:
             return f'CxP Rendición #{self.rendicion.id} - {self.rendicion.trabajador.nombre_completo}'
+        if self.boleta_honorarios:
+            return f'CxP Boleta {self.boleta_honorarios.numero} - {self.boleta_honorarios.prestador.nombre}'
         return f'CxP #{self.pk}'
 
     @property
     def saldo_pendiente(self):
-        return self.monto - self.monto_pagado
+        return max(self.monto - self.monto_pagado, Decimal('0'))
 
 
 class Anticipo(TimeStampedModel):

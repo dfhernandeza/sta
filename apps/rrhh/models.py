@@ -121,6 +121,7 @@ class Remuneracion(TimeStampedModel):
     sueldo_bruto = models.DecimalField(max_digits=12, decimal_places=2, verbose_name='Sueldo Bruto')
     descuento_afp = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name='Descuento AFP')
     descuento_salud = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name='Descuento Salud')
+    impuesto_unico = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name='Impuesto Único')
     otros_descuentos = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name='Otros Descuentos')
     anticipo_descontado = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name='Anticipo Descontado')
     liquido_pagar = models.DecimalField(max_digits=12, decimal_places=2, verbose_name='Líquido a Pagar')
@@ -135,6 +136,15 @@ class Remuneracion(TimeStampedModel):
 
     def __str__(self):
         return f'{self.trabajador.nombre_completo} - {self.periodo_mes:02d}/{self.periodo_anio}'
+
+    @property
+    def descuentos(self):
+        return (
+            (self.descuento_afp or 0) +
+            (self.descuento_salud or 0) +
+            (self.impuesto_unico or 0) +
+            (self.otros_descuentos or 0)
+        )
 
 
 class AnticipoLaboral(TimeStampedModel):

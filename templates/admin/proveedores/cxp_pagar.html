@@ -4,6 +4,8 @@
 {% block title %}
   {% if cxp.factura %}
     Registrar Pago — {{ cxp.factura.numero }}
+  {% elif cxp.boleta_honorarios %}
+    Registrar Pago — Boleta {{ cxp.boleta_honorarios.numero }}
   {% else %}
     Registrar Pago — Rendición {{ cxp.rendicion.id }}
   {% endif %}
@@ -28,7 +30,7 @@
 
     <!-- Resumen de la CxP -->
     <div class="card-sta p-4 mb-4">
-      <h6 class="fw-700 text-sta mb-3"><i class="bi bi-file-earmark-text me-2"></i>{% if cxp.factura %}Factura a pagar{% else %}Rendición a pagar{% endif %}</h6>
+      <h6 class="fw-700 text-sta mb-3"><i class="bi bi-file-earmark-text me-2"></i>{% if cxp.factura %}Factura a pagar{% elif cxp.boleta_honorarios %}Boleta a pagar{% else %}Rendición a pagar{% endif %}</h6>
       <div class="row g-2 small">
         <div class="col-sm-4">
           {% if cxp.factura %}
@@ -39,6 +41,9 @@
             <span class="text-muted">Proveedor</span>
             <div class="fw-600">{{ cxp.factura.proveedor.razon_social }}</div>
             {% endif %}
+          {% elif cxp.boleta_honorarios %}
+          <span class="text-muted">Prestador</span>
+          <div class="fw-600">{{ cxp.boleta_honorarios.prestador.nombre }}</div>
           {% else %}
           <span class="text-muted">Trabajador</span>
           <div class="fw-600">{{ cxp.rendicion.trabajador.nombre_completo }}</div>
@@ -47,12 +52,16 @@
         <div class="col-sm-3">
           {% if cxp.factura %}
           <span class="text-muted">N° Factura</span>
+          {% elif cxp.boleta_honorarios %}
+          <span class="text-muted">N° Boleta</span>
           {% else %}
           <span class="text-muted">N° Rendición</span>
           {% endif %}
           <div class="fw-600 font-monospace">
             {% if cxp.factura %}
             <a href="{% url 'proveedores:factura_detail' cxp.factura.pk %}" class="text-sta">{{ cxp.factura.numero }}</a>
+            {% elif cxp.boleta_honorarios %}
+            <a href="{% url 'boletas:boleta_detail' cxp.boleta_honorarios.pk %}" class="text-sta">{{ cxp.boleta_honorarios.numero }}</a>
             {% else %}
             <a href="{% url 'rendiciones:rendicion_detail' cxp.rendicion.pk %}" class="text-sta">{{ cxp.rendicion.id }}</a>
             {% endif %}

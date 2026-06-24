@@ -1,4 +1,5 @@
 import logging
+from decimal import Decimal, ROUND_HALF_UP
 
 from django.views.generic import ListView, CreateView, UpdateView, DetailView, DeleteView, View
 from django.urls import reverse_lazy, reverse
@@ -10,7 +11,7 @@ from django.utils import timezone
 from datetime import timedelta
 from django.db.models import Sum
 from django.forms import CheckboxInput, inlineformset_factory, ModelForm, TextInput, Select, NumberInput
-from apps.contabilidad.utils import generar_asiento_factura_recibida
+from apps.contabilidad.utils import generar_asiento_factura_recibida, generar_asiento_nota_credito_recibida
 from apps.core.mixins import GestionMixin, AppPermisoMixin
 from django.db import transaction
 
@@ -20,7 +21,11 @@ class ProveedoresMixin(AppPermisoMixin):
 
 
 from apps.web import forms
-from .models import Proveedor, FacturaRecibida, DetalleFacturaRecibida, CuentaPorPagar, Anticipo
+from .models import (
+    Proveedor, FacturaRecibida, DetalleFacturaRecibida,
+    NotaCreditoRecibida, DetalleNotaCreditoRecibida,
+    CuentaPorPagar, Anticipo,
+)
 from apps.tributario.models import RegistroCompra
 
 
@@ -59,6 +64,67 @@ def _generar_asiento_automatico_factura(request, factura, reemplazar_borrador=Fa
     return asiento
 
 
+def _generar_asiento_automatico_nota_credito(request, nota_credito, reemplazar_borrador=False):
+    """Genera asiento automático para notas de crédito evitando duplicados."""
+    asiento_activo = nota_credito.asientos.exclude(estado='anulado').first()
+
+    if asiento_activo:
+        if asiento_activo.estado == 'confirmado':
+            messages.warning(
+                request,
+                f'No se regeneró el asiento automático porque la nota de crédito ya tiene un asiento confirmado ({asiento_activo.numero}).'
+            )
+            return asiento_activo
+        if asiento_activo.estado == 'borrador' and reemplazar_borrador:
+            asiento_activo.delete()
+        elif asiento_activo.estado == 'borrador':
+            return asiento_activo
+
+    asiento = generar_asiento_nota_credito_recibida(nota_credito, usuario=request.user)
+    if asiento:
+        messages.info(request, f'Se generó automáticamente el asiento {asiento.numero}.')
+    else:
+        messages.warning(
+            request,
+            'La nota de crédito se guardó, pero no se pudo generar el asiento automático. Revise la configuración contable.'
+        )
+    return asiento
+
+
+def _total_notas_credito_activas(factura):
+    return factura.notas_credito.exclude(estado='anulada').aggregate(
+        total=Sum('total')
+    )['total'] or Decimal('0')
+
+
+def _calcular_totales_desde_formset(formset):
+    neto = Decimal('0')
+    exento = Decimal('0')
+
+    for detalle_form in formset.forms:
+        if not detalle_form.cleaned_data or detalle_form.cleaned_data.get('DELETE'):
+            continue
+        cantidad = detalle_form.cleaned_data.get('cantidad') or Decimal('0')
+        precio = detalle_form.cleaned_data.get('precio_unitario') or Decimal('0')
+        subtotal = cantidad * precio
+        if detalle_form.cleaned_data.get('exento_iva'):
+            exento += subtotal
+        else:
+            neto += subtotal
+
+    neto = neto.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    exento = exento.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    iva = (neto * Decimal('0.19')).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    total = neto + exento + iva
+
+    return {
+        'neto': neto,
+        'exento': exento,
+        'iva': iva,
+        'total': total,
+    }
+
+
 def _sincronizar_cxp_factura(factura):
     """Crea, actualiza o elimina CxP de factura cuando corresponde."""
 
@@ -75,21 +141,22 @@ def _sincronizar_cxp_factura(factura):
         return None
 
     fecha_venc = factura.fecha_vencimiento or factura.fecha_emision
+    monto_cxp = max(factura.total - _total_notas_credito_activas(factura), Decimal('0'))
 
     cxp, created = CuentaPorPagar.objects.get_or_create(
         factura=factura,
         defaults={
             'fecha_vencimiento': fecha_venc,
-            'monto': factura.total,
-            'estado': 'pendiente',
+            'monto': monto_cxp,
+            'estado': 'pagada' if monto_cxp == 0 else 'pendiente',
         }
     )
 
     if not created:
         cxp.fecha_vencimiento = fecha_venc
-        cxp.monto = factura.total
+        cxp.monto = monto_cxp
 
-        if cxp.monto_pagado >= factura.total:
+        if cxp.monto_pagado >= monto_cxp:
             cxp.estado = 'pagada'
         else:
             cxp.estado = 'pendiente'
@@ -130,6 +197,56 @@ DetalleFormSet = inlineformset_factory(
     form=DetalleFacturaForm,
     extra=0, can_delete=True,
 )
+
+
+class DetalleNotaCreditoForm(ModelForm):
+    class Meta:
+        model = DetalleNotaCreditoRecibida
+        fields = ['descripcion', 'cuenta_contable', 'cantidad', 'precio_unitario', 'centro_costo', 'exento_iva']
+        widgets = {
+            'descripcion': TextInput(attrs={'class': 'form-control form-control-sm'}),
+            'cuenta_contable': Select(attrs={'class': 'form-select form-select-sm'}),
+            'cantidad': NumberInput(attrs={'class': 'form-control form-control-sm', 'step': '1', 'min': '0'}),
+            'precio_unitario': NumberInput(attrs={'class': 'form-control form-control-sm', 'step': '1', 'min': '0'}),
+            'centro_costo': Select(attrs={'class': 'form-select form-select-sm'}),
+            'exento_iva': CheckboxInput(attrs={'class': 'form-check-input'}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['cuenta_contable'].queryset = self.fields['cuenta_contable'].queryset.filter(
+            tipo__in=['gasto', 'costo', 'activo'],
+            nivel=4
+        )
+
+
+DetalleNotaCreditoFormSet = inlineformset_factory(
+    NotaCreditoRecibida, DetalleNotaCreditoRecibida,
+    form=DetalleNotaCreditoForm,
+    extra=0, can_delete=True,
+)
+
+
+def _detalle_nota_credito_formset_factory(extra=0):
+    return inlineformset_factory(
+        NotaCreditoRecibida, DetalleNotaCreditoRecibida,
+        form=DetalleNotaCreditoForm,
+        extra=extra, can_delete=True,
+    )
+
+
+def _initial_detalles_nota_credito_desde_factura(factura):
+    return [
+        {
+            'descripcion': detalle.descripcion,
+            'cuenta_contable': detalle.cuenta_contable_id,
+            'cantidad': detalle.cantidad,
+            'precio_unitario': detalle.precio_unitario,
+            'centro_costo': detalle.centro_costo_id,
+            'exento_iva': detalle.exento_iva,
+        }
+        for detalle in factura.detalles.select_related('cuenta_contable', 'centro_costo').all()
+    ]
 
 
 
@@ -230,18 +347,15 @@ class FacturaRecibidaCreateView(ProveedoresMixin, CreateView):
     success_url = reverse_lazy('proveedores:factura_list')
 
     def get_form(self, form_class=None):
-        from django.forms import DateInput
+        from django.forms import DateInput, HiddenInput
         form = super().get_form(form_class)
         for fname in ['fecha_emision', 'fecha_vencimiento']:
             if fname in form.fields:
                 form.fields[fname].widget = DateInput(attrs={'class': 'form-control'}, format='%Y-%m-%d')
         for fname in ['neto', 'exento', 'iva', 'total']:
             if fname in form.fields:
-                form.fields[fname].widget.attrs.update({
-                    'class': 'form-control bg-light',
-                    'readonly': True,
-                    'tabindex': '-1',
-                })
+                form.fields[fname].required = False
+                form.fields[fname].widget = HiddenInput()
         return form
 
     def form_valid(self, form):
@@ -250,25 +364,37 @@ class FacturaRecibidaCreateView(ProveedoresMixin, CreateView):
             return self.render_to_response(
                 self.get_context_data(form=form, detalle_formset=formset)
             )
-        response = super().form_valid(form)
+
+        totales = _calcular_totales_desde_formset(formset)
+        if totales['total'] <= 0:
+            form.add_error('total', 'La factura debe tener al menos una línea y un total mayor que cero.')
+            return self.render_to_response(
+                self.get_context_data(form=form, detalle_formset=formset)
+            )
+
+        for campo, valor in totales.items():
+            setattr(form.instance, campo, valor)
+
+        self.object = form.save()
         formset.instance = self.object
         formset.save()
-        _sincronizar_cxp_factura(form.instance)
+        _sincronizar_cxp_factura(self.object)
         RegistroCompra.objects.get_or_create(
-            factura=form.instance,
+            factura=self.object,
+            tipo_documento='factura',
             defaults={
-                'proveedor': form.instance.proveedor,
-                'periodo_mes': form.instance.fecha_emision.month,
-                'periodo_anio': form.instance.fecha_emision.year,
-                'neto': form.instance.neto,
-                'iva_credito': form.instance.iva,
-                'total': form.instance.total,
+                'proveedor': self.object.proveedor,
+                'periodo_mes': self.object.fecha_emision.month,
+                'periodo_anio': self.object.fecha_emision.year,
+                'neto': self.object.neto,
+                'iva_credito': self.object.iva,
+                'total': self.object.total,
             }
         )
-        _generar_asiento_automatico_factura(self.request, form.instance, reemplazar_borrador=False)
-        logger.info('Factura recibida creada: %s (proveedor: %s) por %s', form.instance.numero, form.instance.proveedor, self.request.user)
-        messages.success(self.request, f'Factura {form.instance.numero} registrada exitosamente.')
-        return response
+        _generar_asiento_automatico_factura(self.request, self.object, reemplazar_borrador=False)
+        logger.info('Factura recibida creada: %s (proveedor: %s) por %s', self.object.numero, self.object.proveedor, self.request.user)
+        messages.success(self.request, f'Factura {self.object.numero} registrada exitosamente.')
+        return redirect(self.get_success_url())
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
@@ -304,18 +430,15 @@ class FacturaRecibidaUpdateView(ProveedoresMixin, UpdateView):
         return super().dispatch(request, *args, **kwargs)
 
     def get_form(self, form_class=None):
-        from django.forms import DateInput
+        from django.forms import DateInput, HiddenInput
         form = super().get_form(form_class)
         for fname in ['fecha_emision', 'fecha_vencimiento']:
             if fname in form.fields:
                 form.fields[fname].widget = DateInput(attrs={'class': 'form-control'}, format='%Y-%m-%d')
         for fname in ['neto', 'exento', 'iva', 'total']:
             if fname in form.fields:
-                form.fields[fname].widget.attrs.update({
-                    'class': 'form-control bg-light',
-                    'readonly': True,
-                    'tabindex': '-1',
-                })
+                form.fields[fname].required = False
+                form.fields[fname].widget = HiddenInput()
         return form
 
     def form_valid(self, form):
@@ -327,7 +450,17 @@ class FacturaRecibidaUpdateView(ProveedoresMixin, UpdateView):
             )
 
         with transaction.atomic():
-            response = super().form_valid(form)
+            totales = _calcular_totales_desde_formset(formset)
+            if totales['total'] <= 0:
+                form.add_error('total', 'La factura debe tener al menos una línea y un total mayor que cero.')
+                return self.render_to_response(
+                    self.get_context_data(form=form, detalle_formset=formset)
+                )
+
+            for campo, valor in totales.items():
+                setattr(form.instance, campo, valor)
+
+            self.object = form.save()
             formset.save()
 
             factura = self.object
@@ -338,8 +471,10 @@ class FacturaRecibidaUpdateView(ProveedoresMixin, UpdateView):
             # Actualizar Registro de Compra
             RegistroCompra.objects.update_or_create(
                 factura=factura,
+                tipo_documento='factura',
                 defaults={
                     'proveedor': factura.proveedor,
+                    'nota_credito': None,
                     'periodo_mes': factura.fecha_emision.month,
                     'periodo_anio': factura.fecha_emision.year,
                     'neto': factura.neto,
@@ -363,7 +498,7 @@ class FacturaRecibidaUpdateView(ProveedoresMixin, UpdateView):
         )
 
         messages.success(self.request, 'Factura actualizada.')
-        return response
+        return redirect(self.get_success_url())
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
@@ -380,6 +515,137 @@ class FacturaRecibidaDetailView(ProveedoresMixin, DetailView):
     model = FacturaRecibida
     template_name = 'admin/proveedores/factura_detail.html'
     context_object_name = 'factura'
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx['notas_credito'] = self.object.notas_credito.select_related('proveedor').order_by('-fecha_emision')
+        ctx['total_notas_credito'] = _total_notas_credito_activas(self.object)
+        return ctx
+
+
+class NotaCreditoRecibidaCreateView(ProveedoresMixin, CreateView):
+    model = NotaCreditoRecibida
+    template_name = 'admin/proveedores/nota_credito_form.html'
+    fields = ['numero', 'fecha_emision', 'neto', 'exento', 'iva', 'total', 'estado', 'observaciones']
+
+    def dispatch(self, request, *args, **kwargs):
+        self.factura = get_object_or_404(FacturaRecibida, pk=kwargs['pk'])
+        if self.factura.estado == 'anulada':
+            messages.error(request, 'No se puede crear una nota de crédito para una factura anulada.')
+            return redirect('proveedores:factura_detail', pk=self.factura.pk)
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_success_url(self):
+        return reverse('proveedores:factura_detail', kwargs={'pk': self.factura.pk})
+
+    def get_initial(self):
+        initial = super().get_initial()
+        initial.update({
+            'fecha_emision': timezone.localdate(),
+            'estado': 'aplicada',
+        })
+        return initial
+
+    def get_form(self, form_class=None):
+        from django.forms import DateInput, HiddenInput
+        form = super().get_form(form_class)
+        if 'fecha_emision' in form.fields:
+            form.fields['fecha_emision'].widget = DateInput(attrs={'class': 'form-control'}, format='%Y-%m-%d')
+        for fname in ['neto', 'exento', 'iva', 'total']:
+            if fname in form.fields:
+                form.fields[fname].required = False
+                form.fields[fname].widget = HiddenInput()
+        return form
+
+    def form_valid(self, form):
+        form.instance.factura = self.factura
+        form.instance.proveedor = self.factura.proveedor
+        formset = DetalleNotaCreditoFormSet(self.request.POST, instance=form.instance)
+
+        if not formset.is_valid():
+            return self.render_to_response(
+                self.get_context_data(form=form, detalle_formset=formset)
+            )
+
+        lineas_activas = [
+            form_det for form_det in formset.forms
+            if form_det.cleaned_data and not form_det.cleaned_data.get('DELETE')
+        ]
+        totales = _calcular_totales_desde_formset(formset)
+        if not lineas_activas or totales['total'] <= 0:
+            form.add_error('total', 'La nota de crédito debe tener al menos una línea y un total mayor que cero.')
+            return self.render_to_response(
+                self.get_context_data(form=form, detalle_formset=formset)
+            )
+
+        total_existente = _total_notas_credito_activas(self.factura)
+        if form.instance.estado != 'anulada' and total_existente + totales['total'] > self.factura.total:
+            form.add_error(
+                'total',
+                'El total de notas de crédito activas no puede superar el total de la factura.'
+            )
+            return self.render_to_response(
+                self.get_context_data(form=form, detalle_formset=formset)
+            )
+
+        for campo, valor in totales.items():
+            setattr(form.instance, campo, valor)
+
+        with transaction.atomic():
+            self.object = form.save()
+            formset.instance = self.object
+            formset.save()
+
+            if self.object.estado != 'anulada':
+                RegistroCompra.objects.update_or_create(
+                    nota_credito=self.object,
+                    tipo_documento='nota_credito',
+                    defaults={
+                        'proveedor': self.object.proveedor,
+                        'factura': None,
+                        'periodo_mes': self.object.fecha_emision.month,
+                        'periodo_anio': self.object.fecha_emision.year,
+                        'neto': -self.object.neto,
+                        'iva_credito': -self.object.iva,
+                        'total': -self.object.total,
+                    }
+                )
+                _sincronizar_cxp_factura(self.factura)
+                _generar_asiento_automatico_nota_credito(
+                    self.request,
+                    self.object,
+                    reemplazar_borrador=False
+                )
+
+        logger.info(
+            'Nota de crédito recibida creada: %s (factura: %s, proveedor: %s) por %s',
+            self.object.numero,
+            self.factura.numero,
+            self.object.proveedor,
+            self.request.user
+        )
+        messages.success(self.request, f'Nota de crédito {self.object.numero} registrada exitosamente.')
+        return redirect(self.get_success_url())
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx['titulo'] = f'Nueva Nota de Crédito para Factura {self.factura.numero}'
+        ctx['factura'] = self.factura
+        ctx['saldo_disponible_nota_credito'] = self.factura.total - _total_notas_credito_activas(self.factura)
+        if 'detalle_formset' not in ctx:
+            if self.request.POST:
+                ctx['detalle_formset'] = DetalleNotaCreditoFormSet(self.request.POST)
+            else:
+                initial_detalles = _initial_detalles_nota_credito_desde_factura(self.factura)
+                FormSet = _detalle_nota_credito_formset_factory(extra=len(initial_detalles))
+                ctx['detalle_formset'] = FormSet(initial=initial_detalles)
+        return ctx
+
+
+class NotaCreditoRecibidaDetailView(ProveedoresMixin, DetailView):
+    model = NotaCreditoRecibida
+    template_name = 'admin/proveedores/nota_credito_detail.html'
+    context_object_name = 'nota_credito'
 
 
 class FacturaRecibidaDeleteView(ProveedoresMixin, DeleteView):
@@ -429,7 +695,8 @@ class CuentaPorPagarListView(ProveedoresMixin, ListView):
         proveedor = self.request.GET.get('proveedor')
 
         cuentas = CuentaPorPagar.objects.select_related(
-            'factura__proveedor', 'factura__pago_por_trabajador', 'rendicion__trabajador'
+            'factura__proveedor', 'factura__pago_por_trabajador',
+            'rendicion__trabajador', 'boleta_honorarios__prestador'
         ).order_by('fecha_vencimiento') 
 
         if estado:
@@ -538,10 +805,13 @@ class CxPPagarView(ProveedoresMixin, View):
         cxp.estado = 'pagada'
         cxp.save()
 
-        # 2. Actualizar factura o rendición según corresponda
+        # 2. Actualizar documento asociado según corresponda
         if cxp.factura:
             cxp.factura.estado = 'pagada'
             cxp.factura.save()
+        elif cxp.boleta_honorarios:
+            cxp.boleta_honorarios.estado = 'pagada'
+            cxp.boleta_honorarios.save(update_fields=['estado'])
         elif cxp.rendicion:
             cxp.rendicion.estado = 'pagada'
             cxp.rendicion.save()
@@ -555,6 +825,8 @@ class CxPPagarView(ProveedoresMixin, View):
                 )
             else:
                 descripcion_mov = f'Pago {cxp.factura.numero} - {cxp.factura.proveedor.razon_social}'
+        elif cxp.boleta_honorarios:
+            descripcion_mov = f'Pago boleta {cxp.boleta_honorarios.numero} - {cxp.boleta_honorarios.prestador.nombre}'
         else:
             descripcion_mov = f'Reembolso rendición #{cxp.rendicion.id} - {cxp.rendicion.trabajador.nombre_completo}'
         movimiento = MovimientoBancario.objects.create(
@@ -640,10 +912,13 @@ class AnularPagoCxPView(ProveedoresMixin, View):
             cxp.movimiento_pago = None
             cxp.save()
 
-            # Revertir factura o rendición
+            # Revertir documento asociado
             if cxp.factura:
                 cxp.factura.estado = 'pendiente'
                 cxp.factura.save(update_fields=['estado'])
+            elif cxp.boleta_honorarios:
+                cxp.boleta_honorarios.estado = 'pendiente'
+                cxp.boleta_honorarios.save(update_fields=['estado'])
             elif cxp.rendicion:
                 cxp.rendicion.estado = 'aprobado'
                 cxp.rendicion.save(update_fields=['estado'])

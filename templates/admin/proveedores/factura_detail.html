@@ -16,6 +16,9 @@
     <p class="page-subtitle mb-0">{{ factura.proveedor.razon_social }}</p>
   </div>
   <div class="d-flex gap-2">
+    <a href="{% url 'proveedores:nota_credito_create' factura.pk %}" class="btn btn-outline-primary rounded-pill px-4">
+      <i class="bi bi-file-earmark-minus me-1"></i>Nota de crédito
+    </a>
     <a href="{% url 'proveedores:factura_update' factura.pk %}" class="btn btn-sta rounded-pill px-4">
       <i class="bi bi-pencil me-1"></i>Editar
     </a>
@@ -51,6 +54,8 @@
         <dd class="col-sm-7 small">{{ factura.iva|moneda_chilena }}</dd>
         <dt class="col-sm-5 text-muted small">Total</dt>
         <dd class="col-sm-7 fw-700 text-sta">{{ factura.total|moneda_chilena }}</dd>
+        <dt class="col-sm-5 text-muted small">Notas de crédito</dt>
+        <dd class="col-sm-7 small text-danger">-{{ total_notas_credito|moneda_chilena }}</dd>
         <dt class="col-sm-5 text-muted small">Estado</dt>
         <dd class="col-sm-7"><span class="badge-{{ factura.estado }}">{{ factura.get_estado_display }}</span></dd>
       </dl>
@@ -105,6 +110,53 @@
             </form>
           {% endif %}
         {% endwith %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-4 mt-1">
+  <div class="col-12">
+    <div class="card-sta p-4">
+      <div class="d-flex align-items-center justify-content-between mb-3">
+        <h6 class="fw-700 text-sta mb-0"><i class="bi bi-file-earmark-minus me-2"></i>Notas de Crédito</h6>
+        <a href="{% url 'proveedores:nota_credito_create' factura.pk %}" class="btn btn-outline-primary btn-sm rounded-pill px-3">
+          <i class="bi bi-plus-lg me-1"></i>Nueva nota
+        </a>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm table-hover mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>N° Nota</th>
+              <th>Fecha</th>
+              <th class="text-end">Neto</th>
+              <th class="text-end">IVA</th>
+              <th class="text-end">Total</th>
+              <th class="text-center">Estado</th>
+              <th class="text-center">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for nc in notas_credito %}
+            <tr>
+              <td class="fw-700 font-monospace">{{ nc.numero }}</td>
+              <td>{{ nc.fecha_emision }}</td>
+              <td class="text-end small">{{ nc.neto|moneda_chilena }}</td>
+              <td class="text-end small">{{ nc.iva|moneda_chilena }}</td>
+              <td class="text-end fw-700">{{ nc.total|moneda_chilena }}</td>
+              <td class="text-center"><span class="badge-{{ nc.estado }}">{{ nc.get_estado_display }}</span></td>
+              <td class="text-center">
+                <a href="{% url 'proveedores:nota_credito_detail' nc.pk %}" class="btn btn-outline-secondary btn-sm" title="Ver">
+                  <i class="bi bi-eye"></i>
+                </a>
+              </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="7" class="text-center text-muted py-4">No hay notas de crédito asociadas.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
       </div>
     </div>
   </div>

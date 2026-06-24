@@ -42,7 +42,7 @@
     <table class="table table-sta mb-0">
       <thead>
         <tr>
-          <th>N° Factura</th><th>Cliente</th><th>Emisión</th><th>Vencimiento</th>
+          <th>Índice</th><th>N° Factura</th><th>Cliente</th><th>Emisión</th><th>Vencimiento</th>
           <th class="text-end">Neto</th><th class="text-end">IVA</th><th class="text-end">Total</th>
           <th class="text-center">Estado</th><th class="text-center">Acciones</th>
         </tr>
@@ -50,6 +50,7 @@
       <tbody>
         {% for f in facturas %}
         <tr>
+          <td class="fw-700 font-monospace">{{ f.indice_libro_ventas }}</td>
           <td class="fw-700">{{ f.numero }}</td>
           <td>{{ f.cliente.razon_social|truncatechars:25 }}</td>
           <td class="small">{{ f.fecha_emision }}</td>
@@ -66,7 +67,7 @@
           </td>
         </tr>
         {% empty %}
-        <tr><td colspan="9" class="text-center text-muted py-4">No hay facturas registradas.</td></tr>
+        <tr><td colspan="10" class="text-center text-muted py-4">No hay facturas registradas.</td></tr>
         {% endfor %}
       </tbody>
     </table>

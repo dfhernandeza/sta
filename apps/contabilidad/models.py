@@ -154,6 +154,16 @@ class ConfiguracionContable(models.Model):
         related_name='+', verbose_name='Patrimonio / Resultados Acumulados (Apertura)',
         help_text='Cuenta de patrimonio o resultados acumulados usada como contrapartida de cuadre en el asiento de apertura.'
     )
+    cuenta_honorarios_default = models.ForeignKey(
+        PlanCuentas, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='+', verbose_name='Cuenta Honorarios por Defecto',
+        help_text='Cuenta de gasto/costo usada cuando una boleta de honorarios no tiene cuenta asignada.'
+    )
+    cuenta_retenciones_honorarios = models.ForeignKey(
+        PlanCuentas, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='+', verbose_name='Retenciones Honorarios por Pagar',
+        help_text='Cuenta pasivo para registrar la retención de boletas de honorarios pendiente de enterar al SII.'
+    )
 
     class Meta:
         verbose_name = 'Configuración Contable'
@@ -181,6 +191,8 @@ class AsientoContable(TimeStampedModel):
         ('apertura', 'Asiento de Apertura'),
         ('factura_venta', 'Factura de Venta'),
         ('factura_compra', 'Factura de Compra'),
+        ('nota_credito_compra', 'Nota de Crédito de Compra'),
+        ('boleta_honorarios', 'Boleta de Honorarios'),
         ('pago_cxc', 'Cobro CxC'),
         ('pago_cxp', 'Pago CxP'),
         ('movimiento_banco', 'Movimiento Bancario'),
@@ -211,6 +223,14 @@ class AsientoContable(TimeStampedModel):
     factura_recibida = models.ForeignKey(
         'proveedores.FacturaRecibida', null=True, blank=True, on_delete=models.SET_NULL,
         related_name='asientos', verbose_name='Factura Recibida'
+    )
+    nota_credito_recibida = models.ForeignKey(
+        'proveedores.NotaCreditoRecibida', null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='asientos', verbose_name='Nota de Crédito Recibida'
+    )
+    boleta_honorarios = models.ForeignKey(
+        'boletas.BoletaHonorarios', null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='asientos', verbose_name='Boleta de Honorarios'
     )
     movimiento_bancario = models.ForeignKey(
         'tesoreria.MovimientoBancario', null=True, blank=True, on_delete=models.SET_NULL,

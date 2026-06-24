@@ -1,22 +1,54 @@
+from decimal import Decimal
+
 from django.views.generic import TemplateView
-from django.db.models import Sum, Count, Q
+from django.db.models import Sum
 from django.utils import timezone
-from apps.core.mixins import GestionMixin, AppPermisoMixin
+from apps.core.mixins import AppPermisoMixin
 
 class DashboardMixin(AppPermisoMixin):
     app_name = 'dashboard'
 
 from apps.clientes.models import FacturaEmitida, CuentaPorCobrar
-from apps.proveedores.models import FacturaRecibida, CuentaPorPagar
+from apps.proveedores.models import FacturaRecibida
 from apps.tesoreria.models import CuentaBancaria
 from apps.proyectos.models import Proyecto
-from apps.tributario.models import FormularioF29, DeclaracionIVA
-from apps.rrhh.models import Trabajador, Remuneracion
+from apps.contabilidad.models import ConfiguracionContable, LineaAsiento
+from apps.rrhh.models import Remuneracion
 import json
 
 
 class DashboardView(DashboardMixin, TemplateView):
     template_name = 'admin/dashboard/index.html'
+    CUENTAS_SALDO_DEUDOR = {'activo', 'costo', 'gasto'}
+
+    def _saldo_cuenta(self, cuenta):
+        if not cuenta:
+            return Decimal('0')
+
+        saldos = LineaAsiento.objects.filter(
+            asiento__estado='confirmado',
+            cuenta=cuenta,
+        ).aggregate(
+            debe=Sum('debe'),
+            haber=Sum('haber'),
+        )
+        debe = saldos['debe'] or Decimal('0')
+        haber = saldos['haber'] or Decimal('0')
+
+        if cuenta.tipo in self.CUENTAS_SALDO_DEUDOR:
+            return debe - haber
+        return haber - debe
+
+    def _saldo_config(self, config, *field_names):
+        total = Decimal('0')
+        cuentas_usadas = set()
+        for field_name in field_names:
+            cuenta = getattr(config, field_name, None)
+            if not cuenta or cuenta.pk in cuentas_usadas:
+                continue
+            cuentas_usadas.add(cuenta.pk)
+            total += self._saldo_cuenta(cuenta)
+        return total
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
@@ -58,37 +90,24 @@ class DashboardView(DashboardMixin, TemplateView):
             fecha_vencimiento__lt=hoy
         ).select_related('factura__cliente').order_by('fecha_vencimiento')[:10]
 
-        ctx['total_cxc_pendiente'] = CuentaPorCobrar.objects.filter(
-            estado__in=['pendiente', 'vencida']
-        ).aggregate(t=Sum('monto'))['t'] or 0
-
-        # CxP pendientes
-        ctx['total_cxp_pendiente'] = CuentaPorPagar.objects.filter(
-            estado__in=['pendiente', 'vencida']
-        ).aggregate(t=Sum('monto'))['t'] or 0
-
-        # Remuneraciones pendientes de pago (borrador + aprobado)
-        rems_pendientes = Remuneracion.objects.filter(
-            estado__in=['borrador', 'aprobado']
-        ).aggregate(
-            sueldos=Sum('liquido_pagar'),
-            afp=Sum('descuento_afp'),
-            salud=Sum('descuento_salud'),
-        )
-        ctx['sueldos_por_pagar'] = rems_pendientes['sueldos'] or 0
-        ctx['afp_por_pagar'] = rems_pendientes['afp'] or 0
-        ctx['salud_por_pagar'] = rems_pendientes['salud'] or 0
+        # Saldos del resumen rápido desde las cuentas configuradas
+        config_contable = ConfiguracionContable.get()
+        ctx['total_cxc_pendiente'] = self._saldo_config(config_contable, 'cuenta_cxc')
+        ctx['total_cxp_pendiente'] = self._saldo_config(config_contable, 'cuenta_cxp')
+        ctx['sueldos_por_pagar'] = self._saldo_config(config_contable, 'cuenta_sueldos_por_pagar')
+        ctx['afp_por_pagar'] = self._saldo_config(config_contable, 'cuenta_afp_por_pagar')
+        ctx['salud_por_pagar'] = self._saldo_config(config_contable, 'cuenta_salud_por_pagar')
         ctx['previred_por_pagar'] = ctx['afp_por_pagar'] + ctx['salud_por_pagar']
+        ctx['impuestos_sii_por_pagar'] = self._saldo_config(
+            config_contable,
+            'cuenta_impuestos_sii',
+            'cuenta_retenciones_honorarios',
+        )
 
         # Proyectos activos
         ctx['proyectos_activos'] = Proyecto.objects.filter(
             estado='en_ejecucion'
         ).count()
-
-        # F29 pendientes
-        ctx['f29_pendientes'] = FormularioF29.objects.filter(
-            estado='pendiente'
-        ).order_by('-periodo_anio', '-periodo_mes')[:3]
 
         # Datos para gráfico de los últimos 6 meses
         meses_labels = []

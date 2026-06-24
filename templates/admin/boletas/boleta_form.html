@@ -1,0 +1,142 @@
+{% extends 'base_admin.html' %}
+{% load custom_tags %}
+
+{% block title %}{% if form.instance.pk %}Editar{% else %}Nueva{% endif %} Boleta de Honorarios{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/css/tom-select.bootstrap5.min.css" rel="stylesheet"/>
+<link href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css" rel="stylesheet"/>
+{% endblock %}
+
+{% block breadcrumb %}
+  <li class="breadcrumb-item"><a href="{% url 'boletas:boleta_list' %}">Boletas de Honorarios</a></li>
+  <li class="breadcrumb-item active">{% if form.instance.pk %}Editar{% else %}Nueva{% endif %}</li>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h4 class="page-title">{% if form.instance.pk %}Editar Boleta {{ form.instance.numero }}{% else %}Nueva Boleta de Honorarios{% endif %}</h4>
+  <a href="{% url 'boletas:boleta_list' %}" class="btn btn-outline-secondary rounded-pill px-4">
+    <i class="bi bi-arrow-left me-1"></i>Volver
+  </a>
+</div>
+
+<div class="row justify-content-center">
+  <div class="col-lg-10">
+    <div class="card-sta p-4">
+      <form method="post" novalidate autocomplete="off">
+        {% csrf_token %}
+        <div class="row g-3">
+          <div class="col-sm-3">
+            <label class="form-label fw-600">N° Boleta <span class="text-danger">*</span></label>
+            {{ form.numero }}
+            {% if form.numero.errors %}<div class="invalid-feedback d-block">{{ form.numero.errors.0 }}</div>{% endif %}
+          </div>
+          <div class="col-sm-3">
+            <label class="form-label fw-600">Fecha Emisión <span class="text-danger">*</span></label>
+            {{ form.fecha_emision }}
+          </div>
+          <div class="col-sm-3">
+            <label class="form-label fw-600">Vencimiento</label>
+            {{ form.fecha_vencimiento }}
+          </div>
+          <div class="col-sm-3">
+            <label class="form-label fw-600">Estado</label>
+            {{ form.estado }}
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label fw-600">Prestador <span class="text-danger">*</span></label>
+            {{ form.prestador }}
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label fw-600">Proyecto</label>
+            {{ form.proyecto }}
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label fw-600">Cuenta de gasto</label>
+            {{ form.cuenta_contable }}
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label fw-600">Centro de Costo</label>
+            {{ form.centro_costo }}
+          </div>
+          <div class="col-12">
+            <label class="form-label fw-600">Descripción <span class="text-danger">*</span></label>
+            {{ form.descripcion }}
+          </div>
+          <div class="col-sm-4">
+            <label class="form-label fw-600">Monto Bruto <span class="text-danger">*</span></label>
+            <div class="input-group"><span class="input-group-text">$</span>{{ form.bruto }}</div>
+          </div>
+          <div class="col-sm-4">
+            <label class="form-label fw-600">Tasa Retención</label>
+            {{ form.tasa_retencion }}
+            <div class="form-text">2026: 0,1525 equivale a 15,25%.</div>
+          </div>
+          <div class="col-sm-4">
+            <div class="border rounded bg-light p-2 h-100">
+              <div class="text-muted small">Líquido estimado</div>
+              <div class="fw-700 text-sta" id="display-liquido">$ 0</div>
+              <div class="text-muted small">Retención: <span id="display-retencion">$ 0</span></div>
+            </div>
+          </div>
+          <div class="col-12">
+            <label class="form-label fw-600">Observaciones</label>
+            {{ form.observaciones }}
+          </div>
+          <div class="col-12 pt-2 border-top">
+            <button type="submit" class="btn btn-sta px-5 rounded-pill"><i class="bi bi-save me-1"></i>Guardar boleta</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/js/tom-select.complete.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/l10n/es.js"></script>
+<script>
+const fmt = v => {
+  const n = parseFloat(v);
+  return isNaN(n) ? '$ 0' : '$ ' + n.toLocaleString('es-CL', {maximumFractionDigits:0});
+};
+function syncHonorarios() {
+  const bruto = parseFloat(document.getElementById('id_bruto')?.value || '0') || 0;
+  const tasa = parseFloat(document.getElementById('id_tasa_retencion')?.value || '0') || 0;
+  const ret = bruto * tasa;
+  document.getElementById('display-retencion').textContent = fmt(ret);
+  document.getElementById('display-liquido').textContent = fmt(bruto - ret);
+}
+document.addEventListener('DOMContentLoaded', () => {
+  const fpOpts = {
+    locale: 'es',
+    dateFormat: 'Y-m-d',
+    altInput: true,
+    altFormat: 'd/m/Y',
+    allowInput: true,
+  };
+  flatpickr('#id_fecha_emision', fpOpts);
+  flatpickr('#id_fecha_vencimiento', fpOpts);
+
+  const initTomSelect = (selector, placeholder) => {
+    const el = document.querySelector(selector);
+    if (!el) return;
+    new TomSelect(el, {
+      allowEmptyOption: true,
+      placeholder,
+      sortField: { field: 'text', direction: 'asc' },
+    });
+  };
+  initTomSelect('#id_prestador', 'Buscar prestador…');
+  initTomSelect('#id_proyecto', 'Buscar proyecto…');
+  initTomSelect('#id_cuenta_contable', 'Buscar cuenta contable…');
+  initTomSelect('#id_centro_costo', 'Buscar centro de costo…');
+
+  ['id_bruto', 'id_tasa_retencion'].forEach(id => document.getElementById(id)?.addEventListener('input', syncHonorarios));
+  syncHonorarios();
+});
+</script>
+{% endblock %}

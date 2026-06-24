@@ -89,6 +89,21 @@
         <i class="bi bi-receipt"></i> Tributario
       </a>
 
+      <a class="nav-link nav-group-toggle d-flex align-items-center {% if request.resolver_match.namespace != 'boletas' %}collapsed{% endif %}"
+         data-bs-toggle="collapse" href="#nav-boletas" role="button"
+         aria-expanded="{% if request.resolver_match.namespace == 'boletas' %}true{% else %}false{% endif %}">
+        <i class="bi bi-receipt-cutoff me-2"></i><span>Honorarios</span>
+        <i class="bi bi-chevron-down nav-chevron ms-auto"></i>
+      </a>
+      <div class="collapse {% if request.resolver_match.namespace == 'boletas' %}show{% endif %}" id="nav-boletas">
+        <a href="{% url 'boletas:boleta_list' %}" class="nav-link ps-4 {% if request.resolver_match.url_name == 'boleta_list' or request.resolver_match.url_name == 'boleta_detail' %}active{% endif %}" style="font-size:.82rem;">
+          <i class="bi bi-file-earmark-text"></i> Boletas
+        </a>
+        <a href="{% url 'boletas:prestador_list' %}" class="nav-link ps-4 {% if 'prestador' in request.resolver_match.url_name %}active{% endif %}" style="font-size:.82rem;">
+          <i class="bi bi-person-lines-fill"></i> Prestadores
+        </a>
+      </div>
+
       <div class="nav-section-title">Comercial</div>
 
       <!-- Clientes -->

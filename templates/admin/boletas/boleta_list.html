@@ -1,0 +1,81 @@
+{% extends 'base_admin.html' %}
+{% load custom_tags %}
+
+{% block title %}Boletas de Honorarios{% endblock %}
+
+{% block breadcrumb %}
+  <li class="breadcrumb-item active">Boletas de Honorarios</li>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h4 class="page-title">Boletas de Honorarios</h4>
+    <p class="page-subtitle mb-0">Pendiente líquido: <span class="fw-700 text-danger">{{ total_pendiente|moneda_chilena }}</span></p>
+  </div>
+  <div class="d-flex gap-2">
+    <a href="{% url 'boletas:prestador_list' %}" class="btn btn-outline-secondary rounded-pill px-4">
+      <i class="bi bi-people me-1"></i>Prestadores
+    </a>
+    <a href="{% url 'boletas:boleta_create' %}" class="btn btn-sta rounded-pill px-4">
+      <i class="bi bi-plus-circle me-1"></i>Nueva boleta
+    </a>
+  </div>
+</div>
+
+<div class="card-sta p-3 mb-4">
+  <form method="get" class="row g-2 align-items-end">
+    <div class="col-sm-4">
+      <input type="text" name="q" class="form-control form-control-sm" placeholder="Buscar N° boleta, prestador o RUT..." value="{{ request.GET.q }}">
+    </div>
+    <div class="col-sm-3">
+      <select name="estado" class="form-select form-select-sm">
+        <option value="">Todos los estados</option>
+        <option value="pendiente" {% if request.GET.estado == "pendiente" %}selected{% endif %}>Pendiente</option>
+        <option value="pagada" {% if request.GET.estado == "pagada" %}selected{% endif %}>Pagada</option>
+        <option value="anulada" {% if request.GET.estado == "anulada" %}selected{% endif %}>Anulada</option>
+      </select>
+    </div>
+    <div class="col-auto">
+      <button type="submit" class="btn btn-sta btn-sm rounded-pill px-3"><i class="bi bi-search"></i></button>
+      <a href="{% url 'boletas:boleta_list' %}" class="btn btn-outline-secondary btn-sm rounded-pill px-3 ms-1"><i class="bi bi-x"></i></a>
+    </div>
+  </form>
+</div>
+
+<div class="card-sta p-0">
+  <div class="table-responsive">
+    <table class="table table-sta mb-0">
+      <thead>
+        <tr>
+          <th>Índice</th><th>N° Boleta</th><th>Fecha</th><th>Prestador</th>
+          <th class="text-end">Bruto</th><th class="text-end">Retención</th><th class="text-end">Líquido</th>
+          <th class="text-center">Estado</th><th class="text-center">Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for b in boletas %}
+        <tr>
+          <td class="fw-700 font-monospace">{{ b.indice_honorarios }}</td>
+          <td class="fw-700 font-monospace">{{ b.numero }}</td>
+          <td>{{ b.fecha_emision }}</td>
+          <td>{{ b.prestador.nombre|truncatechars:30 }}</td>
+          <td class="text-end small">{{ b.bruto|moneda_chilena }}</td>
+          <td class="text-end small text-warning">{{ b.retencion|moneda_chilena }}</td>
+          <td class="text-end fw-700">{{ b.liquido|moneda_chilena }}</td>
+          <td class="text-center"><span class="badge-{{ b.estado }}">{{ b.get_estado_display }}</span></td>
+          <td class="text-center">
+            <div class="btn-group btn-group-sm">
+              <a href="{% url 'boletas:boleta_detail' b.pk %}" class="btn btn-outline-secondary btn-sm" title="Ver"><i class="bi bi-eye"></i></a>
+              <a href="{% url 'boletas:boleta_update' b.pk %}" class="btn btn-outline-secondary btn-sm" title="Editar"><i class="bi bi-pencil"></i></a>
+            </div>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="9" class="text-center text-muted py-4">No hay boletas registradas.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

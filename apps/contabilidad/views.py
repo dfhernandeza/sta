@@ -115,6 +115,7 @@ class ConfiguracionContableView(ContabilidadMixin, View):
                     'cuenta_sueldos_por_pagar',
                     'cuenta_anticipos_trabajadores', 'cuenta_anticipos_proveedores',
                     'cuenta_patrimonio_apertura',
+                    'cuenta_honorarios_default', 'cuenta_retenciones_honorarios',
                 ]
             # Editamos el init para limitar las opciones de cuentas a solo aquellas que son de nivel 4 y si son de gastos o ingresos según corresponda
             def __init__(self, *args, **kwargs):
@@ -135,6 +136,8 @@ class ConfiguracionContableView(ContabilidadMixin, View):
                 self.fields['cuenta_anticipos_trabajadores'].queryset = cuentas.filter(tipo='activo')
                 self.fields['cuenta_anticipos_proveedores'].queryset = cuentas.filter(tipo='activo')
                 self.fields['cuenta_patrimonio_apertura'].queryset = cuentas.filter(tipo='patrimonio')
+                self.fields['cuenta_honorarios_default'].queryset = cuentas.filter(tipo__in=['gasto', 'costo'])
+                self.fields['cuenta_retenciones_honorarios'].queryset = cuentas.filter(tipo='pasivo')
 
         return ConfigForm
 

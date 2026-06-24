@@ -198,7 +198,8 @@ class RemuneracionCreateView(RrhhMixin, CreateView):
     template_name = 'admin/rrhh/remuneracion_form.html'
     fields = ['trabajador', 'periodo_mes', 'periodo_anio', 'sueldo_base', 'horas_extra',
               'bono', 'sueldo_bruto', 'descuento_afp', 'descuento_salud',
-              'otros_descuentos', 'anticipo_descontado', 'liquido_pagar', 'estado', 'fecha_pago']
+              'impuesto_unico', 'otros_descuentos', 'anticipo_descontado',
+              'liquido_pagar', 'estado', 'fecha_pago']
     success_url = reverse_lazy('rrhh:remuneracion_list')
 
     def get_initial(self):
@@ -225,13 +226,15 @@ class RemuneracionCreateView(RrhhMixin, CreateView):
                     tasa_afp = AFP_TASAS.get(t.afp, Decimal('0.1144'))
                     afp = round(bruto * tasa_afp)
                     salud = round(bruto * TASA_SALUD_DEFAULT)
-                liquido = bruto - afp - salud - anticipo
+                impuesto = Decimal('0')
+                liquido = bruto - afp - salud - impuesto - anticipo
                 initial.update({
                     'trabajador': t.pk,
                     'sueldo_base': t.sueldo_base,
                     'sueldo_bruto': bruto,
                     'descuento_afp': afp,
                     'descuento_salud': salud,
+                    'impuesto_unico': impuesto,
                     'anticipo_descontado': anticipo,
                     'liquido_pagar': max(liquido, Decimal('0')),
                 })
@@ -291,6 +294,7 @@ class RemuneracionDatosAPI(RrhhMixin, View):
             'tasa_salud': float(TASA_SALUD_DEFAULT),
             'descuento_afp': float(afp),
             'descuento_salud': float(salud),
+            'impuesto_unico': 0,
             'anticipo_pendiente': float(anticipo_pendiente),
             'exento_previsional': t.exento_previsional,
         })
@@ -301,7 +305,8 @@ class RemuneracionUpdateView(RrhhMixin, UpdateView):
     template_name = 'admin/rrhh/remuneracion_form.html'
     fields = ['trabajador', 'periodo_mes', 'periodo_anio', 'sueldo_base', 'horas_extra',
               'bono', 'sueldo_bruto', 'descuento_afp', 'descuento_salud',
-              'otros_descuentos', 'anticipo_descontado', 'liquido_pagar', 'estado', 'fecha_pago']
+              'impuesto_unico', 'otros_descuentos', 'anticipo_descontado',
+              'liquido_pagar', 'estado', 'fecha_pago']
 
     def dispatch(self, request, *args, **kwargs):
         rem = self.get_object()

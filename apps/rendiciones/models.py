@@ -1,4 +1,6 @@
 from django.db import models
+from django.db.models import Max
+from django.utils import timezone
 from apps.core.models import TimeStampedModel
 from apps.contabilidad.models import PlanCuentas, CentroCosto
 
@@ -23,6 +25,18 @@ class RendicionGastos(TimeStampedModel):
     fecha = models.DateField(verbose_name='Fecha de Rendición')
     motivo_del_gasto = models.CharField(max_length=300, verbose_name='Motivo del gasto')
     estado = models.CharField(max_length=15, choices=ESTADO_CHOICES, default='borrador', verbose_name='Estado')
+    correlativo_rendicion = models.PositiveIntegerField(
+        null=True, blank=True, editable=False,
+        verbose_name='Correlativo Rendición'
+    )
+    periodo_rendicion_mes = models.PositiveSmallIntegerField(
+        null=True, blank=True, editable=False,
+        verbose_name='Mes Rendición'
+    )
+    periodo_rendicion_anio = models.PositiveSmallIntegerField(
+        null=True, blank=True, editable=False,
+        verbose_name='Año Rendición'
+    )
 
     class Meta:
         verbose_name = 'Rendición de Gastos'
@@ -30,9 +44,43 @@ class RendicionGastos(TimeStampedModel):
         ordering = ['-id']
         # Keep the existing DB table name to avoid data migration
         db_table = 'proveedores_rendiciongastos'
+        constraints = [
+            models.UniqueConstraint(
+                fields=[
+                    'periodo_rendicion_anio',
+                    'periodo_rendicion_mes',
+                    'correlativo_rendicion',
+                ],
+                name='uniq_rendicion_correlativo_mes',
+            ),
+        ]
 
     def __str__(self):
         return f'Rendición de {self.trabajador.nombre_completo} - {self.fecha}'
+
+    @property
+    def indice_rendicion(self):
+        if not self.correlativo_rendicion or not self.periodo_rendicion_mes:
+            return '—'
+        return f'{self.correlativo_rendicion}/{self.periodo_rendicion_mes}'
+
+    def _asignar_correlativo_rendicion(self):
+        if self.correlativo_rendicion:
+            return
+
+        fecha_ingreso = timezone.localdate()
+        self.periodo_rendicion_mes = fecha_ingreso.month
+        self.periodo_rendicion_anio = fecha_ingreso.year
+
+        ultimo = RendicionGastos.objects.filter(
+            periodo_rendicion_anio=self.periodo_rendicion_anio,
+            periodo_rendicion_mes=self.periodo_rendicion_mes,
+        ).aggregate(maximo=Max('correlativo_rendicion'))['maximo'] or 0
+        self.correlativo_rendicion = ultimo + 1
+
+    def save(self, *args, **kwargs):
+        self._asignar_correlativo_rendicion()
+        super().save(*args, **kwargs)
 
 
 class DetalleRendicion(models.Model):
