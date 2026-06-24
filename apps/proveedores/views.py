@@ -380,7 +380,7 @@ class FacturaRecibidaCreateView(ProveedoresMixin, CreateView):
             if fname in form.fields:
                 form.fields[fname].widget = DateInput(attrs={'class': 'form-control'}, format='%Y-%m-%d')
         if 'origen' in form.fields:
-            form.fields['origen'].widget = Select(attrs={'class': 'form-select'})
+            form.fields['origen'].widget.attrs.update({'class': 'form-select'})
         for fname in ['neto', 'exento', 'iva', 'total']:
             if fname in form.fields:
                 form.fields[fname].required = False
@@ -454,7 +454,7 @@ class FacturaRecibidaUpdateView(ProveedoresMixin, UpdateView):
             if fname in form.fields:
                 form.fields[fname].widget = DateInput(attrs={'class': 'form-control'}, format='%Y-%m-%d')
         if 'origen' in form.fields:
-            form.fields['origen'].widget = Select(attrs={'class': 'form-select'})
+            form.fields['origen'].widget.attrs.update({'class': 'form-select'})
         for fname in ['neto', 'exento', 'iva', 'total']:
             if fname in form.fields:
                 form.fields[fname].required = False
