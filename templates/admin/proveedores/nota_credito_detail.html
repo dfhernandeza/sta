@@ -5,7 +5,7 @@
 
 {% block breadcrumb %}
   <li class="breadcrumb-item"><a href="{% url 'proveedores:proveedor_list' %}">Proveedores</a></li>
-  <li class="breadcrumb-item"><a href="{% url 'proveedores:factura_list' %}">Facturas Recibidas</a></li>
+  <li class="breadcrumb-item"><a href="{% url 'proveedores:nota_credito_list' %}">Notas de Crédito</a></li>
   <li class="breadcrumb-item"><a href="{% url 'proveedores:factura_detail' nota_credito.factura.pk %}">Factura {{ nota_credito.factura.numero }}</a></li>
   <li class="breadcrumb-item active">NC {{ nota_credito.numero }}</li>
 {% endblock %}

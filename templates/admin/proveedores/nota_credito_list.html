@@ -1,0 +1,99 @@
+{% extends 'base_admin.html' %}
+{% load custom_tags %}
+
+{% block title %}Notas de Crédito Recibidas{% endblock %}
+
+{% block breadcrumb %}
+  <li class="breadcrumb-item"><a href="{% url 'proveedores:proveedor_list' %}">Proveedores</a></li>
+  <li class="breadcrumb-item active">Notas de Crédito Recibidas</li>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h4 class="page-title">Notas de Crédito Recibidas</h4>
+    <p class="page-subtitle mb-0">Total listado:
+      <span class="fw-700 text-sta">{{ total_notas_credito|moneda_chilena }}</span>
+    </p>
+  </div>
+</div>
+
+<div class="card-sta p-3 mb-4">
+  <form method="get" class="row g-2 align-items-end">
+    <div class="col-sm-5">
+      <input type="text" name="q" class="form-control form-control-sm" placeholder="Buscar N° nota, factura, proveedor o RUT…" value="{{ request.GET.q }}">
+    </div>
+    <div class="col-sm-3">
+      <select name="estado" class="form-select form-select-sm">
+        <option value="">Todos los estados</option>
+        {% for value, label in estados %}
+          <option value="{{ value }}" {% if request.GET.estado == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-auto">
+      <button type="submit" class="btn btn-sta btn-sm rounded-pill px-3"><i class="bi bi-search"></i></button>
+      <a href="{% url 'proveedores:nota_credito_list' %}" class="btn btn-outline-secondary btn-sm rounded-pill px-3 ms-1"><i class="bi bi-x"></i></a>
+    </div>
+  </form>
+</div>
+
+<div class="card-sta p-0">
+  <div class="table-responsive">
+    <table class="table table-sta mb-0">
+      <thead>
+        <tr>
+          <th>N° Nota</th>
+          <th>Factura</th>
+          <th>Fecha Emisión</th>
+          <th>Proveedor</th>
+          <th class="text-end">Neto</th>
+          <th class="text-end">IVA</th>
+          <th class="text-end">Total</th>
+          <th class="text-center">Estado</th>
+          <th class="text-center">Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for nc in notas_credito %}
+        <tr>
+          <td class="fw-700 font-monospace">{{ nc.numero }}</td>
+          <td class="font-monospace">
+            <a href="{% url 'proveedores:factura_detail' nc.factura.pk %}" class="text-sta text-decoration-none">
+              {{ nc.factura.numero }}
+            </a>
+          </td>
+          <td>{{ nc.fecha_emision }}</td>
+          <td>{{ nc.proveedor.razon_social|truncatechars:30 }}</td>
+          <td class="text-end small">{{ nc.neto|moneda_chilena }}</td>
+          <td class="text-end small">{{ nc.iva|moneda_chilena }}</td>
+          <td class="text-end fw-700">{{ nc.total|moneda_chilena }}</td>
+          <td class="text-center"><span class="badge-{{ nc.estado }}">{{ nc.get_estado_display }}</span></td>
+          <td class="text-center">
+            <div class="btn-group btn-group-sm">
+              <a href="{% url 'proveedores:nota_credito_detail' nc.pk %}" class="btn btn-outline-secondary btn-sm" title="Ver">
+                <i class="bi bi-eye"></i>
+              </a>
+              <a href="{% url 'proveedores:factura_detail' nc.factura.pk %}" class="btn btn-outline-secondary btn-sm" title="Ver factura">
+                <i class="bi bi-file-earmark-text"></i>
+              </a>
+            </div>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="9" class="text-center text-muted py-4">No hay notas de crédito recibidas.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if is_paginated %}
+  <div class="d-flex justify-content-center py-3">
+    <nav><ul class="pagination pagination-sm mb-0">
+      {% if page_obj.has_previous %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">‹</a></li>{% endif %}
+      <li class="page-item disabled"><span class="page-link">{{ page_obj.number }}/{{ page_obj.paginator.num_pages }}</span></li>
+      {% if page_obj.has_next %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">›</a></li>{% endif %}
+    </ul></nav>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

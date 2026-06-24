@@ -16,6 +16,7 @@ urlpatterns = [
     path('facturas/<int:pk>/editar/', views.FacturaRecibidaUpdateView.as_view(), name='factura_update'),
     path('facturas/<int:pk>/eliminar/', views.FacturaRecibidaDeleteView.as_view(), name='factura_delete'),
     path('facturas/<int:pk>/notas-credito/crear/', views.NotaCreditoRecibidaCreateView.as_view(), name='nota_credito_create'),
+    path('notas-credito/', views.NotaCreditoRecibidaListView.as_view(), name='nota_credito_list'),
     path('notas-credito/<int:pk>/', views.NotaCreditoRecibidaDetailView.as_view(), name='nota_credito_detail'),
     # CxP
     path('cxp/', views.CuentaPorPagarListView.as_view(), name='cxp_list'),

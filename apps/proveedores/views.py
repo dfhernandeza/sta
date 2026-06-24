@@ -648,6 +648,38 @@ class NotaCreditoRecibidaDetailView(ProveedoresMixin, DetailView):
     context_object_name = 'nota_credito'
 
 
+class NotaCreditoRecibidaListView(ProveedoresMixin, ListView):
+    model = NotaCreditoRecibida
+    template_name = 'admin/proveedores/nota_credito_list.html'
+    context_object_name = 'notas_credito'
+    paginate_by = 25
+
+    def get_queryset(self):
+        from django.db.models import Q
+
+        qs = NotaCreditoRecibida.objects.select_related('factura', 'proveedor').order_by('-fecha_emision', '-id')
+        q = self.request.GET.get('q')
+        estado = self.request.GET.get('estado')
+
+        if q:
+            qs = qs.filter(
+                Q(numero__icontains=q) |
+                Q(factura__numero__icontains=q) |
+                Q(proveedor__razon_social__icontains=q) |
+                Q(proveedor__rut__icontains=q)
+            )
+        if estado:
+            qs = qs.filter(estado=estado)
+        return qs
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx['titulo'] = 'Notas de Crédito Recibidas'
+        ctx['total_notas_credito'] = self.get_queryset().aggregate(total=Sum('total'))['total'] or 0
+        ctx['estados'] = NotaCreditoRecibida.ESTADO_CHOICES
+        return ctx
+
+
 class FacturaRecibidaDeleteView(ProveedoresMixin, DeleteView):
     model = FacturaRecibida
     template_name = 'admin/confirm_delete.html'
