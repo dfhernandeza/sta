@@ -24,6 +24,50 @@
 </div>
 
 <div class="card-sta p-3 mb-4">
+  <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+    <div>
+      <h6 class="fw-700 text-sta mb-0">
+        <i class="bi bi-file-earmark-spreadsheet me-1"></i>Nómina BCI pagos masivos
+      </h6>
+      <div class="small text-muted">Genera una copia de la planilla BCI con CxP pendientes y remuneraciones aprobadas.</div>
+    </div>
+  </div>
+  <form method="get" action="{% url 'proveedores:cxp_nomina_bci' %}" class="row g-2 align-items-end">
+    <div class="col-lg-4 col-md-6">
+      <label class="form-label fw-600 small">Cuenta de cargo</label>
+      <select name="cuenta_cargo" class="form-select form-select-sm" required>
+        <option value="">— Seleccione cuenta —</option>
+        {% for cuenta in cuentas_bancarias %}
+          <option value="{{ cuenta.pk }}">{{ cuenta.banco.nombre }} - {{ cuenta.numero }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-lg-5 col-md-6">
+      <label class="form-label fw-600 small d-block">Tipos de pago</label>
+      <div class="d-flex flex-wrap gap-3 small">
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" name="proveedores" value="1" id="nomina-proveedores" checked>
+          <label class="form-check-label" for="nomina-proveedores">PRV Proveedores</label>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" name="otros" value="1" id="nomina-otros" checked>
+          <label class="form-check-label" for="nomina-otros">OTR Reembolsos/Otros</label>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" name="remuneraciones" value="1" id="nomina-remuneraciones">
+          <label class="form-check-label" for="nomina-remuneraciones">REM Remuneraciones</label>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-3 col-md-12">
+      <button type="submit" class="btn btn-outline-success btn-sm rounded-pill px-4">
+        <i class="bi bi-download me-1"></i>Descargar planilla BCI
+      </button>
+    </div>
+  </form>
+</div>
+
+<div class="card-sta p-3 mb-4">
   <form method="get" class="row g-2 align-items-end">
     <div class="col-sm-3">
       <select name="estado" class="form-select form-select-sm">

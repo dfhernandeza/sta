@@ -13,6 +13,16 @@
   <link rel="stylesheet" href="{% static 'css/main.css' %}">
   <link rel="stylesheet" href="{% static 'css/admin.css' %}">
   <style>
+    .admin-sidebar {
+      max-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .admin-sidebar .sidebar-nav {
+      min-height: 0;
+      scrollbar-width: thin;
+    }
     .nav-group-toggle { cursor: pointer; }
     .nav-group-toggle .nav-chevron { transition: transform .2s ease; flex-shrink: 0; }
     .nav-group-toggle.collapsed .nav-chevron { transform: rotate(-90deg); }
@@ -34,7 +44,7 @@
       <span>Muebles y<br>Terminaciones</span>
     </div>
 
-    <nav class="flex-grow-1 py-2 overflow-auto">
+    <nav class="sidebar-nav flex-grow-1 py-2 overflow-auto">
       <!-- Dashboard -->
       <a href="{% url 'dashboard:index' %}" class="nav-link {% if request.resolver_match.namespace == 'dashboard' %}active{% endif %}">
         <i class="bi bi-speedometer2"></i> Dashboard
@@ -260,6 +270,22 @@ setTimeout(() => {
     bsAlert.close();
   });
 }, 4500);
+
+document.querySelectorAll('.admin-sidebar .collapse').forEach(collapseEl => {
+  collapseEl.addEventListener('shown.bs.collapse', () => {
+    const nav = collapseEl.closest('.sidebar-nav');
+    if (!nav) return;
+
+    const navRect = nav.getBoundingClientRect();
+    const collapseRect = collapseEl.getBoundingClientRect();
+    if (collapseRect.bottom > navRect.bottom) {
+      nav.scrollBy({
+        top: collapseRect.bottom - navRect.bottom + 12,
+        behavior: 'smooth',
+      });
+    }
+  });
+});
 </script>
 {% block extra_js %}{% endblock %}
 </body>

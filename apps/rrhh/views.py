@@ -47,6 +47,20 @@ def _generar_periodos(n=15):
     return periods
 
 
+def _anticipo_disponible_para_liquidacion(trabajador, remuneracion=None):
+    anticipos_pagados = AnticipoLaboral.objects.filter(
+        trabajador=trabajador,
+        estado='descontado',
+    ).aggregate(s=Sum('monto'))['s'] or Decimal('0')
+
+    remuneraciones = Remuneracion.objects.filter(trabajador=trabajador)
+    if remuneracion and remuneracion.pk:
+        remuneraciones = remuneraciones.exclude(pk=remuneracion.pk)
+
+    ya_descontado = remuneraciones.aggregate(s=Sum('anticipo_descontado'))['s'] or Decimal('0')
+    return max(anticipos_pagados - ya_descontado, Decimal('0'))
+
+
 class CargoTrabajadorListView(RrhhMixin, ListView):
     model = CargoTrabajador
     template_name = 'admin/rrhh/cargo_list.html'
@@ -216,9 +230,7 @@ class RemuneracionCreateView(RrhhMixin, CreateView):
             try:
                 t = Trabajador.objects.get(pk=int(trabajador_pk))
                 bruto = t.sueldo_base
-                anticipo = AnticipoLaboral.objects.filter(
-                    trabajador=t, estado='descontado'
-                ).aggregate(s=Sum('monto'))['s'] or Decimal('0')
+                anticipo = _anticipo_disponible_para_liquidacion(t)
                 if t.exento_previsional:
                     afp = Decimal('0')
                     salud = Decimal('0')
@@ -279,9 +291,11 @@ class RemuneracionDatosAPI(RrhhMixin, View):
     """Retorna datos del trabajador en JSON para auto-rellenar el formulario de remuneración."""
     def get(self, request, pk):
         t = get_object_or_404(Trabajador, pk=pk)
-        anticipo_pendiente = AnticipoLaboral.objects.filter(
-            trabajador=t, estado='descontado'
-        ).aggregate(s=Sum('monto'))['s'] or Decimal('0')
+        remuneracion = None
+        remuneracion_id = request.GET.get('remuneracion')
+        if remuneracion_id:
+            remuneracion = Remuneracion.objects.filter(pk=remuneracion_id, trabajador=t).first()
+        anticipo_pendiente = _anticipo_disponible_para_liquidacion(t, remuneracion=remuneracion)
         tasa_afp = AFP_TASAS.get(t.afp, Decimal('0.1144'))
         bruto = t.sueldo_base
         afp = round(bruto * tasa_afp)

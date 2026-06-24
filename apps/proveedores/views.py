@@ -714,8 +714,211 @@ class CuentaPorPagarListView(ProveedoresMixin, ListView):
 
         total_pendiente = self.get_queryset().filter(estado='pendiente').aggregate(total=Sum('monto'))['total'] or 0
         ctx['total_pendiente'] = total_pendiente
+        from apps.tesoreria.models import CuentaBancaria
+        ctx['cuentas_bancarias'] = CuentaBancaria.objects.filter(activa=True).select_related('banco')
 
         return ctx
+
+
+class NominaBCIExportView(ProveedoresMixin, View):
+    template_path = 'xls/carga_masiva_nominas.xlsx'
+
+    def _split_rut(self, rut):
+        limpio = ''.join(ch for ch in (rut or '').upper() if ch.isalnum())
+        if len(limpio) < 2:
+            return '', ''
+        return limpio[:-1], limpio[-1]
+
+    def _clean_account(self, numero):
+        return ''.join(ch for ch in (numero or '') if ch.isalnum())
+
+    def _beneficiario_data(self, beneficiario, nombre_attr):
+        banco = getattr(beneficiario, 'banco', None)
+        rut, dv = self._split_rut(getattr(beneficiario, 'rut', ''))
+        return {
+            'cuenta_destino': self._clean_account(getattr(beneficiario, 'numero_cuenta', '')),
+            'banco_destino': getattr(banco, 'codigo', '') or getattr(banco, 'nombre', ''),
+            'rut': rut,
+            'dv': dv,
+            'nombre': getattr(beneficiario, nombre_attr, '')[:80],
+            'email': getattr(beneficiario, 'email', ''),
+        }
+
+    def _row(self, cuenta_cargo, beneficiario, nombre_attr, monto, tipo_pago, documento='', mensaje=''):
+        data = self._beneficiario_data(beneficiario, nombre_attr)
+        data.update({
+            'cuenta_cargo': self._clean_account(cuenta_cargo.numero),
+            'monto': int(round(monto or 0)),
+            'tipo_pago': tipo_pago,
+            'documento': documento or '',
+            'orden_compra': documento if tipo_pago == 'PRV' else '',
+            'mensaje': mensaje or '',
+            'alias': data['nombre'][:50],
+        })
+        return data
+
+    def _cxp_rows(self, cuenta_cargo, incluir_proveedores, incluir_otros):
+        rows = []
+        qs = (
+            CuentaPorPagar.objects
+            .filter(estado__in=['pendiente', 'vencida'])
+            .select_related(
+                'factura__proveedor',
+                'factura__pago_por_trabajador',
+                'rendicion__trabajador',
+                'boleta_honorarios__prestador',
+            )
+            .order_by('fecha_vencimiento', 'pk')
+        )
+        for cxp in qs:
+            monto = cxp.saldo_pendiente
+            if monto <= 0:
+                continue
+
+            if cxp.factura and cxp.factura.pago_por_trabajador and incluir_otros:
+                trabajador = cxp.factura.pago_por_trabajador
+                rows.append(self._row(
+                    cuenta_cargo, trabajador, 'nombre_completo', monto, 'OTR',
+                    documento=cxp.factura.numero,
+                    mensaje=f'Reembolso factura {cxp.factura.numero}',
+                ))
+            elif cxp.factura and incluir_proveedores:
+                rows.append(self._row(
+                    cuenta_cargo, cxp.factura.proveedor, 'razon_social', monto, 'PRV',
+                    documento=cxp.factura.numero,
+                    mensaje=f'Pago factura {cxp.factura.numero}',
+                ))
+            elif cxp.boleta_honorarios and incluir_proveedores:
+                boleta = cxp.boleta_honorarios
+                rows.append(self._row(
+                    cuenta_cargo, boleta.prestador, 'nombre', monto, 'PRV',
+                    documento=boleta.numero,
+                    mensaje=f'Pago boleta {boleta.numero}',
+                ))
+            elif cxp.rendicion and incluir_otros:
+                rendicion = cxp.rendicion
+                rows.append(self._row(
+                    cuenta_cargo, rendicion.trabajador, 'nombre_completo', monto, 'OTR',
+                    documento=str(rendicion.pk),
+                    mensaje=f'Reembolso rendicion {rendicion.pk}',
+                ))
+        return rows
+
+    def _remuneracion_rows(self, cuenta_cargo):
+        from apps.rrhh.models import Remuneracion
+
+        rows = []
+        qs = (
+            Remuneracion.objects
+            .filter(estado='aprobado')
+            .select_related('trabajador__banco')
+            .order_by('periodo_anio', 'periodo_mes', 'trabajador__apellidos', 'trabajador__nombres')
+        )
+        for rem in qs:
+            if rem.liquido_pagar <= 0:
+                continue
+            rows.append(self._row(
+                cuenta_cargo,
+                rem.trabajador,
+                'nombre_completo',
+                rem.liquido_pagar,
+                'REM',
+                mensaje=f'Remuneracion {rem.periodo_mes:02d}/{rem.periodo_anio}',
+            ))
+        return rows
+
+    def _validar_rows(self, rows):
+        errores = []
+        requeridos = [
+            ('cuenta_cargo', 'cuenta de cargo'),
+            ('cuenta_destino', 'cuenta destino'),
+            ('banco_destino', 'banco destino'),
+            ('rut', 'RUT'),
+            ('dv', 'DV'),
+            ('nombre', 'nombre'),
+            ('monto', 'monto'),
+            ('tipo_pago', 'tipo de pago'),
+        ]
+        for idx, row in enumerate(rows, start=1):
+            faltantes = [label for key, label in requeridos if not row.get(key)]
+            if row.get('tipo_pago') == 'PRV' and not row.get('documento'):
+                faltantes.append('Nro. Factura/Boleta')
+            if row.get('tipo_pago') == 'PRV' and not row.get('orden_compra'):
+                faltantes.append('Nro. Orden de Compra')
+            if faltantes:
+                errores.append(f"Fila {idx} ({row.get('nombre') or 'sin nombre'}): falta {', '.join(faltantes)}")
+        return errores
+
+    def get(self, request):
+        from pathlib import Path
+        from django.conf import settings
+        from django.contrib.staticfiles import finders
+        from django.http import HttpResponse
+        from openpyxl import load_workbook
+        from apps.tesoreria.models import CuentaBancaria
+
+        cuenta_id = request.GET.get('cuenta_cargo')
+        cuenta_cargo = CuentaBancaria.objects.filter(pk=cuenta_id, activa=True).select_related('banco').first()
+        if not cuenta_cargo:
+            messages.error(request, 'Seleccione una cuenta bancaria de cargo para generar la nómina BCI.')
+            return redirect('proveedores:cxp_list')
+
+        incluir_proveedores = request.GET.get('proveedores') == '1'
+        incluir_otros = request.GET.get('otros') == '1'
+        incluir_remuneraciones = request.GET.get('remuneraciones') == '1'
+        if not any([incluir_proveedores, incluir_otros, incluir_remuneraciones]):
+            messages.error(request, 'Seleccione al menos un tipo de pago para exportar.')
+            return redirect('proveedores:cxp_list')
+
+        rows = []
+        rows.extend(self._cxp_rows(cuenta_cargo, incluir_proveedores, incluir_otros))
+        if incluir_remuneraciones:
+            rows.extend(self._remuneracion_rows(cuenta_cargo))
+
+        if not rows:
+            messages.warning(request, 'No hay pagos pendientes para los tipos seleccionados.')
+            return redirect('proveedores:cxp_list')
+
+        errores = self._validar_rows(rows)
+        if errores:
+            for error in errores[:8]:
+                messages.error(request, error)
+            if len(errores) > 8:
+                messages.error(request, f'Hay {len(errores) - 8} errores adicionales. Complete los datos bancarios antes de exportar.')
+            return redirect('proveedores:cxp_list')
+
+        template_file = finders.find(self.template_path)
+        if not template_file:
+            template_file = Path(settings.BASE_DIR) / 'static' / 'xls' / 'carga_masiva_nominas.xlsx'
+
+        wb = load_workbook(template_file)
+        ws = wb.active
+
+        for row_idx in range(2, max(ws.max_row, len(rows) + 1) + 1):
+            for col_idx in range(1, 14):
+                ws.cell(row_idx, col_idx).value = None
+
+        for row_idx, row in enumerate(rows, start=2):
+            ws.cell(row_idx, 1).value = row['cuenta_cargo']
+            ws.cell(row_idx, 2).value = row['cuenta_destino']
+            ws.cell(row_idx, 3).value = row['banco_destino']
+            ws.cell(row_idx, 4).value = row['rut']
+            ws.cell(row_idx, 5).value = row['dv']
+            ws.cell(row_idx, 6).value = row['nombre']
+            ws.cell(row_idx, 7).value = row['monto']
+            ws.cell(row_idx, 8).value = row['documento']
+            ws.cell(row_idx, 9).value = row['orden_compra']
+            ws.cell(row_idx, 10).value = row['tipo_pago']
+            ws.cell(row_idx, 11).value = row['mensaje']
+            ws.cell(row_idx, 12).value = row['email']
+            ws.cell(row_idx, 13).value = row['alias']
+
+        response = HttpResponse(
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = 'attachment; filename="nomina_bci_pagos_masivos.xlsx"'
+        wb.save(response)
+        return response
 
 
 class CxPPagarView(ProveedoresMixin, View):
