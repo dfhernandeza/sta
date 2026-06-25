@@ -18,6 +18,7 @@ urlpatterns = [
     path('facturas/<int:pk>/notas-credito/crear/', views.NotaCreditoRecibidaCreateView.as_view(), name='nota_credito_create'),
     path('notas-credito/', views.NotaCreditoRecibidaListView.as_view(), name='nota_credito_list'),
     path('notas-credito/<int:pk>/', views.NotaCreditoRecibidaDetailView.as_view(), name='nota_credito_detail'),
+    path('notas-credito/<int:pk>/eliminar/', views.NotaCreditoRecibidaDeleteView.as_view(), name='nota_credito_delete'),
     # CxP
     path('cxp/', views.CuentaPorPagarListView.as_view(), name='cxp_list'),
     path('cxp/nomina-bci/', views.NominaBCIExportView.as_view(), name='cxp_nomina_bci'),

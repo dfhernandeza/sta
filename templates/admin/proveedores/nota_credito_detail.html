@@ -16,9 +16,23 @@
     <h4 class="page-title">Nota de Crédito N° <span class="font-monospace">{{ nota_credito.numero }}</span></h4>
     <p class="page-subtitle mb-0">{{ nota_credito.proveedor.razon_social }}</p>
   </div>
-  <a href="{% url 'proveedores:factura_detail' nota_credito.factura.pk %}" class="btn btn-outline-secondary rounded-pill px-4">
-    <i class="bi bi-arrow-left me-1"></i>Volver
-  </a>
+  <div class="d-flex gap-2">
+    {% if tiene_asiento_confirmado %}
+      <button type="button" class="btn btn-outline-danger rounded-pill px-4" disabled title="No se puede eliminar porque existe un asiento confirmado">
+        <i class="bi bi-trash me-1"></i>Eliminar
+      </button>
+    {% else %}
+      <form method="post" action="{% url 'proveedores:nota_credito_delete' nota_credito.pk %}" onsubmit="return confirm('¿Eliminar la nota de crédito {{ nota_credito.numero }}? Se recalculará el saldo pendiente de la factura asociada.');">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-outline-danger rounded-pill px-4">
+          <i class="bi bi-trash me-1"></i>Eliminar
+        </button>
+      </form>
+    {% endif %}
+    <a href="{% url 'proveedores:factura_detail' nota_credito.factura.pk %}" class="btn btn-outline-secondary rounded-pill px-4">
+      <i class="bi bi-arrow-left me-1"></i>Volver
+    </a>
+  </div>
 </div>
 
 <div class="row g-4">

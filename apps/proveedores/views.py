@@ -655,6 +655,54 @@ class NotaCreditoRecibidaDetailView(ProveedoresMixin, DetailView):
     template_name = 'admin/proveedores/nota_credito_detail.html'
     context_object_name = 'nota_credito'
 
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx['tiene_asiento_confirmado'] = self.object.asientos.filter(estado='confirmado').exists()
+        return ctx
+
+
+class NotaCreditoRecibidaDeleteView(ProveedoresMixin, View):
+    def get(self, request, *args, **kwargs):
+        nota_credito = get_object_or_404(NotaCreditoRecibida, pk=kwargs['pk'])
+        return redirect('proveedores:nota_credito_detail', pk=nota_credito.pk)
+
+    def post(self, request, *args, **kwargs):
+        nota_credito = get_object_or_404(
+            NotaCreditoRecibida.objects.select_related('factura', 'proveedor'),
+            pk=kwargs['pk']
+        )
+        factura = nota_credito.factura
+
+        if nota_credito.asientos.filter(estado='confirmado').exists():
+            messages.error(
+                request,
+                'No se puede eliminar la nota de crédito porque tiene un asiento contable confirmado. '
+                'Debe anular o reversar el asiento contable antes de eliminar el documento.'
+            )
+            return redirect('proveedores:nota_credito_detail', pk=nota_credito.pk)
+
+        numero = nota_credito.numero
+        proveedor = nota_credito.proveedor
+
+        with transaction.atomic():
+            RegistroCompra.objects.filter(nota_credito=nota_credito).delete()
+            nota_credito.asientos.filter(estado='borrador').delete()
+            nota_credito.delete()
+            _sincronizar_cxp_factura(factura)
+
+        logger.warning(
+            'Nota de crédito recibida eliminada: %s (factura: %s, proveedor: %s) por %s',
+            numero,
+            factura.numero,
+            proveedor,
+            request.user
+        )
+        messages.success(
+            request,
+            f'Nota de crédito {numero} eliminada. Se actualizó el saldo pendiente de la factura {factura.numero}.'
+        )
+        return redirect('proveedores:factura_detail', pk=factura.pk)
+
 
 class NotaCreditoRecibidaListView(ProveedoresMixin, ListView):
     model = NotaCreditoRecibida
