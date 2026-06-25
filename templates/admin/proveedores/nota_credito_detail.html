@@ -62,6 +62,13 @@
         <dd class="col-sm-7 fw-700 text-sta">{{ nota_credito.total|moneda_chilena }}</dd>
         <dt class="col-sm-5 text-muted small">Estado</dt>
         <dd class="col-sm-7"><span class="badge-{{ nota_credito.estado }}">{{ nota_credito.get_estado_display }}</span></dd>
+        {% if anticipo_generado %}
+        <dt class="col-sm-5 text-muted small">Crédito a favor</dt>
+        <dd class="col-sm-7">
+          <span class="fw-700 text-sta">{{ anticipo_generado.monto|moneda_chilena }}</span>
+          <span class="text-muted small d-block">Disponible en anticipos del proveedor</span>
+        </dd>
+        {% endif %}
       </dl>
     </div>
   </div>

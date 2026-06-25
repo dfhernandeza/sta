@@ -122,6 +122,56 @@ def _total_notas_credito_activas(factura):
     )['total'] or Decimal('0')
 
 
+def _saldo_factura_antes_de_nota_credito(factura, nota_credito):
+    total_otras_notas = factura.notas_credito.exclude(estado='anulada').exclude(
+        pk=nota_credito.pk
+    ).aggregate(total=Sum('total'))['total'] or Decimal('0')
+
+    monto_factura_antes_nota = max(factura.total - total_otras_notas, Decimal('0'))
+    try:
+        monto_pagado = factura.cuenta_pagar.monto_pagado or Decimal('0')
+    except CuentaPorPagar.DoesNotExist:
+        monto_pagado = Decimal('0')
+
+    return max(monto_factura_antes_nota - monto_pagado, Decimal('0'))
+
+
+def _credito_a_favor_por_nota_credito(nota_credito):
+    if nota_credito.estado == 'anulada':
+        return Decimal('0')
+
+    saldo_factura = _saldo_factura_antes_de_nota_credito(nota_credito.factura, nota_credito)
+    return max(nota_credito.total - saldo_factura, Decimal('0'))
+
+
+def _sincronizar_credito_proveedor_nota_credito(nota_credito):
+    anticipo_existente = getattr(nota_credito, 'anticipo_generado', None)
+    monto_credito = _credito_a_favor_por_nota_credito(nota_credito)
+
+    if monto_credito <= 0:
+        if anticipo_existente and anticipo_existente.estado == 'pendiente':
+            anticipo_existente.delete()
+        return None
+
+    defaults = {
+        'proveedor': nota_credito.proveedor,
+        'fecha': nota_credito.fecha_emision,
+        'monto': monto_credito,
+        'descripcion': (
+            f'Crédito a favor por nota de crédito {nota_credito.numero} '
+            f'aplicada a factura {nota_credito.factura.numero}'
+        ),
+        'origen': 'nota_credito',
+        'estado': 'pendiente',
+    }
+
+    anticipo, _ = Anticipo.objects.update_or_create(
+        nota_credito_origen=nota_credito,
+        defaults=defaults,
+    )
+    return anticipo
+
+
 def _calcular_totales_desde_formset(formset):
     neto = Decimal('0')
     exento = Decimal('0')
@@ -618,6 +668,7 @@ class NotaCreditoRecibidaCreateView(ProveedoresMixin, CreateView):
                         'total': -self.object.total,
                     }
                 )
+                _sincronizar_credito_proveedor_nota_credito(self.object)
                 _sincronizar_cxp_factura(self.factura)
                 _generar_asiento_automatico_nota_credito(
                     self.request,
@@ -658,6 +709,7 @@ class NotaCreditoRecibidaDetailView(ProveedoresMixin, DetailView):
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         ctx['tiene_asiento_confirmado'] = self.object.asientos.filter(estado='confirmado').exists()
+        ctx['anticipo_generado'] = getattr(self.object, 'anticipo_generado', None)
         return ctx
 
 
@@ -681,12 +733,23 @@ class NotaCreditoRecibidaDeleteView(ProveedoresMixin, View):
             )
             return redirect('proveedores:nota_credito_detail', pk=nota_credito.pk)
 
+        anticipo_generado = getattr(nota_credito, 'anticipo_generado', None)
+        if anticipo_generado and anticipo_generado.estado != 'pendiente':
+            messages.error(
+                request,
+                'No se puede eliminar la nota de crédito porque el crédito a favor del proveedor ya fue aplicado '
+                'o cerrado. Debe reversar esa aplicación antes de eliminar la nota.'
+            )
+            return redirect('proveedores:nota_credito_detail', pk=nota_credito.pk)
+
         numero = nota_credito.numero
         proveedor = nota_credito.proveedor
 
         with transaction.atomic():
             RegistroCompra.objects.filter(nota_credito=nota_credito).delete()
             nota_credito.asientos.filter(estado='borrador').delete()
+            if anticipo_generado:
+                anticipo_generado.delete()
             nota_credito.delete()
             _sincronizar_cxp_factura(factura)
 
@@ -1266,9 +1329,17 @@ class AnticipoCreateView(ProveedoresMixin, CreateView):
                 form.fields[fname].widget.attrs.update({'class': 'form-select'})
         if 'fecha' in form.fields:
             form.fields['fecha'].widget = DateInput(attrs={'class': 'form-control'}, format='%Y-%m-%d')
+        if 'origen' in form.fields:
+            form.fields['origen'].choices = [
+                ('operacional', 'Operacional'),
+                ('apertura', 'Saldo de apertura'),
+            ]
         return form
 
     def form_valid(self, form):
+        if form.instance.origen == 'nota_credito':
+            form.add_error('origen', 'El origen "Nota de crédito" se genera automáticamente desde una nota de crédito.')
+            return self.form_invalid(form)
         messages.success(self.request, 'Anticipo registrado.')
         return super().form_valid(form)
 
@@ -1309,10 +1380,10 @@ class AnticipoProveedorPagarView(ProveedoresMixin, View):
     def get(self, request, pk):
         from django.shortcuts import render
         anticipo = get_object_or_404(Anticipo, pk=pk)
-        if anticipo.origen == 'apertura':
+        if anticipo.origen != 'operacional':
             messages.info(
                 request,
-                'Este anticipo viene de saldo de apertura. No debe pagarse desde el sistema para evitar duplicar banco.'
+                'Este crédito no debe pagarse desde el sistema porque no corresponde a una salida bancaria.'
             )
             return redirect('proveedores:anticipo_list')
         if anticipo.estado != 'pendiente':
@@ -1327,10 +1398,10 @@ class AnticipoProveedorPagarView(ProveedoresMixin, View):
         from apps.contabilidad.utils import generar_asiento_pago_anticipo_proveedor
 
         anticipo = get_object_or_404(Anticipo, pk=pk)
-        if anticipo.origen == 'apertura':
+        if anticipo.origen != 'operacional':
             messages.error(
                 request,
-                'No se puede pagar un anticipo de saldo de apertura. Registre el saldo en Apertura Contable.'
+                'No se puede pagar este crédito desde banco. Debe aplicarse contra facturas futuras o reversarse desde su origen.'
             )
             return redirect('proveedores:anticipo_list')
         form = self._build_form(data=request.POST)

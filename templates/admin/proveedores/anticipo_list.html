@@ -50,6 +50,8 @@
           <td>
             {% if a.origen == 'apertura' %}
               <span class="badge bg-info-subtle text-info-emphasis">Saldo de apertura</span>
+            {% elif a.origen == 'nota_credito' %}
+              <span class="badge bg-warning-subtle text-warning-emphasis">Nota de crédito</span>
             {% else %}
               <span class="badge bg-primary-subtle text-primary-emphasis">Operacional</span>
             {% endif %}
@@ -57,12 +59,14 @@
           <td class="text-end fw-600">{{ a.monto|moneda_chilena }}</td>
           <td class="text-center"><span class="badge-{{ a.estado }}">{{ a.get_estado_display }}</span></td>
           <td class="text-end">
-            {% if a.estado == 'pendiente' and a.origen != 'apertura' %}
+            {% if a.estado == 'pendiente' and a.origen == 'operacional' %}
             <a href="{% url 'proveedores:anticipo_pagar' a.pk %}" class="btn btn-sm btn-success rounded-pill px-3">
               <i class="bi bi-cash-coin me-1"></i>Pagar
             </a>
             {% elif a.estado == 'pendiente' and a.origen == 'apertura' %}
             <span class="text-muted small">Disponible</span>
+            {% elif a.estado == 'pendiente' and a.origen == 'nota_credito' %}
+            <span class="text-muted small">Crédito disponible</span>
             {% endif %}
           </td>
         </tr>

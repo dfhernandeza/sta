@@ -5,6 +5,7 @@ o None si falta la configuración necesaria.
 """
 from decimal import Decimal
 from django.utils import timezone
+from django.db.models import Sum
 from .models import ConfiguracionContable, AsientoContable, LineaAsiento
 
 
@@ -157,7 +158,8 @@ def generar_asiento_factura_recibida(factura, usuario=None):
 def generar_asiento_nota_credito_recibida(nota_credito, usuario=None):
     """
     Genera el asiento de una nota de crédito de compra:
-        DEBE  : cuenta_cxp          = nota_credito.total
+        DEBE  : cuenta_cxp          = monto que rebaja deuda pendiente
+        DEBE  : anticipos proveedor = excedente si la factura ya estaba pagada
         HABER : cuenta por detalle  = monto (o cuenta_compras_default si no tiene)
         HABER : cuenta_iva_credito  = nota_credito.iva
     Retorna el AsientoContable creado (borrador) o None.
@@ -209,8 +211,31 @@ def generar_asiento_nota_credito_recibida(nota_credito, usuario=None):
     iva_calculado = (suma_afecto * Decimal('0.19')).quantize(Decimal('0.01'))
     total_calculado = suma_afecto + suma_exento + iva_calculado
 
-    _add_linea(asiento, config.cuenta_cxp, debe=total_calculado,
-               descripcion=f'Rebaja CxP por NC {nota_credito.numero}', orden=1)
+    total_otras_notas = factura.notas_credito.exclude(estado='anulada').exclude(
+        pk=nota_credito.pk
+    ).aggregate(total=Sum('total'))['total'] or Decimal('0')
+    monto_factura_antes_nota = max(factura.total - total_otras_notas, Decimal('0'))
+    try:
+        monto_pagado = factura.cuenta_pagar.monto_pagado or Decimal('0')
+    except Exception:
+        monto_pagado = Decimal('0')
+    saldo_cxp_antes_nota = max(monto_factura_antes_nota - monto_pagado, Decimal('0'))
+    monto_rebaja_cxp = min(total_calculado, saldo_cxp_antes_nota)
+    monto_credito_proveedor = total_calculado - monto_rebaja_cxp
+
+    if monto_credito_proveedor > 0 and not config.cuenta_anticipos_proveedores:
+        asiento.delete()
+        return None
+
+    orden_debe = 1
+    if monto_rebaja_cxp > 0:
+        _add_linea(asiento, config.cuenta_cxp, debe=monto_rebaja_cxp,
+                   descripcion=f'Rebaja CxP por NC {nota_credito.numero}', orden=orden_debe)
+        orden_debe += 1
+
+    if monto_credito_proveedor > 0:
+        _add_linea(asiento, config.cuenta_anticipos_proveedores, debe=monto_credito_proveedor,
+                   descripcion=f'Crédito a favor proveedor por NC {nota_credito.numero}', orden=orden_debe)
 
     if es_factura_apertura:
         _add_linea(asiento, config.cuenta_patrimonio_apertura, haber=(suma_afecto + suma_exento),

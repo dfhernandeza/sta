@@ -318,6 +318,7 @@ class Anticipo(TimeStampedModel):
     ORIGEN_CHOICES = [
         ('operacional', 'Operacional'),
         ('apertura', 'Saldo de apertura'),
+        ('nota_credito', 'Nota de crédito'),
     ]
 
     proveedor = models.ForeignKey(
@@ -336,6 +337,11 @@ class Anticipo(TimeStampedModel):
         'contabilidad.AsientoContable', null=True, blank=True,
         on_delete=models.SET_NULL, related_name='anticipos_proveedores_apertura',
         verbose_name='Asiento de apertura'
+    )
+    nota_credito_origen = models.OneToOneField(
+        NotaCreditoRecibida, null=True, blank=True,
+        on_delete=models.CASCADE, related_name='anticipo_generado',
+        verbose_name='Nota de crédito de origen'
     )
     proyecto = models.ForeignKey(
         'proyectos.Proyecto', null=True, blank=True,
