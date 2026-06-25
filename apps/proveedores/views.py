@@ -1345,8 +1345,14 @@ class AnularPagoCxPView(ProveedoresMixin, View):
         from django.db import transaction
         cxp = get_object_or_404(CuentaPorPagar, pk=pk)
 
-        if cxp.estado != 'pagada':
-            messages.error(request, 'Esta cuenta no está en estado pagada.')
+        tiene_pago_registrado = bool(
+            cxp.estado == 'pagada' or
+            cxp.movimiento_pago_id or
+            (cxp.monto_pagado or Decimal('0')) > 0 or
+            cxp.aplicaciones_anticipos.exists()
+        )
+        if not tiene_pago_registrado:
+            messages.error(request, 'Esta cuenta no tiene pagos o aplicaciones para anular.')
             return redirect('proveedores:cxp_list')
 
         movimiento = cxp.movimiento_pago

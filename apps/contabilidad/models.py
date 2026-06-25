@@ -187,6 +187,8 @@ class ConfiguracionContable(models.Model):
 # ---------------------------------------------------------------------------
 
 class AsientoContable(TimeStampedModel):
+    NUMERO_PREFIJO = 'AJ'
+
     TIPO_CHOICES = [
         ('apertura', 'Asiento de Apertura'),
         ('factura_venta', 'Factura de Venta'),
@@ -262,24 +264,29 @@ class AsientoContable(TimeStampedModel):
             self.numero = self._generar_numero()
         super().save(*args, **kwargs)
 
-    @staticmethod
-    def _generar_numero():
+    @classmethod
+    def _generar_numero(cls):
         from django.utils import timezone
         year = timezone.now().year
-        last = (
-            AsientoContable.objects
-            .filter(numero__startswith=f'AJ-{year}-')
-            .order_by('-numero')
-            .first()
+        prefix = f'{cls.NUMERO_PREFIJO}-{year}-'
+        numeros = (
+            cls.objects
+            .filter(numero__startswith=prefix)
+            .values_list('numero', flat=True)
         )
-        if last:
+
+        usados = set()
+        for numero in numeros:
             try:
-                seq = int(last.numero.split('-')[-1]) + 1
+                usados.add(int(numero.rsplit('-', 1)[-1]))
             except (ValueError, IndexError):
-                seq = 1
-        else:
-            seq = 1
-        return f'AJ-{year}-{seq:04d}'
+                continue
+
+        seq = 1
+        while seq in usados:
+            seq += 1
+
+        return f'{prefix}{seq:04d}'
 
     @property
     def total_debe(self):

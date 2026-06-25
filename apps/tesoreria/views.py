@@ -173,6 +173,13 @@ class MovimientoUpdateView(TesoreriaMixin, UpdateView):
 
     def dispatch(self, request, *args, **kwargs):
         movimiento = self.get_object()
+        if movimiento.cuentas_pagar.exists():
+            messages.error(
+                request,
+                'No se puede eliminar este movimiento directamente porque está vinculado a una Cuenta por Pagar. '
+                'Use la acción "Anular" desde Cuentas por Pagar para revertir el pago y limpiar el saldo.'
+            )
+            return redirect('tesoreria:movimiento_list')
         asientos_confirmados = movimiento.asientos.filter(estado='confirmado')
         if asientos_confirmados.exists():
             numeros = ', '.join(a.numero for a in asientos_confirmados)
