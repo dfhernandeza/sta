@@ -1,5 +1,5 @@
 from decimal import Decimal
-from django.db import models
+from django.db import models, transaction
 from django.core.exceptions import ValidationError
 from apps.core.models import TimeStampedModel
 
@@ -186,8 +186,23 @@ class ConfiguracionContable(models.Model):
 # Asiento Contable
 # ---------------------------------------------------------------------------
 
+class AsientoContableQuerySet(models.QuerySet):
+    def delete(self):
+        anios = {
+            self.model._extraer_anio_numero(numero)
+            for numero in self.values_list('numero', flat=True)
+        }
+        anios.discard(None)
+        resultado = super().delete()
+        for anio in anios:
+            self.model.resetear_correlativo(anio=anio)
+        return resultado
+
+
 class AsientoContable(TimeStampedModel):
     NUMERO_PREFIJO = 'AJ'
+
+    objects = AsientoContableQuerySet.as_manager()
 
     TIPO_CHOICES = [
         ('apertura', 'Asiento de Apertura'),
@@ -264,11 +279,32 @@ class AsientoContable(TimeStampedModel):
             self.numero = self._generar_numero()
         super().save(*args, **kwargs)
 
+    def delete(self, *args, **kwargs):
+        anio = self._extraer_anio_numero(self.numero)
+        resultado = super().delete(*args, **kwargs)
+        if anio:
+            self.resetear_correlativo(anio=anio)
+        return resultado
+
+    @classmethod
+    def _extraer_anio_numero(cls, numero):
+        partes = (numero or '').split('-')
+        if len(partes) < 3 or partes[0] != cls.NUMERO_PREFIJO:
+            return None
+        try:
+            return int(partes[1])
+        except ValueError:
+            return None
+
+    @classmethod
+    def _prefix_numero(cls, anio):
+        return f'{cls.NUMERO_PREFIJO}-{anio}-'
+
     @classmethod
     def _generar_numero(cls):
         from django.utils import timezone
         year = timezone.now().year
-        prefix = f'{cls.NUMERO_PREFIJO}-{year}-'
+        prefix = cls._prefix_numero(year)
         numeros = (
             cls.objects
             .filter(numero__startswith=prefix)
@@ -287,6 +323,40 @@ class AsientoContable(TimeStampedModel):
             seq += 1
 
         return f'{prefix}{seq:04d}'
+
+    @classmethod
+    def resetear_correlativo(cls, anio=None):
+        """
+        Renumera los asientos sin dejar vacíos.
+
+        La renumeración se hace por año del número actual y respeta el orden de
+        creación: primero `creado_en`, luego `id`. Para evitar choques con el
+        campo único `numero`, primero mueve todos los asientos a números
+        temporales y luego asigna el correlativo final.
+        """
+        if anio is None:
+            anios = {
+                cls._extraer_anio_numero(numero)
+                for numero in cls.objects.values_list('numero', flat=True)
+            }
+            anios.discard(None)
+            for anio_disponible in sorted(anios):
+                cls.resetear_correlativo(anio=anio_disponible)
+            return
+
+        prefix = cls._prefix_numero(anio)
+        asientos = list(
+            cls.objects
+            .filter(numero__startswith=prefix)
+            .order_by('creado_en', 'id')
+        )
+
+        with transaction.atomic():
+            for asiento in asientos:
+                cls.objects.filter(pk=asiento.pk).update(numero=f'T{asiento.pk}')
+
+            for seq, asiento in enumerate(asientos, start=1):
+                cls.objects.filter(pk=asiento.pk).update(numero=f'{prefix}{seq:04d}')
 
     @property
     def total_debe(self):
