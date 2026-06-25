@@ -24,7 +24,7 @@ from apps.web import forms
 from .models import (
     Proveedor, FacturaRecibida, DetalleFacturaRecibida,
     NotaCreditoRecibida, DetalleNotaCreditoRecibida,
-    CuentaPorPagar, Anticipo,
+    CuentaPorPagar, Anticipo, AplicacionAnticipoProveedor,
 )
 from apps.tributario.models import RegistroCompra
 
@@ -170,6 +170,14 @@ def _sincronizar_credito_proveedor_nota_credito(nota_credito):
         defaults=defaults,
     )
     return anticipo
+
+
+def _actualizar_estado_anticipo(anticipo):
+    anticipo.refresh_from_db()
+    nuevo_estado = 'aplicado' if anticipo.saldo_disponible <= 0 else 'pendiente'
+    if anticipo.estado != nuevo_estado:
+        anticipo.estado = nuevo_estado
+        anticipo.save(update_fields=['estado'])
 
 
 def _calcular_totales_desde_formset(formset):
@@ -1075,13 +1083,51 @@ class NominaBCIExportView(ProveedoresMixin, View):
 class CxPPagarView(ProveedoresMixin, View):
     template_name = 'admin/proveedores/cxp_pagar.html'
 
-    def _build_form(self, data=None, initial=None):
+    def _proveedor_cxp(self, cxp):
+        if cxp.factura and not cxp.factura.pago_por_trabajador:
+            return cxp.factura.proveedor
+        return None
+
+    def _anticipos_disponibles(self, cxp):
+        proveedor = self._proveedor_cxp(cxp)
+        if not proveedor:
+            return Anticipo.objects.none()
+        ids = [
+            anticipo.pk
+            for anticipo in Anticipo.objects.filter(proveedor=proveedor, estado='pendiente').order_by('fecha', 'id')
+            if anticipo.saldo_disponible > 0
+        ]
+        return Anticipo.objects.filter(pk__in=ids).order_by('fecha', 'id')
+
+    def _actualizar_estado_anticipo(self, anticipo):
+        _actualizar_estado_anticipo(anticipo)
+
+    def _actualizar_documento_cxp(self, cxp):
+        if cxp.saldo_pendiente > 0:
+            return
+        if cxp.factura:
+            cxp.factura.estado = 'pagada'
+            cxp.factura.save(update_fields=['estado'])
+        elif cxp.boleta_honorarios:
+            cxp.boleta_honorarios.estado = 'pagada'
+            cxp.boleta_honorarios.save(update_fields=['estado'])
+        elif cxp.rendicion:
+            cxp.rendicion.estado = 'pagada'
+            cxp.rendicion.save()
+
+    def _build_form(self, cxp, data=None, initial=None):
         from django import forms
         from apps.tesoreria.models import CuentaBancaria
 
         # Filtramos cuentas bancarias activas y que tengan cuenta_contable asignada para evitar errores al generar el asiento
 
         cuentas_bancarias = CuentaBancaria.objects.filter(activa=True, cuenta_contable__isnull=False).select_related('banco')
+        anticipos_disponibles = self._anticipos_disponibles(cxp)
+        saldo_cxp = cxp.saldo_pendiente
+
+        class AnticipoChoiceField(forms.ModelChoiceField):
+            def label_from_instance(self, obj):
+                return f'{obj.fecha:%d/%m/%Y} - {obj.get_origen_display()} - Disponible ${obj.saldo_disponible:,.0f}'
 
         class PagoForm(forms.Form):
             fecha_pago = forms.DateField(
@@ -1095,19 +1141,33 @@ class CxPPagarView(ProveedoresMixin, View):
             ),
             label='Fecha de pago',
             )
+            anticipo = AnticipoChoiceField(
+                queryset=anticipos_disponibles,
+                required=False,
+                widget=forms.Select(attrs={'class': 'form-select'}),
+                label='Anticipo / crédito a aplicar',
+                empty_label='— No aplicar anticipo —',
+            )
+            monto_anticipo = forms.DecimalField(
+                max_digits=15, decimal_places=2, required=False, min_value=0,
+                widget=forms.NumberInput(attrs={'class': 'form-control', 'step': '1', 'min': '0'}),
+                label='Monto a aplicar del anticipo',
+            )
             monto_pagado = forms.DecimalField(
-                max_digits=15, decimal_places=2,
-                widget=forms.NumberInput(attrs={'class': 'form-control', 'step': '1'}),
-                label='Monto pagado',
+                max_digits=15, decimal_places=2, required=False, min_value=0,
+                widget=forms.NumberInput(attrs={'class': 'form-control', 'step': '1', 'min': '0'}),
+                label='Monto pago bancario',
             )
             cuenta_bancaria = forms.ModelChoiceField(
                 queryset=cuentas_bancarias,
+                required=False,
                 widget=forms.Select(attrs={'class': 'form-select'}),
                 label='Cuenta bancaria de pago',
                 help_text='El egreso se registrará en esta cuenta.',
             )
             medio_pago = forms.ChoiceField(
                 choices=[('', '— Seleccione —')] + CuentaPorPagar.MEDIO_PAGO_CHOICES,
+                required=False,
                 widget=forms.Select(attrs={'class': 'form-select'}),
                 label='Medio de pago',
             )
@@ -1122,6 +1182,35 @@ class CxPPagarView(ProveedoresMixin, View):
                 label='Notas',
             )
 
+            def clean(self):
+                cleaned = super().clean()
+                anticipo = cleaned.get('anticipo')
+                monto_anticipo = cleaned.get('monto_anticipo') or Decimal('0')
+                monto_banco = cleaned.get('monto_pagado') or Decimal('0')
+
+                if monto_anticipo > 0 and not anticipo:
+                    self.add_error('anticipo', 'Seleccione el anticipo que desea aplicar.')
+                if anticipo and monto_anticipo <= 0:
+                    self.add_error('monto_anticipo', 'Ingrese el monto del anticipo a aplicar.')
+                if anticipo and monto_anticipo > anticipo.saldo_disponible:
+                    self.add_error('monto_anticipo', 'El monto supera el saldo disponible del anticipo.')
+                if monto_anticipo > 0:
+                    from apps.contabilidad.models import ConfiguracionContable
+                    config = ConfiguracionContable.get()
+                    if not config.cuenta_cxp or not config.cuenta_anticipos_proveedores:
+                        raise forms.ValidationError(
+                            'Para aplicar anticipos debe configurar CxP y Anticipos a Proveedores en Configuración Contable.'
+                        )
+                if monto_banco > 0 and not cleaned.get('cuenta_bancaria'):
+                    self.add_error('cuenta_bancaria', 'Seleccione la cuenta bancaria para el pago.')
+                if monto_banco > 0 and not cleaned.get('medio_pago'):
+                    self.add_error('medio_pago', 'Seleccione el medio de pago.')
+                if monto_anticipo + monto_banco <= 0:
+                    raise forms.ValidationError('Debe aplicar un anticipo o registrar un pago bancario.')
+                if monto_anticipo + monto_banco > saldo_cxp:
+                    raise forms.ValidationError('El total aplicado no puede superar el saldo pendiente.')
+                return cleaned
+
         return PagoForm(data=data, initial=initial)
 
     def get(self, request, pk):
@@ -1130,100 +1219,120 @@ class CxPPagarView(ProveedoresMixin, View):
         if cxp.estado == 'pagada':
             messages.info(request, 'Esta cuenta ya fue pagada.')
             return redirect('proveedores:cxp_list')
-        form = self._build_form(initial={
+        form = self._build_form(cxp, initial={
             'fecha_pago': timezone.localdate(),
             'monto_pagado': cxp.saldo_pendiente,
+            'monto_anticipo': 0,
         })
-        return render(request, self.template_name, {'cxp': cxp, 'form': form})
+        return render(request, self.template_name, {
+            'cxp': cxp,
+            'form': form,
+            'anticipos_disponibles': self._anticipos_disponibles(cxp),
+        })
 
     def post(self, request, pk):
         from django.shortcuts import render
         from apps.tesoreria.models import MovimientoBancario
-        from apps.contabilidad.utils import generar_asiento_movimiento_bancario
+        from apps.contabilidad.utils import (
+            generar_asiento_aplicacion_anticipo_proveedor,
+            generar_asiento_movimiento_bancario,
+        )
 
         cxp = get_object_or_404(CuentaPorPagar, pk=pk)
-        form = self._build_form(data=request.POST)
+        form = self._build_form(cxp, data=request.POST)
 
         if not form.is_valid():
-            return render(request, self.template_name, {'cxp': cxp, 'form': form})
+            return render(request, self.template_name, {
+                'cxp': cxp,
+                'form': form,
+                'anticipos_disponibles': self._anticipos_disponibles(cxp),
+            })
 
         d = form.cleaned_data
         cuenta_bancaria = d['cuenta_bancaria']
+        anticipo = d.get('anticipo')
+        monto_anticipo = d.get('monto_anticipo') or Decimal('0')
+        monto_banco = d.get('monto_pagado') or Decimal('0')
+        total_aplicado = monto_anticipo + monto_banco
 
-        # 1. Actualizar CxP
-        cxp.fecha_pago = d['fecha_pago']
-        cxp.monto_pagado = d['monto_pagado']
-        cxp.medio_pago = d['medio_pago']
-        cxp.numero_documento = d['numero_documento']
-        cxp.notas = d['notas']
-        cxp.estado = 'pagada'
-        cxp.save()
-
-        # 2. Actualizar documento asociado según corresponda
-        if cxp.factura:
-            cxp.factura.estado = 'pagada'
-            cxp.factura.save()
-        elif cxp.boleta_honorarios:
-            cxp.boleta_honorarios.estado = 'pagada'
-            cxp.boleta_honorarios.save(update_fields=['estado'])
-        elif cxp.rendicion:
-            cxp.rendicion.estado = 'pagada'
-            cxp.rendicion.save()
-
-        # 3. Crear MovimientoBancario (egreso)
-        if cxp.factura:
-            if cxp.factura.pago_por_trabajador:
-                descripcion_mov = (
-                    f'Reembolso factura {cxp.factura.numero} - '
-                    f'{cxp.factura.pago_por_trabajador.nombre_completo}'
+        with transaction.atomic():
+            if monto_anticipo > 0:
+                aplicacion = AplicacionAnticipoProveedor.objects.create(
+                    anticipo=anticipo,
+                    cuenta_pagar=cxp,
+                    fecha=d['fecha_pago'],
+                    monto=monto_anticipo,
+                    observaciones=d['notas'],
                 )
-            else:
-                descripcion_mov = f'Pago {cxp.factura.numero} - {cxp.factura.proveedor.razon_social}'
-        elif cxp.boleta_honorarios:
-            descripcion_mov = f'Pago boleta {cxp.boleta_honorarios.numero} - {cxp.boleta_honorarios.prestador.nombre}'
-        else:
-            descripcion_mov = f'Reembolso rendición #{cxp.rendicion.id} - {cxp.rendicion.trabajador.nombre_completo}'
-        movimiento = MovimientoBancario.objects.create(
-            cuenta=cuenta_bancaria,
-            fecha=d['fecha_pago'],
-            tipo='egreso',
-            monto=d['monto_pagado'],
-            descripcion=descripcion_mov,
-            cuenta_contable=None,   # se intentará la cuenta CxP a continuación
-            documento=d['numero_documento'],
-        )
+                asiento_aplicacion = generar_asiento_aplicacion_anticipo_proveedor(
+                    aplicacion,
+                    usuario=request.user,
+                )
+                if asiento_aplicacion:
+                    aplicacion.asiento = asiento_aplicacion
+                    aplicacion.save(update_fields=['asiento'])
+                else:
+                    messages.warning(
+                        request,
+                        'Se aplicó el anticipo, pero no se pudo generar el asiento contable. '
+                        'Revise la cuenta CxP y Anticipos a Proveedores en Configuración Contable.'
+                    )
+                self._actualizar_estado_anticipo(anticipo)
 
-        # Asignar cuenta_contable del movimiento = cuenta CxP de ConfiguracionContable
-        try:
-            from apps.contabilidad.models import ConfiguracionContable
-            config = ConfiguracionContable.get()
-            if config and config.cuenta_cxp:
-                movimiento.cuenta_contable = config.cuenta_cxp
-                movimiento.save(update_fields=['cuenta_contable'])
-        except Exception:
-            pass
+            movimiento = None
+            asiento = None
+            if monto_banco > 0:
+                if cxp.factura:
+                    if cxp.factura.pago_por_trabajador:
+                        descripcion_mov = (
+                            f'Reembolso factura {cxp.factura.numero} - '
+                            f'{cxp.factura.pago_por_trabajador.nombre_completo}'
+                        )
+                    else:
+                        descripcion_mov = f'Pago {cxp.factura.numero} - {cxp.factura.proveedor.razon_social}'
+                elif cxp.boleta_honorarios:
+                    descripcion_mov = f'Pago boleta {cxp.boleta_honorarios.numero} - {cxp.boleta_honorarios.prestador.nombre}'
+                else:
+                    descripcion_mov = f'Reembolso rendición #{cxp.rendicion.id} - {cxp.rendicion.trabajador.nombre_completo}'
+                movimiento = MovimientoBancario.objects.create(
+                    cuenta=cuenta_bancaria,
+                    fecha=d['fecha_pago'],
+                    tipo='egreso',
+                    monto=monto_banco,
+                    descripcion=descripcion_mov,
+                    cuenta_contable=None,
+                    documento=d['numero_documento'],
+                )
 
-        # Vincular movimiento a la CxP
-        cxp.movimiento_pago = movimiento
-        cxp.save(update_fields=['movimiento_pago'])
+                try:
+                    from apps.contabilidad.models import ConfiguracionContable
+                    config = ConfiguracionContable.get()
+                    if config and config.cuenta_cxp:
+                        movimiento.cuenta_contable = config.cuenta_cxp
+                        movimiento.save(update_fields=['cuenta_contable'])
+                except Exception:
+                    pass
 
-        # 4. Generar asiento contable borrador
-        asiento = generar_asiento_movimiento_bancario(movimiento, usuario=request.user)
+                cxp.movimiento_pago = movimiento
+                asiento = generar_asiento_movimiento_bancario(movimiento, usuario=request.user)
 
-        if asiento:
-            logger.info('CxP pk=%s pagada. Movimiento=%s, asiento=%s. Usuario: %s', cxp.pk, movimiento.pk, asiento.numero, request.user)
+            cxp.fecha_pago = d['fecha_pago']
+            cxp.monto_pagado = (cxp.monto_pagado or Decimal('0')) + total_aplicado
+            cxp.medio_pago = d['medio_pago']
+            cxp.numero_documento = d['numero_documento']
+            cxp.notas = d['notas']
+            cxp.estado = 'pagada' if cxp.saldo_pendiente <= 0 else 'pendiente'
+            cxp.save()
+            self._actualizar_documento_cxp(cxp)
+
+        logger.info('CxP pk=%s pagada/aplicada por %s. Banco=%s, anticipo=%s', cxp.pk, request.user, monto_banco, monto_anticipo)
+        if monto_banco > 0 and asiento:
             messages.success(
                 request,
                 f'Pago registrado. Movimiento bancario creado y asiento {asiento.numero} generado en borrador.'
             )
         else:
-            logger.warning('CxP pk=%s pagada sin asiento generado. Movimiento=%s. Usuario: %s', cxp.pk, movimiento.pk, request.user)
-            messages.success(request, 'Pago registrado y movimiento bancario creado.')
-            messages.warning(
-                request,
-                'No se pudo generar el asiento contable automáticamente. '
-                'Verifique que la cuenta bancaria y la Config. Contable tengan cuentas asignadas.'
-            )
+            messages.success(request, 'Pago/aplicación registrado correctamente.')
 
         return redirect('proveedores:cxp_list')
 
@@ -1250,11 +1359,26 @@ class AnularPagoCxPView(ProveedoresMixin, View):
                     'Anúle el asiento primero.'
                 )
                 return redirect('proveedores:cxp_list')
+        if cxp.aplicaciones_anticipos.filter(asiento__estado='confirmado').exists():
+            messages.error(
+                request,
+                'No se puede anular el pago porque una aplicación de anticipo tiene asiento contable confirmado. '
+                'Anúle el asiento primero.'
+            )
+            return redirect('proveedores:cxp_list')
 
         with transaction.atomic():
             if movimiento:
                 movimiento.asientos.filter(estado='borrador').delete()
                 movimiento.delete()
+
+            anticipos_afectados = list(cxp.aplicaciones_anticipos.select_related('anticipo', 'asiento'))
+            for aplicacion in anticipos_afectados:
+                if aplicacion.asiento and aplicacion.asiento.estado == 'borrador':
+                    aplicacion.asiento.delete()
+                aplicacion.delete()
+            for aplicacion in anticipos_afectados:
+                _actualizar_estado_anticipo(aplicacion.anticipo)
 
             # Revertir CxP
             cxp.estado = 'pendiente'

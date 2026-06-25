@@ -1,6 +1,6 @@
 from decimal import Decimal
 from django.db import models
-from django.db.models import Max
+from django.db.models import Max, Sum
 from django.utils import timezone
 from apps.tesoreria.models import Banco, TIPO_CHOICES
 from apps.core.models import TimeStampedModel
@@ -355,4 +355,39 @@ class Anticipo(TimeStampedModel):
 
     def __str__(self):
         return f'Anticipo {self.proveedor.razon_social} - ${self.monto:,.0f}'
+
+    @property
+    def monto_aplicado(self):
+        return self.aplicaciones.aggregate(total=Sum('monto'))['total'] or Decimal('0')
+
+    @property
+    def saldo_disponible(self):
+        return max(self.monto - self.monto_aplicado, Decimal('0'))
+
+
+class AplicacionAnticipoProveedor(TimeStampedModel):
+    anticipo = models.ForeignKey(
+        Anticipo, on_delete=models.PROTECT,
+        related_name='aplicaciones', verbose_name='Anticipo'
+    )
+    cuenta_pagar = models.ForeignKey(
+        CuentaPorPagar, on_delete=models.CASCADE,
+        related_name='aplicaciones_anticipos', verbose_name='Cuenta por pagar'
+    )
+    fecha = models.DateField(verbose_name='Fecha de aplicación')
+    monto = models.DecimalField(max_digits=15, decimal_places=2, verbose_name='Monto aplicado')
+    observaciones = models.TextField(blank=True, verbose_name='Observaciones')
+    asiento = models.ForeignKey(
+        'contabilidad.AsientoContable', null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='aplicaciones_anticipos_proveedor',
+        verbose_name='Asiento contable'
+    )
+
+    class Meta:
+        verbose_name = 'Aplicación de Anticipo a Proveedor'
+        verbose_name_plural = 'Aplicaciones de Anticipos a Proveedores'
+        ordering = ['-fecha', '-id']
+
+    def __str__(self):
+        return f'Aplicación {self.anticipo.proveedor.razon_social} - ${self.monto:,.0f}'
 

@@ -458,6 +458,41 @@ def generar_asiento_pago_anticipo_proveedor(anticipo, movimiento, usuario=None):
     return asiento
 
 
+def generar_asiento_aplicacion_anticipo_proveedor(aplicacion, usuario=None):
+    """
+    Genera el asiento para aplicar un anticipo de proveedor contra una CxP:
+
+        DEBE : Cuentas por Pagar           = aplicacion.monto
+        HABER: Anticipos a Proveedores     = aplicacion.monto
+    """
+    config = get_config()
+    if not config or not config.cuenta_cxp or not config.cuenta_anticipos_proveedores:
+        return None
+
+    cxp = aplicacion.cuenta_pagar
+    anticipo = aplicacion.anticipo
+    documento = cxp.factura.numero if cxp.factura else f'CxP #{cxp.pk}'
+
+    asiento = AsientoContable.objects.create(
+        fecha=aplicacion.fecha,
+        descripcion=(
+            f'Aplicación de anticipo proveedor {anticipo.proveedor.razon_social} '
+            f'a {documento}'
+        ),
+        tipo='ajuste',
+        estado='borrador',
+        factura_recibida=cxp.factura,
+        creado_por=usuario,
+    )
+
+    _add_linea(asiento, config.cuenta_cxp, debe=aplicacion.monto,
+               descripcion=f'Aplicación de anticipo a {documento}', orden=1)
+    _add_linea(asiento, config.cuenta_anticipos_proveedores, haber=aplicacion.monto,
+               descripcion=f'Rebaja anticipo proveedor {anticipo.proveedor.razon_social}', orden=2)
+
+    return asiento
+
+
 def generar_asiento_devengamiento_remuneracion(remuneracion, usuario=None):
     """
     Genera el asiento de DEVENGAMIENTO al crear/liquidar una remuneración (base devengada):
