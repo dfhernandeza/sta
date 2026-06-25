@@ -36,6 +36,13 @@
       </select>
     </div>
     <div class="col-sm-2">
+      <select name="conciliado" class="form-select form-select-sm">
+        <option value="">Conciliación</option>
+        <option value="0" {% if request.GET.conciliado == "0" %}selected{% endif %}>Pendientes</option>
+        <option value="1" {% if request.GET.conciliado == "1" %}selected{% endif %}>Conciliados</option>
+      </select>
+    </div>
+    <div class="col-sm-2">
       <input type="date" name="desde" class="form-control form-control-sm" value="{{ request.GET.desde }}" placeholder="Desde">
     </div>
     <div class="col-sm-2">
@@ -76,11 +83,34 @@
             {{ m.monto|moneda_chilena }}
           </td>
           <td class="text-center">
-            {% if m.conciliado %}<i class="bi bi-check-circle-fill text-success"></i>
-            {% else %}<i class="bi bi-circle text-muted"></i>{% endif %}
+            {% if m.conciliado %}
+              <span class="d-inline-flex align-items-center gap-1 text-success" title="Conciliado el {{ m.fecha_conciliacion|date:'d/m/Y' }}">
+                <i class="bi bi-check-circle-fill"></i>
+                <span class="small">{{ m.fecha_conciliacion|date:"d/m/Y" }}</span>
+              </span>
+            {% else %}
+              <span class="text-muted"><i class="bi bi-circle"></i></span>
+            {% endif %}
           </td>
           <td class="text-center">
             <div class="btn-group btn-group-sm">
+              {% if m.conciliado %}
+                <form method="post" action="{% url 'tesoreria:movimiento_desconciliar' m.pk %}" class="d-inline"
+                      onsubmit="return confirm('¿Revertir la conciliación de este movimiento?')">
+                  {% csrf_token %}
+                  <button type="submit" class="btn btn-outline-warning btn-sm" title="Revertir conciliación">
+                    <i class="bi bi-unlock"></i>
+                  </button>
+                </form>
+              {% else %}
+                <form method="post" action="{% url 'tesoreria:movimiento_conciliar' m.pk %}" class="d-inline"
+                      onsubmit="return confirm('¿Marcar este movimiento como conciliado?')">
+                  {% csrf_token %}
+                  <button type="submit" class="btn btn-outline-success btn-sm" title="Conciliar">
+                    <i class="bi bi-check2-circle"></i>
+                  </button>
+                </form>
+              {% endif %}
               <a href="{% url 'tesoreria:movimiento_update' m.pk %}" class="btn btn-outline-secondary btn-sm" title="Editar">
                 <i class="bi bi-pencil"></i>
               </a>

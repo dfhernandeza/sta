@@ -3,6 +3,7 @@ from django.urls import reverse_lazy
 from django.contrib import messages
 from django.db.models import Sum
 from django.shortcuts import get_object_or_404, redirect
+from django.utils import timezone
 from apps.core.mixins import GestionMixin, AppPermisoMixin
 
 class TesoreriaMixin(AppPermisoMixin):
@@ -128,6 +129,17 @@ class MovimientoListView(TesoreriaMixin, ListView):
         tipo = self.request.GET.get('tipo')
         if tipo:
             qs = qs.filter(tipo=tipo)
+        conciliado = self.request.GET.get('conciliado')
+        if conciliado == '1':
+            qs = qs.filter(conciliado=True)
+        elif conciliado == '0':
+            qs = qs.filter(conciliado=False)
+        desde = self.request.GET.get('desde')
+        if desde:
+            qs = qs.filter(fecha__gte=desde)
+        hasta = self.request.GET.get('hasta')
+        if hasta:
+            qs = qs.filter(fecha__lte=hasta)
         return qs.order_by('-fecha', '-creado_en')
 
     def get_context_data(self, **kwargs):
@@ -140,7 +152,7 @@ class MovimientoListView(TesoreriaMixin, ListView):
 class MovimientoCreateView(TesoreriaMixin, CreateView):
     model = MovimientoBancario
     template_name = 'admin/tesoreria/movimiento_form.html'
-    fields = ['cuenta', 'fecha', 'tipo', 'monto', 'descripcion', 'documento', 'cuenta_contable', 'proyecto', 'conciliado']
+    fields = ['cuenta', 'fecha', 'tipo', 'monto', 'descripcion', 'documento', 'cuenta_contable', 'proyecto']
     success_url = reverse_lazy('tesoreria:movimiento_list')
 
     def form_valid(self, form):
@@ -168,16 +180,15 @@ class MovimientoCreateView(TesoreriaMixin, CreateView):
 class MovimientoUpdateView(TesoreriaMixin, UpdateView):
     model = MovimientoBancario
     template_name = 'admin/tesoreria/movimiento_form.html'
-    fields = ['cuenta', 'fecha', 'tipo', 'monto', 'descripcion', 'documento', 'cuenta_contable', 'proyecto', 'conciliado']
+    fields = ['cuenta', 'fecha', 'tipo', 'monto', 'descripcion', 'documento', 'cuenta_contable', 'proyecto']
     success_url = reverse_lazy('tesoreria:movimiento_list')
 
     def dispatch(self, request, *args, **kwargs):
         movimiento = self.get_object()
-        if movimiento.cuentas_pagar.exists():
+        if movimiento.conciliado:
             messages.error(
                 request,
-                'No se puede eliminar este movimiento directamente porque está vinculado a una Cuenta por Pagar. '
-                'Use la acción "Anular" desde Cuentas por Pagar para revertir el pago y limpiar el saldo.'
+                'No se puede editar un movimiento conciliado. Revierta la conciliación antes de modificarlo.'
             )
             return redirect('tesoreria:movimiento_list')
         asientos_confirmados = movimiento.asientos.filter(estado='confirmado')
@@ -213,6 +224,19 @@ class MovimientoDeleteView(TesoreriaMixin, DeleteView):
 
     def dispatch(self, request, *args, **kwargs):
         movimiento = self.get_object()
+        if movimiento.conciliado:
+            messages.error(
+                request,
+                'No se puede eliminar un movimiento conciliado. Revierta la conciliación antes de eliminarlo.'
+            )
+            return redirect('tesoreria:movimiento_list')
+        if movimiento.cuentas_pagar.exists():
+            messages.error(
+                request,
+                'No se puede eliminar este movimiento directamente porque está vinculado a una Cuenta por Pagar. '
+                'Use la acción "Anular" desde Cuentas por Pagar para revertir el pago y limpiar el saldo.'
+            )
+            return redirect('tesoreria:movimiento_list')
         asientos_confirmados = movimiento.asientos.filter(estado='confirmado')
         if asientos_confirmados.exists():
             numeros = ', '.join(a.numero for a in asientos_confirmados)
@@ -230,6 +254,34 @@ class MovimientoDeleteView(TesoreriaMixin, DeleteView):
         movimiento.asientos.filter(estado='borrador').update(estado='anulado')
         messages.success(self.request, 'Movimiento eliminado.')
         return super().form_valid(form)
+
+
+class MovimientoConciliarView(TesoreriaMixin, View):
+    def post(self, request, pk):
+        movimiento = get_object_or_404(MovimientoBancario, pk=pk)
+        if movimiento.conciliado:
+            messages.info(request, 'Este movimiento ya está conciliado.')
+        else:
+            movimiento.conciliado = True
+            movimiento.fecha_conciliacion = timezone.localdate()
+            movimiento.conciliado_por = request.user
+            movimiento.save(update_fields=['conciliado', 'fecha_conciliacion', 'conciliado_por'])
+            messages.success(request, 'Movimiento conciliado.')
+        return redirect('tesoreria:movimiento_list')
+
+
+class MovimientoDesconciliarView(TesoreriaMixin, View):
+    def post(self, request, pk):
+        movimiento = get_object_or_404(MovimientoBancario, pk=pk)
+        if not movimiento.conciliado:
+            messages.info(request, 'Este movimiento no está conciliado.')
+        else:
+            movimiento.conciliado = False
+            movimiento.fecha_conciliacion = None
+            movimiento.conciliado_por = None
+            movimiento.save(update_fields=['conciliado', 'fecha_conciliacion', 'conciliado_por'])
+            messages.success(request, 'Conciliación revertida.')
+        return redirect('tesoreria:movimiento_list')
 
 
 class GenerarAsientoMovimientoView(TesoreriaMixin, View):

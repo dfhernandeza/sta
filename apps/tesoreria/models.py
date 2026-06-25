@@ -77,6 +77,12 @@ class MovimientoBancario(TimeStampedModel):
     )
     documento = models.CharField(max_length=50, blank=True, verbose_name='N° Documento')
     conciliado = models.BooleanField(default=False, verbose_name='Conciliado')
+    fecha_conciliacion = models.DateField(null=True, blank=True, verbose_name='Fecha de conciliación')
+    conciliado_por = models.ForeignKey(
+        'accounts.CustomUser', null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='movimientos_conciliados',
+        verbose_name='Conciliado por'
+    )
 
     class Meta:
         verbose_name = 'Movimiento Bancario'

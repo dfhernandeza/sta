@@ -15,5 +15,7 @@ urlpatterns = [
     path('movimientos/crear/', views.MovimientoCreateView.as_view(), name='movimiento_create'),
     path('movimientos/<int:pk>/editar/', views.MovimientoUpdateView.as_view(), name='movimiento_update'),
     path('movimientos/<int:pk>/eliminar/', views.MovimientoDeleteView.as_view(), name='movimiento_delete'),
+    path('movimientos/<int:pk>/conciliar/', views.MovimientoConciliarView.as_view(), name='movimiento_conciliar'),
+    path('movimientos/<int:pk>/desconciliar/', views.MovimientoDesconciliarView.as_view(), name='movimiento_desconciliar'),
     path('movimientos/<int:pk>/asiento/', views.GenerarAsientoMovimientoView.as_view(), name='movimiento_asiento'),
 ]
