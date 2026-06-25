@@ -735,12 +735,39 @@ class BalanceGeneralView(ContabilidadMixin, View):
 class EstadoResultadosView(ContabilidadMixin, View):
     template_name = 'admin/contabilidad/estado_resultados.html'
 
+    def _ruta_cuenta(self, cuenta):
+        return cuenta.get_ruta().lower()
+
+    def _es_otros_ingresos(self, cuenta):
+        return cuenta.tipo == 'ingreso' and 'otros ingresos' in self._ruta_cuenta(cuenta)
+
+    def _es_impuesto_renta(self, cuenta):
+        ruta = self._ruta_cuenta(cuenta)
+        return (
+            cuenta.tipo in ('gasto', 'costo') and
+            'impuesto' in ruta and
+            ('renta' in ruta or 'primera categoria' in ruta or 'primera categoría' in ruta)
+        )
+
+    def _es_otro_gasto(self, cuenta):
+        ruta = self._ruta_cuenta(cuenta)
+        return (
+            cuenta.tipo in ('gasto', 'costo') and
+            not self._es_impuesto_renta(cuenta) and
+            ('financiamiento' in ruta or 'intereses' in ruta)
+        )
+
     def get(self, request):
         from django.shortcuts import render
         desde = request.GET.get('desde')
         hasta = request.GET.get('hasta')
 
-        qs = LineaAsiento.objects.filter(asiento__estado='confirmado').select_related('cuenta')
+        qs = LineaAsiento.objects.filter(asiento__estado='confirmado').select_related(
+            'cuenta',
+            'cuenta__parent',
+            'cuenta__parent__parent',
+            'cuenta__parent__parent__parent',
+        )
         if desde:
             qs = qs.filter(asiento__fecha__gte=parse_date(desde))
         if hasta:
@@ -754,38 +781,63 @@ class EstadoResultadosView(ContabilidadMixin, View):
             saldos[linea.cuenta_id] += linea.haber - linea.debe  # ingresos son saldo haber
             cuentas_map[linea.cuenta_id] = linea.cuenta
 
-        ingresos, costos, gastos = [], [], []
+        ingresos, costos, gastos, otros, impuestos_renta = [], [], [], [], []
         total_ingresos = Decimal('0')
         total_costos = Decimal('0')
         total_gastos = Decimal('0')
+        total_otros = Decimal('0')
+        total_impuesto_renta = Decimal('0')
 
         for cid, saldo in saldos.items():
             if saldo == 0:
                 continue
             cuenta = cuentas_map[cid]
-            row = {'cuenta': cuenta, 'saldo': abs(saldo)}
-            if cuenta.tipo == 'ingreso':
+            if self._es_impuesto_renta(cuenta):
+                monto = -saldo
+                impuestos_renta.append({'cuenta': cuenta, 'saldo': monto})
+                total_impuesto_renta += monto
+            elif self._es_otros_ingresos(cuenta) or self._es_otro_gasto(cuenta):
+                monto = saldo
+                otros.append({'cuenta': cuenta, 'saldo': monto})
+                total_otros += monto
+            elif cuenta.tipo == 'ingreso':
+                monto = saldo
+                row = {'cuenta': cuenta, 'saldo': monto}
                 ingresos.append(row)
-                total_ingresos += abs(saldo)
+                total_ingresos += monto
             elif cuenta.tipo == 'costo':
+                monto = -saldo
+                row = {'cuenta': cuenta, 'saldo': monto}
                 costos.append(row)
-                total_costos += abs(saldo)
+                total_costos += monto
             elif cuenta.tipo == 'gasto':
+                monto = -saldo
+                row = {'cuenta': cuenta, 'saldo': monto}
                 gastos.append(row)
-                total_gastos += abs(saldo)
+                total_gastos += monto
 
         ingresos.sort(key=lambda r: r['cuenta'].codigo)
         costos.sort(key=lambda r: r['cuenta'].codigo)
         gastos.sort(key=lambda r: r['cuenta'].codigo)
+        otros.sort(key=lambda r: r['cuenta'].codigo)
+        impuestos_renta.sort(key=lambda r: r['cuenta'].codigo)
 
-        utilidad = total_ingresos - total_costos - total_gastos
+        utilidad_bruta = total_ingresos - total_costos
+        resultado_operacional = utilidad_bruta - total_gastos
+        resultado_antes_impuestos = resultado_operacional + total_otros
+        utilidad_ejercicio = resultado_antes_impuestos - total_impuesto_renta
 
         return render(request, self.template_name, {
             'titulo': 'Estado de Resultados',
             'ingresos': ingresos, 'total_ingresos': total_ingresos,
             'costos': costos, 'total_costos': total_costos,
             'gastos': gastos, 'total_gastos': total_gastos,
-            'utilidad': utilidad,
+            'otros': otros, 'total_otros': total_otros,
+            'impuestos_renta': impuestos_renta, 'total_impuesto_renta': total_impuesto_renta,
+            'utilidad_bruta': utilidad_bruta,
+            'resultado_operacional': resultado_operacional,
+            'resultado_antes_impuestos': resultado_antes_impuestos,
+            'utilidad_ejercicio': utilidad_ejercicio,
         })
 
 

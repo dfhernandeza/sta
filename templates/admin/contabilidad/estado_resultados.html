@@ -30,106 +30,120 @@
 
 <div class="row g-4">
   <div class="col-lg-7">
-    <!-- Ingresos -->
-    <div class="card-sta p-4 mb-4">
-      <h6 class="fw-700 text-sta mb-3">Ingresos</h6>
-      <table class="table table-sm mb-0">
+    <div class="card-sta p-4">
+      <h6 class="fw-700 text-sta mb-3">Resumen</h6>
+      <table class="table mb-0 align-middle">
         <tbody>
-          {% for row in ingresos %}
           <tr>
-            <td class="small">{{ row.cuenta.codigo }} {{ row.cuenta.nombre }}</td>
-            <td class="text-end small font-monospace text-success">{{ row.saldo|moneda_chilena }}</td>
+            <td>Ingresos</td>
+            <td class="text-end fw-700 font-monospace text-success">{{ total_ingresos|moneda_chilena }}</td>
           </tr>
-          {% empty %}
-          <tr><td colspan="2" class="text-muted small">Sin ingresos.</td></tr>
-          {% endfor %}
+          <tr>
+            <td>(-) Costos Operacionales</td>
+            <td class="text-end fw-700 font-monospace text-danger">{{ total_costos|moneda_chilena }}</td>
+          </tr>
+          <tr class="table-light border-top border-bottom">
+            <td class="fw-800">Utilidad Bruta</td>
+            <td class="text-end fw-800 font-monospace">{{ utilidad_bruta|moneda_chilena }}</td>
+          </tr>
+          <tr>
+            <td>(-) Gastos Administrativos</td>
+            <td class="text-end fw-700 font-monospace text-danger">{{ total_gastos|moneda_chilena }}</td>
+          </tr>
+          <tr class="table-light border-top border-bottom">
+            <td class="fw-800">Resultado Operacional</td>
+            <td class="text-end fw-800 font-monospace">{{ resultado_operacional|moneda_chilena }}</td>
+          </tr>
+          <tr>
+            <td>(+/-) Otros Ingresos / Gastos</td>
+            <td class="text-end fw-700 font-monospace {% if total_otros >= 0 %}text-success{% else %}text-danger{% endif %}">
+              {{ total_otros|moneda_chilena }}
+            </td>
+          </tr>
+          <tr class="table-light border-top border-bottom">
+            <td class="fw-800">Resultado Antes de Impuestos</td>
+            <td class="text-end fw-800 font-monospace">{{ resultado_antes_impuestos|moneda_chilena }}</td>
+          </tr>
+          <tr>
+            <td>(-) Impuesto a la Renta</td>
+            <td class="text-end fw-700 font-monospace text-danger">{{ total_impuesto_renta|moneda_chilena }}</td>
+          </tr>
         </tbody>
-        <tfoot class="fw-700">
+        <tfoot class="table-active">
           <tr>
-            <td>Total Ingresos</td>
-            <td class="text-end font-monospace text-success">{{ total_ingresos|moneda_chilena }}</td>
-          </tr>
-        </tfoot>
-      </table>
-    </div>
-
-    <!-- Costos -->
-    <div class="card-sta p-4 mb-4">
-      <h6 class="fw-700 text-sta mb-3">Costos Operacionales</h6>
-      <table class="table table-sm mb-0">
-        <tbody>
-          {% for row in costos %}
-          <tr>
-            <td class="small">{{ row.cuenta.codigo }} {{ row.cuenta.nombre }}</td>
-            <td class="text-end small font-monospace text-primary">{{ row.saldo|moneda_chilena }}</td>
-          </tr>
-          {% empty %}
-          <tr><td colspan="2" class="text-muted small">Sin costos.</td></tr>
-          {% endfor %}
-        </tbody>
-        <tfoot class="fw-700">
-          <tr>
-            <td>Total Costos</td>
-            <td class="text-end font-monospace text-primary">{{ total_costos|moneda_chilena }}</td>
-          </tr>
-        </tfoot>
-      </table>
-    </div>
-
-    <!-- Gastos -->
-    <div class="card-sta p-4 mb-4">
-      <h6 class="fw-700 text-sta mb-3">Gastos Administrativos</h6>
-      <table class="table table-sm mb-0">
-        <tbody>
-          {% for row in gastos %}
-          <tr>
-            <td class="small">{{ row.cuenta.codigo }} {{ row.cuenta.nombre }}</td>
-            <td class="text-end small font-monospace text-warning">{{ row.saldo|moneda_chilena }}</td>
-          </tr>
-          {% empty %}
-          <tr><td colspan="2" class="text-muted small">Sin gastos.</td></tr>
-          {% endfor %}
-        </tbody>
-        <tfoot class="fw-700">
-          <tr>
-            <td>Total Gastos</td>
-            <td class="text-end font-monospace text-warning">{{ total_gastos|moneda_chilena }}</td>
+            <td class="fw-800">UTILIDAD DEL EJERCICIO</td>
+            <td class="text-end fw-800 font-monospace fs-5 {% if utilidad_ejercicio >= 0 %}text-success{% else %}text-danger{% endif %}">
+              {{ utilidad_ejercicio|moneda_chilena }}
+            </td>
           </tr>
         </tfoot>
       </table>
     </div>
   </div>
 
-  <!-- Resumen -->
   <div class="col-lg-5">
     <div class="card-sta p-4">
-      <h6 class="fw-700 text-sta mb-3">Resumen</h6>
-      <table class="table mb-0">
-        <tbody>
-          <tr>
-            <td class="text-muted">Ingresos</td>
-            <td class="text-end fw-700 text-success font-monospace">{{ total_ingresos|moneda_chilena }}</td>
-          </tr>
-          <tr>
-            <td class="text-muted">Costos</td>
-            <td class="text-end fw-700 text-primary font-monospace">– {{ total_costos|moneda_chilena }}</td>
-          </tr>
-          <tr>
-            <td class="text-muted">Gastos</td>
-            <td class="text-end fw-700 text-warning font-monospace">– {{ total_gastos|moneda_chilena }}</td>
-          </tr>
-        </tbody>
-        <tfoot class="table-active">
-          <tr>
-            <td class="fw-800">
-              {% if utilidad >= 0 %}Utilidad del Período{% else %}Pérdida del Período{% endif %}
-            </td>
-            <td class="text-end fw-800 font-monospace fs-5 {% if utilidad >= 0 %}text-success{% else %}text-danger{% endif %}">
-              {{ utilidad|moneda_chilena }}
-            </td>
-          </tr>
-        </tfoot>
-      </table>
+      <h6 class="fw-700 text-sta mb-3">Detalle por Cuenta</h6>
+
+      <div class="mb-3">
+        <div class="fw-700 small text-uppercase text-muted mb-2">Ingresos</div>
+        {% for row in ingresos %}
+          <div class="d-flex justify-content-between gap-3 small py-1 border-bottom">
+            <span>{{ row.cuenta.codigo }} {{ row.cuenta.nombre }}</span>
+            <span class="font-monospace text-success">{{ row.saldo|moneda_chilena }}</span>
+          </div>
+        {% empty %}
+          <p class="text-muted small mb-0">Sin ingresos.</p>
+        {% endfor %}
+      </div>
+
+      <div class="mb-3">
+        <div class="fw-700 small text-uppercase text-muted mb-2">Costos Operacionales</div>
+        {% for row in costos %}
+          <div class="d-flex justify-content-between gap-3 small py-1 border-bottom">
+            <span>{{ row.cuenta.codigo }} {{ row.cuenta.nombre }}</span>
+            <span class="font-monospace text-danger">{{ row.saldo|moneda_chilena }}</span>
+          </div>
+        {% empty %}
+          <p class="text-muted small mb-0">Sin costos.</p>
+        {% endfor %}
+      </div>
+
+      <div class="mb-3">
+        <div class="fw-700 small text-uppercase text-muted mb-2">Gastos Administrativos</div>
+        {% for row in gastos %}
+          <div class="d-flex justify-content-between gap-3 small py-1 border-bottom">
+            <span>{{ row.cuenta.codigo }} {{ row.cuenta.nombre }}</span>
+            <span class="font-monospace text-danger">{{ row.saldo|moneda_chilena }}</span>
+          </div>
+        {% empty %}
+          <p class="text-muted small mb-0">Sin gastos administrativos.</p>
+        {% endfor %}
+      </div>
+
+      <div class="mb-3">
+        <div class="fw-700 small text-uppercase text-muted mb-2">Otros Ingresos / Gastos</div>
+        {% for row in otros %}
+          <div class="d-flex justify-content-between gap-3 small py-1 border-bottom">
+            <span>{{ row.cuenta.codigo }} {{ row.cuenta.nombre }}</span>
+            <span class="font-monospace {% if row.saldo >= 0 %}text-success{% else %}text-danger{% endif %}">{{ row.saldo|moneda_chilena }}</span>
+          </div>
+        {% empty %}
+          <p class="text-muted small mb-0">Sin otros ingresos o gastos.</p>
+        {% endfor %}
+      </div>
+
+      <div>
+        <div class="fw-700 small text-uppercase text-muted mb-2">Impuesto a la Renta</div>
+        {% for row in impuestos_renta %}
+          <div class="d-flex justify-content-between gap-3 small py-1 border-bottom">
+            <span>{{ row.cuenta.codigo }} {{ row.cuenta.nombre }}</span>
+            <span class="font-monospace text-danger">{{ row.saldo|moneda_chilena }}</span>
+          </div>
+        {% empty %}
+          <p class="text-muted small mb-0">Sin impuesto a la renta registrado.</p>
+        {% endfor %}
+      </div>
     </div>
   </div>
 </div>
