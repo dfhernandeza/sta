@@ -127,6 +127,7 @@ class RendicionGastosDetailView(RendicionesMixin, DetailView):
         ctx['cuentas_pagar'] = self.object.cuentas_pagar.all()
         ctx['asiento'] = self.object.asientos.exclude(estado='anulado').first()
         ctx['transiciones'] = _TRANSICIONES_RENDICION.get(self.object.estado, [])
+        ctx['es_superusuario'] = self.request.user.is_superuser
         return ctx
 
     def post(self, request, pk):
