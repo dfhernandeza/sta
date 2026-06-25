@@ -84,15 +84,15 @@
           <span class="text-muted"><i class="bi bi-people me-2 text-warning"></i>Sueldos por Pagar</span>
           <span class="fw-600 text-warning">{{ sueldos_por_pagar|moneda_chilena }}</span>
         </li>
-        <li class="list-group-item d-flex justify-content-between px-0">
-          <span class="text-muted"><i class="bi bi-shield-check me-2 text-info"></i>Previred por Pagar</span>
-          <span class="fw-600 text-info" title="AFP: {{ afp_por_pagar|moneda_chilena }} / Salud: {{ salud_por_pagar|moneda_chilena }}">
+        <li class="list-group-item d-flex justify-content-between align-items-center px-3 py-3 bg-info-subtle border-start border-4 border-info rounded-2 my-2">
+          <span class="fw-700 text-info-emphasis"><i class="bi bi-shield-check me-2 text-info"></i>Previred por Pagar</span>
+          <span class="fw-800 fs-6 text-info-emphasis font-monospace" title="AFP: {{ afp_por_pagar|moneda_chilena }} / Salud: {{ salud_por_pagar|moneda_chilena }}">
             {{ previred_por_pagar|moneda_chilena }}
           </span>
         </li>
-        <li class="list-group-item d-flex justify-content-between px-0">
-          <span class="text-muted"><i class="bi bi-receipt me-2 text-warning"></i>Impuestos SII por Pagar</span>
-          <span class="fw-600 text-warning">{{ impuestos_sii_por_pagar|moneda_chilena }}</span>
+        <li class="list-group-item d-flex justify-content-between align-items-center px-3 py-3 bg-warning-subtle border-start border-4 border-warning rounded-2 my-2">
+          <span class="fw-700 text-warning-emphasis"><i class="bi bi-receipt me-2 text-warning"></i>Impuestos SII por Pagar</span>
+          <span class="fw-800 fs-6 text-warning-emphasis font-monospace">{{ impuestos_sii_por_pagar|moneda_chilena }}</span>
         </li>
       </ul>
       <div class="mt-3">

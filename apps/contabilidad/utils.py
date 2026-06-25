@@ -322,7 +322,7 @@ def generar_asiento_rendicion_gastos_recibida(rendicion, usuario=None):
         orden += 1
 
     # Línea HABER: CxP por total
-    _add_linea(asiento, config.cuenta_cxp, haber=monto_total,
+    _add_linea(asiento, config.cuenta_documentos_por_pagar, haber=monto_total,
                descripcion=f'CxP Rendición Gastos {rendicion.id}', orden=orden)
 
     return asiento

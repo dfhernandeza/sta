@@ -89,6 +89,11 @@ class ConfiguracionContable(models.Model):
         related_name='+', verbose_name='Cuenta CxP (Facturas por Pagar)',
         help_text='Cuenta pasivo para registrar cuentas por pagar (Haber en compra).'
     )
+    cuenta_documentos_por_pagar = models.ForeignKey(
+        PlanCuentas, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='+', verbose_name='Documentos por Pagar',
+        help_text='Cuenta pasivo para registrar documentos por pagar (Haber en compra).'
+    )
     cuenta_iva_debito = models.ForeignKey(
         PlanCuentas, null=True, blank=True, on_delete=models.SET_NULL,
         related_name='+', verbose_name='IVA Débito Fiscal',

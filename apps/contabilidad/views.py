@@ -107,6 +107,7 @@ class ConfiguracionContableView(ContabilidadMixin, View):
                 model = ConfiguracionContable
                 fields = [
                     'cuenta_cxc', 'cuenta_cxp',
+                    'cuenta_documentos_por_pagar',
                     'cuenta_iva_debito', 'cuenta_iva_credito',
                     'cuenta_ventas_default', 'cuenta_compras_default',
                     'cuenta_sueldos_operacional', 'cuenta_sueldos_administrativo',
@@ -123,6 +124,7 @@ class ConfiguracionContableView(ContabilidadMixin, View):
                 cuentas = PlanCuentas.objects.filter(activa=True, nivel=4).order_by('codigo')
                 self.fields['cuenta_cxc'].queryset = cuentas.filter(tipo='activo')
                 self.fields['cuenta_cxp'].queryset = cuentas.filter(tipo='pasivo')
+                self.fields['cuenta_documentos_por_pagar'].queryset = cuentas.filter(tipo='pasivo')
                 self.fields['cuenta_iva_debito'].queryset = cuentas.filter(tipo='pasivo')
                 self.fields['cuenta_iva_credito'].queryset = cuentas.filter(tipo='activo')
                 self.fields['cuenta_ventas_default'].queryset = cuentas.filter(tipo='ingreso')
@@ -757,6 +759,9 @@ class EstadoResultadosView(ContabilidadMixin, View):
             ('financiamiento' in ruta or 'intereses' in ruta)
         )
 
+    def _es_otro_socio(self, cuenta):
+        return cuenta.tipo == 'socio'
+
     def get(self, request):
         from django.shortcuts import render
         desde = request.GET.get('desde')
@@ -796,7 +801,7 @@ class EstadoResultadosView(ContabilidadMixin, View):
                 monto = -saldo
                 impuestos_renta.append({'cuenta': cuenta, 'saldo': monto})
                 total_impuesto_renta += monto
-            elif self._es_otros_ingresos(cuenta) or self._es_otro_gasto(cuenta):
+            elif self._es_otros_ingresos(cuenta) or self._es_otro_gasto(cuenta) or self._es_otro_socio(cuenta):
                 monto = saldo
                 otros.append({'cuenta': cuenta, 'saldo': monto})
                 total_otros += monto
