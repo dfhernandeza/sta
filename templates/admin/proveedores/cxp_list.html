@@ -149,16 +149,20 @@
           <td class="text-end fw-700 text-danger">{{ cxp.saldo_pendiente|moneda_chilena }}</td>
           <td class="text-center"><span class="badge-{{ cxp.estado }}">{{ cxp.get_estado_display }}</span></td>
           <td class="text-center">
+            <a href="{% url 'proveedores:cxp_detail' cxp.pk %}"
+               class="btn btn-outline-secondary btn-sm rounded-pill px-3" title="Ver detalle">
+              <i class="bi bi-eye me-1"></i>Ver
+            </a>
             {% if cxp.estado != 'pagada' and cxp.monto_pagado <= 0 %}
             <a href="{% url 'proveedores:cxp_pagar' cxp.pk %}"
-               class="btn btn-success btn-sm rounded-pill px-3" title="Registrar pago">
+               class="btn btn-success btn-sm rounded-pill px-3 ms-1" title="Registrar pago">
               <i class="bi bi-cash-coin me-1"></i>Pagar
             </a>
             {% else %}
             <form method="post" action="{% url 'proveedores:cxp_anular' cxp.pk %}" class="d-inline"
                   onsubmit="return confirm('\u00bfAnular este pago/aplicación? Se limpiará el monto pagado y la cuenta volverá a pendiente.')">
               {% csrf_token %}
-              <button type="submit" class="btn btn-outline-danger btn-sm rounded-pill px-3" title="Anular pago">
+              <button type="submit" class="btn btn-outline-danger btn-sm rounded-pill px-3 ms-1" title="Anular pago">
                 <i class="bi bi-arrow-counterclockwise me-1"></i>Anular
               </button>
             </form>

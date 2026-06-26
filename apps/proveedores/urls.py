@@ -22,6 +22,8 @@ urlpatterns = [
     # CxP
     path('cxp/', views.CuentaPorPagarListView.as_view(), name='cxp_list'),
     path('cxp/nomina-bci/', views.NominaBCIExportView.as_view(), name='cxp_nomina_bci'),
+    path('cxp/<int:pk>/', views.CuentaPorPagarDetailView.as_view(), name='cxp_detail'),
+    path('cxp/<int:pk>/cerrar-residual/', views.CxPCerrarSaldoResidualView.as_view(), name='cxp_cerrar_residual'),
     path('cxp/<int:pk>/pagar/', views.CxPPagarView.as_view(), name='cxp_pagar'),
     path('cxp/<int:pk>/anular/', views.AnularPagoCxPView.as_view(), name='cxp_anular'),
     # Asiento contable

@@ -1,0 +1,179 @@
+{% extends 'base_admin.html' %}
+{% load custom_tags %}
+
+{% block title %}Detalle Cuenta por Pagar{% endblock %}
+
+{% block breadcrumb %}
+  <li class="breadcrumb-item"><a href="{% url 'proveedores:proveedor_list' %}">Proveedores</a></li>
+  <li class="breadcrumb-item"><a href="{% url 'proveedores:cxp_list' %}">Cuentas por Pagar</a></li>
+  <li class="breadcrumb-item active">Detalle</li>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h4 class="page-title">Cuenta por Pagar #{{ cxp.pk }}</h4>
+    <p class="page-subtitle mb-0">
+      {% if cxp.factura %}
+        Factura {{ cxp.factura.numero }}
+      {% elif cxp.boleta_honorarios %}
+        Boleta {{ cxp.boleta_honorarios.numero }}
+      {% elif cxp.rendicion %}
+        Rendición #{{ cxp.rendicion.id }}
+      {% else %}
+        Documento sin referencia
+      {% endif %}
+    </p>
+  </div>
+  <a href="{% url 'proveedores:cxp_list' %}" class="btn btn-outline-secondary rounded-pill px-4">
+    <i class="bi bi-arrow-left me-1"></i>Volver
+  </a>
+</div>
+
+{% if tiene_saldo_residual_decimal %}
+<div class="alert alert-warning d-flex justify-content-between align-items-center gap-3">
+  <div>
+    <div class="fw-700">Saldo residual decimal detectado</div>
+    <div class="small">
+      Queda un saldo de {{ saldo_pendiente_decimal|moneda_chilena_decimales }}. Si corresponde solo a redondeo, se puede cerrar sin crear movimiento bancario.
+    </div>
+  </div>
+  <form method="post" action="{% url 'proveedores:cxp_cerrar_residual' cxp.pk %}"
+        onsubmit="return confirm('¿Cerrar el saldo residual decimal y marcar esta CxP como pagada?')">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-warning rounded-pill px-4">
+      <i class="bi bi-check2-circle me-1"></i>Cerrar residual
+    </button>
+  </form>
+</div>
+{% endif %}
+
+<div class="row g-4">
+  <div class="col-lg-5">
+    <div class="card-sta p-4 mb-4">
+      <h6 class="fw-700 text-sta mb-3"><i class="bi bi-file-earmark-text me-2"></i>Documento</h6>
+      <dl class="row mb-0">
+        <dt class="col-sm-5 text-muted small">Tipo</dt>
+        <dd class="col-sm-7">
+          {% if cxp.factura %}Factura{% elif cxp.boleta_honorarios %}Boleta honorarios{% elif cxp.rendicion %}Rendición{% else %}Otro{% endif %}
+        </dd>
+        <dt class="col-sm-5 text-muted small">Folio</dt>
+        <dd class="col-sm-7 font-monospace">
+          {% if cxp.factura %}
+            <a href="{% url 'proveedores:factura_detail' cxp.factura.pk %}" class="text-sta">{{ cxp.factura.numero }}</a>
+          {% elif cxp.boleta_honorarios %}
+            <a href="{% url 'boletas:boleta_detail' cxp.boleta_honorarios.pk %}" class="text-sta">{{ cxp.boleta_honorarios.numero }}</a>
+          {% elif cxp.rendicion %}
+            <a href="{% url 'rendiciones:rendicion_detail' cxp.rendicion.pk %}" class="text-sta">#{{ cxp.rendicion.id }}</a>
+          {% else %}
+            -
+          {% endif %}
+        </dd>
+        <dt class="col-sm-5 text-muted small">Acreedor</dt>
+        <dd class="col-sm-7">
+          {% if cxp.factura %}
+            {% if cxp.factura.pago_por_trabajador %}{{ cxp.factura.pago_por_trabajador.nombre_completo }}{% else %}{{ cxp.factura.proveedor.razon_social }}{% endif %}
+          {% elif cxp.boleta_honorarios %}
+            {{ cxp.boleta_honorarios.prestador.nombre }}
+          {% elif cxp.rendicion %}
+            {{ cxp.rendicion.trabajador.nombre_completo }}
+          {% else %}
+            -
+          {% endif %}
+        </dd>
+        <dt class="col-sm-5 text-muted small">Vencimiento</dt>
+        <dd class="col-sm-7">{{ cxp.fecha_vencimiento|date:"d/m/Y" }}</dd>
+        <dt class="col-sm-5 text-muted small">Estado CxP</dt>
+        <dd class="col-sm-7"><span class="badge-{{ cxp.estado }}">{{ cxp.get_estado_display }}</span></dd>
+        {% if cxp.factura %}
+        <dt class="col-sm-5 text-muted small">Estado factura</dt>
+        <dd class="col-sm-7"><span class="badge-{{ cxp.factura.estado }}">{{ cxp.factura.get_estado_display }}</span></dd>
+        {% endif %}
+      </dl>
+    </div>
+
+    <div class="card-sta p-4">
+      <h6 class="fw-700 text-sta mb-3"><i class="bi bi-calculator me-2"></i>Saldos con Decimales</h6>
+      <table class="table table-sm mb-0">
+        <tbody>
+          <tr>
+            <td class="text-muted">Monto CxP</td>
+            <td class="text-end font-monospace">{{ cxp.monto|moneda_chilena_decimales }}</td>
+          </tr>
+          <tr>
+            <td class="text-muted">Monto pagado/aplicado</td>
+            <td class="text-end font-monospace text-success">{{ cxp.monto_pagado|moneda_chilena_decimales }}</td>
+          </tr>
+          <tr>
+            <td class="fw-700">Saldo pendiente exacto</td>
+            <td class="text-end font-monospace fw-800 {% if saldo_pendiente_decimal > 0 %}text-danger{% else %}text-success{% endif %}">
+              {{ saldo_pendiente_decimal|moneda_chilena_decimales }}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="text-muted small mb-0 mt-3">
+        Los saldos residuales hasta {{ tolerancia_saldo_decimal|moneda_chilena_decimales }} se tratan como diferencias de redondeo.
+      </p>
+    </div>
+  </div>
+
+  <div class="col-lg-7">
+    <div class="card-sta p-4 mb-4">
+      <h6 class="fw-700 text-sta mb-3"><i class="bi bi-bank me-2"></i>Pago Bancario</h6>
+      {% if cxp.movimiento_pago %}
+      <dl class="row mb-0">
+        <dt class="col-sm-4 text-muted small">Fecha</dt>
+        <dd class="col-sm-8">{{ cxp.movimiento_pago.fecha|date:"d/m/Y" }}</dd>
+        <dt class="col-sm-4 text-muted small">Cuenta</dt>
+        <dd class="col-sm-8">{{ cxp.movimiento_pago.cuenta.banco.nombre }} - {{ cxp.movimiento_pago.cuenta.numero }}</dd>
+        <dt class="col-sm-4 text-muted small">Documento</dt>
+        <dd class="col-sm-8 font-monospace">{{ cxp.movimiento_pago.documento|default:"-" }}</dd>
+        <dt class="col-sm-4 text-muted small">Monto</dt>
+        <dd class="col-sm-8 fw-700 font-monospace text-danger">{{ cxp.movimiento_pago.monto|moneda_chilena_decimales }}</dd>
+        <dt class="col-sm-4 text-muted small">Conciliado</dt>
+        <dd class="col-sm-8">{{ cxp.movimiento_pago.conciliado|yesno:"Sí,No" }}</dd>
+      </dl>
+      {% else %}
+      <p class="text-muted small mb-0">No hay movimiento bancario asociado.</p>
+      {% endif %}
+    </div>
+
+    <div class="card-sta p-4">
+      <h6 class="fw-700 text-sta mb-3"><i class="bi bi-wallet2 me-2"></i>Aplicaciones de Anticipos / Créditos</h6>
+      <div class="table-responsive">
+        <table class="table table-sm table-hover mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>Fecha</th>
+              <th>Origen</th>
+              <th>Descripción</th>
+              <th class="text-end">Monto</th>
+              <th>Asiento</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for aplicacion in aplicaciones_anticipos %}
+            <tr>
+              <td>{{ aplicacion.fecha|date:"d/m/Y" }}</td>
+              <td>{{ aplicacion.anticipo.get_origen_display }}</td>
+              <td class="small">{{ aplicacion.anticipo.descripcion|truncatechars:50 }}</td>
+              <td class="text-end font-monospace text-success">{{ aplicacion.monto|moneda_chilena_decimales }}</td>
+              <td>
+                {% if aplicacion.asiento %}
+                  <a href="{% url 'contabilidad:asiento_detail' aplicacion.asiento.pk %}" class="text-sta">{{ aplicacion.asiento.numero }}</a>
+                {% else %}
+                  -
+                {% endif %}
+              </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="5" class="text-center text-muted py-4">No hay anticipos aplicados.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

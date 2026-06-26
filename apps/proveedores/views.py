@@ -15,6 +15,8 @@ from apps.contabilidad.utils import generar_asiento_factura_recibida, generar_as
 from apps.core.mixins import GestionMixin, AppPermisoMixin
 from django.db import transaction
 
+CXP_TOLERANCIA_SALDO_DECIMAL = Decimal('0.99')
+
 
 class ProveedoresMixin(AppPermisoMixin):
     app_name = 'proveedores'
@@ -122,6 +124,40 @@ def _total_notas_credito_activas(factura):
     )['total'] or Decimal('0')
 
 
+def _monto_2(valor):
+    return (valor or Decimal('0')).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+
+def _saldo_pendiente_cxp(cxp):
+    return max(_monto_2(cxp.monto) - _monto_2(cxp.monto_pagado), Decimal('0.00'))
+
+
+def _tiene_saldo_residual_decimal(cxp):
+    saldo = _saldo_pendiente_cxp(cxp)
+    return Decimal('0.00') < saldo <= CXP_TOLERANCIA_SALDO_DECIMAL
+
+
+def _cerrar_saldo_residual_decimal(cxp):
+    if not _tiene_saldo_residual_decimal(cxp):
+        return False
+    cxp.monto_pagado = _monto_2(cxp.monto)
+    return True
+
+
+def _actualizar_documento_cxp(cxp):
+    if _saldo_pendiente_cxp(cxp) > 0:
+        return
+    if cxp.factura:
+        cxp.factura.estado = 'pagada'
+        cxp.factura.save(update_fields=['estado'])
+    elif cxp.boleta_honorarios:
+        cxp.boleta_honorarios.estado = 'pagada'
+        cxp.boleta_honorarios.save(update_fields=['estado'])
+    elif cxp.rendicion:
+        cxp.rendicion.estado = 'pagada'
+        cxp.rendicion.save()
+
+
 def _saldo_factura_antes_de_nota_credito(factura, nota_credito):
     total_otras_notas = factura.notas_credito.exclude(estado='anulada').exclude(
         pk=nota_credito.pk
@@ -226,7 +262,7 @@ def _sincronizar_cxp_factura(factura):
         return None
 
     fecha_venc = factura.fecha_vencimiento or factura.fecha_emision
-    monto_cxp = max(factura.total - _total_notas_credito_activas(factura), Decimal('0'))
+    monto_cxp = _monto_2(max(factura.total - _total_notas_credito_activas(factura), Decimal('0')))
 
     cxp, created = CuentaPorPagar.objects.get_or_create(
         factura=factura,
@@ -241,7 +277,8 @@ def _sincronizar_cxp_factura(factura):
         cxp.fecha_vencimiento = fecha_venc
         cxp.monto = monto_cxp
 
-        if cxp.monto_pagado >= monto_cxp:
+        _cerrar_saldo_residual_decimal(cxp)
+        if _saldo_pendiente_cxp(cxp) <= 0:
             cxp.estado = 'pagada'
         else:
             cxp.estado = 'pendiente'
@@ -249,6 +286,7 @@ def _sincronizar_cxp_factura(factura):
         cxp.save(update_fields=[
             'fecha_vencimiento',
             'monto',
+            'monto_pagado',
             'estado',
         ])
 
@@ -879,6 +917,67 @@ class CuentaPorPagarListView(ProveedoresMixin, ListView):
         return ctx
 
 
+class CuentaPorPagarDetailView(ProveedoresMixin, DetailView):
+    model = CuentaPorPagar
+    template_name = 'admin/proveedores/cxp_detail.html'
+    context_object_name = 'cxp'
+
+    def get_queryset(self):
+        return CuentaPorPagar.objects.select_related(
+            'factura__proveedor',
+            'factura__pago_por_trabajador',
+            'rendicion__trabajador',
+            'boleta_honorarios__prestador',
+            'movimiento_pago__cuenta__banco',
+        ).prefetch_related(
+            'aplicaciones_anticipos__anticipo',
+            'aplicaciones_anticipos__asiento',
+        )
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        cxp = self.object
+        ctx['titulo'] = f'Detalle CxP #{cxp.pk}'
+        ctx['saldo_pendiente_decimal'] = _saldo_pendiente_cxp(cxp)
+        ctx['tiene_saldo_residual_decimal'] = _tiene_saldo_residual_decimal(cxp)
+        ctx['tolerancia_saldo_decimal'] = CXP_TOLERANCIA_SALDO_DECIMAL
+        ctx['aplicaciones_anticipos'] = cxp.aplicaciones_anticipos.select_related('anticipo', 'asiento')
+        return ctx
+
+
+class CxPCerrarSaldoResidualView(ProveedoresMixin, View):
+    def post(self, request, pk):
+        cxp = get_object_or_404(CuentaPorPagar, pk=pk)
+
+        if not _tiene_saldo_residual_decimal(cxp):
+            messages.info(
+                request,
+                f'La cuenta no tiene un saldo residual decimal menor o igual a {CXP_TOLERANCIA_SALDO_DECIMAL}.'
+            )
+            return redirect('proveedores:cxp_detail', pk=cxp.pk)
+
+        with transaction.atomic():
+            saldo_anterior = _saldo_pendiente_cxp(cxp)
+            cxp.monto_pagado = _monto_2(cxp.monto)
+            cxp.estado = 'pagada'
+            nota_residual = f'Cierre manual por saldo residual decimal: {saldo_anterior}.'
+            cxp.notas = f'{cxp.notas}\n{nota_residual}'.strip()
+            cxp.save(update_fields=['monto_pagado', 'estado', 'notas'])
+            _actualizar_documento_cxp(cxp)
+
+        logger.warning(
+            'CxP pk=%s cerrada por saldo residual decimal %s por %s',
+            cxp.pk,
+            saldo_anterior,
+            request.user,
+        )
+        messages.success(
+            request,
+            f'Saldo residual de {saldo_anterior} cerrado. La CxP quedó pagada.'
+        )
+        return redirect('proveedores:cxp_detail', pk=cxp.pk)
+
+
 class NominaBCIExportView(ProveedoresMixin, View):
     template_path = 'xls/carga_masiva_nominas.xlsx'
 
@@ -1103,17 +1202,7 @@ class CxPPagarView(ProveedoresMixin, View):
         _actualizar_estado_anticipo(anticipo)
 
     def _actualizar_documento_cxp(self, cxp):
-        if cxp.saldo_pendiente > 0:
-            return
-        if cxp.factura:
-            cxp.factura.estado = 'pagada'
-            cxp.factura.save(update_fields=['estado'])
-        elif cxp.boleta_honorarios:
-            cxp.boleta_honorarios.estado = 'pagada'
-            cxp.boleta_honorarios.save(update_fields=['estado'])
-        elif cxp.rendicion:
-            cxp.rendicion.estado = 'pagada'
-            cxp.rendicion.save()
+        _actualizar_documento_cxp(cxp)
 
     def _build_form(self, cxp, data=None, initial=None):
         from django import forms
@@ -1321,7 +1410,11 @@ class CxPPagarView(ProveedoresMixin, View):
             cxp.medio_pago = d['medio_pago']
             cxp.numero_documento = d['numero_documento']
             cxp.notas = d['notas']
-            cxp.estado = 'pagada' if cxp.saldo_pendiente <= 0 else 'pendiente'
+            saldo_residual = _saldo_pendiente_cxp(cxp)
+            if _cerrar_saldo_residual_decimal(cxp):
+                nota_residual = f'Cierre automático por saldo residual decimal: {saldo_residual}.'
+                cxp.notas = f'{cxp.notas}\n{nota_residual}'.strip()
+            cxp.estado = 'pagada' if _saldo_pendiente_cxp(cxp) <= 0 else 'pendiente'
             cxp.save()
             self._actualizar_documento_cxp(cxp)
 
