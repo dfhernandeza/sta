@@ -7,5 +7,6 @@ urlpatterns = [
     path('', views.RendicionGastosListView.as_view(), name='rendicion_list'),
     path('crear/', views.RendicionGastosCreateView.as_view(), name='rendicion_create'),
     path('<int:pk>/', views.RendicionGastosDetailView.as_view(), name='rendicion_detail'),
+    path('<int:pk>/eliminar/', views.RendicionGastosDeleteView.as_view(), name='rendicion_delete'),
     path('<int:pk>/asiento/', views.GenerarAsientoRendicionView.as_view(), name='rendicion_asiento'),
 ]

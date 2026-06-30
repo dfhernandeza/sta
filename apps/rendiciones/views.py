@@ -1,10 +1,11 @@
 import logging
 
-from django.views.generic import ListView, CreateView, DetailView, View
-from django.urls import reverse_lazy
+from django.views.generic import ListView, CreateView, DetailView, DeleteView, View
+from django.urls import reverse, reverse_lazy
 from django.contrib import messages
 from django.shortcuts import get_object_or_404, redirect
 from django.utils import timezone
+from django.db import transaction
 from datetime import timedelta
 from django.db.models import Sum
 from django.forms import inlineformset_factory, ModelForm, TextInput, Select, NumberInput
@@ -150,6 +151,83 @@ class RendicionGastosDetailView(RendicionesMixin, DetailView):
             )
             messages.error(request, 'Transición de estado no permitida.')
         return redirect('rendiciones:rendicion_detail', pk=rendicion.pk)
+
+
+class RendicionGastosDeleteView(RendicionesMixin, DeleteView):
+    model = RendicionGastos
+    template_name = 'admin/rendiciones/rendicion_confirm_delete.html'
+    success_url = reverse_lazy('rendiciones:rendicion_list')
+
+    def _motivo_bloqueo(self, rendicion):
+        if rendicion.estado == 'pagada':
+            return (
+                'No se puede eliminar una rendición marcada como pagada. '
+                'Anule primero el pago desde Cuentas por Pagar.'
+            )
+
+        if rendicion.asientos.filter(estado='confirmado').exists():
+            return (
+                'No se puede eliminar la rendición porque tiene un asiento contable confirmado. '
+                'Anule o reverse el asiento antes de eliminarla.'
+            )
+
+        cuentas_pagar = rendicion.cuentas_pagar.prefetch_related('aplicaciones_anticipos')
+        for cxp in cuentas_pagar:
+            tiene_pago = (
+                cxp.estado == 'pagada'
+                or cxp.movimiento_pago_id is not None
+                or (cxp.monto_pagado or 0) > 0
+                or cxp.aplicaciones_anticipos.exists()
+            )
+            if tiene_pago:
+                return (
+                    'No se puede eliminar la rendición porque su cuenta por pagar tiene pagos '
+                    'o anticipos aplicados. Anule primero el pago desde Cuentas por Pagar.'
+                )
+        return None
+
+    def dispatch(self, request, *args, **kwargs):
+        self.object = self.get_object()
+        motivo = self._motivo_bloqueo(self.object)
+        if motivo:
+            messages.error(request, motivo)
+            return redirect('rendiciones:rendicion_detail', pk=self.object.pk)
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx['cancel_url'] = reverse(
+            'rendiciones:rendicion_detail',
+            kwargs={'pk': self.object.pk},
+        )
+        ctx['cuentas_pagar'] = self.object.cuentas_pagar.all()
+        ctx['asientos_borrador'] = self.object.asientos.filter(estado='borrador')
+        return ctx
+
+    def form_valid(self, form):
+        with transaction.atomic():
+            rendicion = RendicionGastos.objects.select_for_update().get(pk=self.object.pk)
+            motivo = self._motivo_bloqueo(rendicion)
+            if motivo:
+                messages.error(self.request, motivo)
+                return redirect('rendiciones:rendicion_detail', pk=rendicion.pk)
+
+            rendicion_id = rendicion.pk
+            indice = rendicion.indice_rendicion
+            trabajador = rendicion.trabajador
+            rendicion.asientos.filter(estado='borrador').delete()
+            rendicion.cuentas_pagar.all().delete()
+            rendicion.delete()
+
+        logger.warning(
+            'Rendición eliminada: pk=%s, índice=%s, trabajador=%s por %s',
+            rendicion_id,
+            indice,
+            trabajador,
+            self.request.user,
+        )
+        messages.success(self.request, f'Rendición {indice} eliminada correctamente.')
+        return redirect(self.success_url)
 
 
 class GenerarAsientoRendicionView(RendicionesMixin, View):

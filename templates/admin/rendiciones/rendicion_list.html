@@ -55,6 +55,9 @@
           </td>
           <td class="text-center">
             <a href="{% url 'rendiciones:rendicion_detail' r.pk %}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-eye"></i></a>
+            <a href="{% url 'rendiciones:rendicion_delete' r.pk %}" class="btn btn-outline-danger btn-sm" title="Eliminar rendición">
+              <i class="bi bi-trash"></i>
+            </a>
           </td>
         </tr>
         {% empty %}
