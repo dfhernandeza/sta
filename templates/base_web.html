@@ -4,8 +4,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="{% block meta_description %}STA Muebles y Terminaciones - Calidad en cada detalle{% endblock %}">
-  <title>{% block title %}STA Muebles y Terminaciones{% endblock %}</title>
+  <meta name="description" content="{% block meta_description %}{{ pagina.meta_descripcion|default:site_config.meta_descripcion|default:'STA Muebles y Terminaciones - Calidad en cada detalle' }}{% endblock %}">
+  <title>{% block title %}{{ pagina.titulo_navegador|default:site_config.nombre_sitio|default:'STA Muebles y Terminaciones' }}{% endblock %}</title>
   <!-- Bootstrap 5 -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <!-- Bootstrap Icons -->
@@ -21,10 +21,12 @@
   <nav class="navbar navbar-expand-lg navbar-sta fixed-top">
     <div class="container">
       <a class="navbar-brand" href="{% url 'web:index' %}">
-        {% if logo_exists %}
-          <img src="{% static 'img/logo.png' %}" alt="STA Muebles y Terminaciones">
+        {% if site_config.logo %}
+          <img src="{{ site_config.logo.url }}" alt="{{ site_config.nombre_sitio|default:'STA Muebles y Terminaciones' }}">
+        {% elif logo_exists %}
+          <img src="{% static 'img/logo.png' %}" alt="{{ site_config.nombre_sitio|default:'STA Muebles y Terminaciones' }}">
         {% else %}
-          <span class="fw-800 text-white" style="font-size:1.3rem;letter-spacing:.05em;">STA</span>
+          <span class="fw-800 text-white" style="font-size:1.3rem;letter-spacing:.05em;">{{ site_config.nombre_sitio|default:'STA' }}</span>
         {% endif %}
       </a>
       <button class="navbar-toggler border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navMain">
@@ -32,25 +34,22 @@
       </button>
       <div class="collapse navbar-collapse" id="navMain">
         <ul class="navbar-nav ms-auto align-items-lg-center gap-lg-1">
-          <li class="nav-item">
-            <a class="nav-link {% if request.resolver_match.url_name == 'index' %}active{% endif %}"
-               href="{% url 'web:index' %}">Inicio</a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link {% if request.resolver_match.url_name == 'proyectos' %}active{% endif %}"
-               href="{% url 'web:proyectos' %}">Proyectos</a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link {% if request.resolver_match.url_name == 'servicios' %}active{% endif %}"
-               href="{% url 'web:servicios' %}">Servicios</a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link {% if request.resolver_match.url_name == 'nosotros' %}active{% endif %}"
-               href="{% url 'web:nosotros' %}">Nosotros</a>
-          </li>
-          <li class="nav-item ms-lg-2">
-            <a class="nav-link btn-contacto" href="{% url 'web:contacto' %}">Cotizar</a>
-          </li>
+          {% if paginas_menu %}
+            {% for nav_page in paginas_menu %}
+              {% if nav_page.nombre_url %}
+                <li class="nav-item {% if nav_page.slug == 'contacto' %}ms-lg-2{% endif %}">
+                  <a class="nav-link {% if nav_page.slug == 'contacto' %}btn-contacto{% endif %} {% if request.resolver_match.view_name == nav_page.nombre_url %}active{% endif %}"
+                     href="{% url nav_page.nombre_url %}">{{ nav_page.titulo_menu|default:nav_page.get_slug_display }}</a>
+                </li>
+              {% endif %}
+            {% endfor %}
+          {% else %}
+            <li class="nav-item"><a class="nav-link {% if request.resolver_match.url_name == 'index' %}active{% endif %}" href="{% url 'web:index' %}">Inicio</a></li>
+            <li class="nav-item"><a class="nav-link {% if request.resolver_match.url_name == 'proyectos' %}active{% endif %}" href="{% url 'web:proyectos' %}">Proyectos</a></li>
+            <li class="nav-item"><a class="nav-link {% if request.resolver_match.url_name == 'servicios' %}active{% endif %}" href="{% url 'web:servicios' %}">Servicios</a></li>
+            <li class="nav-item"><a class="nav-link {% if request.resolver_match.url_name == 'nosotros' %}active{% endif %}" href="{% url 'web:nosotros' %}">Nosotros</a></li>
+            <li class="nav-item ms-lg-2"><a class="nav-link btn-contacto" href="{% url 'web:contacto' %}">Cotizar</a></li>
+          {% endif %}
         </ul>
       </div>
     </div>
@@ -67,45 +66,67 @@
       <div class="row g-4">
         <div class="col-lg-4">
           <div class="footer-brand">
-            {% if logo_exists %}
-              <img src="{% static 'img/logo.png' %}" alt="STA">
+            {% if site_config.logo %}
+              <img src="{{ site_config.logo.url }}" alt="{{ site_config.nombre_sitio|default:'STA' }}">
+            {% elif logo_exists %}
+              <img src="{% static 'img/logo.png' %}" alt="{{ site_config.nombre_sitio|default:'STA' }}">
             {% else %}
-              <h3 class="text-white fw-800">STA</h3>
+              <h3 class="text-white fw-800">{{ site_config.nombre_sitio|default:'STA' }}</h3>
             {% endif %}
-            <p class="mt-2">Muebles y Terminaciones de calidad para proyectos residenciales y comerciales en Chile.</p>
+            <p class="mt-2">{{ site_config.descripcion_footer|default:'Muebles y Terminaciones de calidad para proyectos residenciales y comerciales en Chile.' }}</p>
           </div>
         </div>
         <div class="col-lg-2 col-6">
           <h5>Navegación</h5>
           <ul class="list-unstyled">
-            <li><a href="{% url 'web:index' %}">Inicio</a></li>
-            <li><a href="{% url 'web:proyectos' %}">Proyectos</a></li>
-            <li><a href="{% url 'web:servicios' %}">Servicios</a></li>
-            <li><a href="{% url 'web:nosotros' %}">Nosotros</a></li>
-            <li><a href="{% url 'web:contacto' %}">Contacto</a></li>
+            {% if paginas_footer %}
+              {% for footer_page in paginas_footer %}
+                {% if footer_page.nombre_url %}
+                  <li><a href="{% url footer_page.nombre_url %}">{{ footer_page.titulo_menu|default:footer_page.get_slug_display }}</a></li>
+                {% endif %}
+              {% endfor %}
+            {% else %}
+              <li><a href="{% url 'web:index' %}">Inicio</a></li>
+              <li><a href="{% url 'web:proyectos' %}">Proyectos</a></li>
+              <li><a href="{% url 'web:servicios' %}">Servicios</a></li>
+              <li><a href="{% url 'web:nosotros' %}">Nosotros</a></li>
+              <li><a href="{% url 'web:contacto' %}">Contacto</a></li>
+            {% endif %}
           </ul>
         </div>
         <div class="col-lg-3 col-6">
           <h5>Servicios</h5>
           <ul class="list-unstyled">
-            <li><a href="#">Muebles a Medida</a></li>
-            <li><a href="#">Cocinas</a></li>
-            <li><a href="#">Closets</a></li>
-            <li><a href="#">Oficinas</a></li>
-            <li><a href="#">Terminaciones</a></li>
+            {% if servicios_footer %}
+              {% for servicio_footer in servicios_footer %}
+                <li><a href="{% url 'web:servicios' %}">{{ servicio_footer.titulo }}</a></li>
+              {% endfor %}
+            {% else %}
+              <li><a href="{% url 'web:servicios' %}">Muebles a Medida</a></li>
+              <li><a href="{% url 'web:servicios' %}">Cocinas</a></li>
+              <li><a href="{% url 'web:servicios' %}">Closets</a></li>
+              <li><a href="{% url 'web:servicios' %}">Oficinas</a></li>
+              <li><a href="{% url 'web:servicios' %}">Terminaciones</a></li>
+            {% endif %}
           </ul>
         </div>
         <div class="col-lg-3">
           <h5>Contacto</h5>
           <ul class="list-unstyled">
-            <li class="mb-1"><i class="bi bi-telephone me-2" style="color:var(--sta-light)"></i><a href="tel:+56000000000">+56 X XXXX XXXX</a></li>
-            <li class="mb-1"><i class="bi bi-envelope me-2" style="color:var(--sta-light)"></i><a href="mailto:contacto@stamuebles.cl">contacto@stamuebles.cl</a></li>
-            <li class="mb-1"><i class="bi bi-geo-alt me-2" style="color:var(--sta-light)"></i>Chile</li>
+            {% if site_config.telefono %}
+              <li class="mb-1"><i class="bi bi-telephone me-2" style="color:var(--sta-light)"></i><a href="tel:{{ site_config.telefono }}">{{ site_config.telefono }}</a></li>
+            {% endif %}
+            {% if site_config.email %}
+              <li class="mb-1"><i class="bi bi-envelope me-2" style="color:var(--sta-light)"></i><a href="mailto:{{ site_config.email }}">{{ site_config.email }}</a></li>
+            {% endif %}
+            {% if site_config.ubicacion %}
+              <li class="mb-1"><i class="bi bi-geo-alt me-2" style="color:var(--sta-light)"></i>{{ site_config.ubicacion }}</li>
+            {% endif %}
           </ul>
         </div>
       </div>
       <div class="footer-bottom">
-        <p class="mb-0">&copy; {% now "Y" %} STA Muebles y Terminaciones. Todos los derechos reservados.</p>
+        <p class="mb-0">&copy; {% now "Y" %} {{ site_config.nombre_sitio|default:'STA Muebles y Terminaciones' }}. Todos los derechos reservados.</p>
       </div>
     </div>
   </footer>

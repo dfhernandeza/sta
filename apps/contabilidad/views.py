@@ -705,31 +705,47 @@ class BalanceGeneralView(ContabilidadMixin, View):
         total_activo = Decimal('0')
         total_pasivo = Decimal('0')
         total_patrimonio = Decimal('0')
+        resultado_ejercicio = Decimal('0')
 
         for cid, saldo in saldos.items():
             if saldo == 0:
                 continue
             cuenta = cuentas_map[cid]
-            row = {'cuenta': cuenta, 'saldo': saldo}
             if cuenta.tipo == 'activo':
+                row = {'cuenta': cuenta, 'saldo': saldo}
                 activos.append(row)
                 total_activo += saldo
             elif cuenta.tipo == 'pasivo':
+                monto = -saldo
+                row = {'cuenta': cuenta, 'saldo': monto}
                 pasivos.append(row)
-                total_pasivo += saldo
-            elif cuenta.tipo == 'socio':
+                total_pasivo += monto
+            elif cuenta.tipo == 'patrimonio':
+                monto = -saldo
+                row = {'cuenta': cuenta, 'saldo': monto}
                 patrimonio.append(row)
-                total_patrimonio += saldo
+                total_patrimonio += monto
+            elif cuenta.tipo in ('ingreso', 'costo', 'gasto', 'socio'):
+                resultado_ejercicio -= saldo
 
         activos.sort(key=lambda r: r['cuenta'].codigo)
         pasivos.sort(key=lambda r: r['cuenta'].codigo)
         patrimonio.sort(key=lambda r: r['cuenta'].codigo)
+
+        if resultado_ejercicio:
+            patrimonio.append({
+                'cuenta': None,
+                'saldo': resultado_ejercicio,
+                'es_resultado_ejercicio': True,
+            })
+            total_patrimonio += resultado_ejercicio
 
         return render(request, self.template_name, {
             'titulo': 'Balance General',
             'activos': activos, 'total_activo': total_activo,
             'pasivos': pasivos, 'total_pasivo': total_pasivo,
             'patrimonio': patrimonio, 'total_patrimonio': total_patrimonio,
+            'resultado_ejercicio': resultado_ejercicio,
             'total_pasivo_patrimonio': total_pasivo + total_patrimonio,
         })
 
@@ -758,9 +774,6 @@ class EstadoResultadosView(ContabilidadMixin, View):
             not self._es_impuesto_renta(cuenta) and
             ('financiamiento' in ruta or 'intereses' in ruta)
         )
-
-    def _es_otro_socio(self, cuenta):
-        return cuenta.tipo == 'socio'
 
     def get(self, request):
         from django.shortcuts import render
@@ -801,7 +814,7 @@ class EstadoResultadosView(ContabilidadMixin, View):
                 monto = -saldo
                 impuestos_renta.append({'cuenta': cuenta, 'saldo': monto})
                 total_impuesto_renta += monto
-            elif self._es_otros_ingresos(cuenta) or self._es_otro_gasto(cuenta) or self._es_otro_socio(cuenta):
+            elif self._es_otros_ingresos(cuenta) or self._es_otro_gasto(cuenta):
                 monto = saldo
                 otros.append({'cuenta': cuenta, 'saldo': monto})
                 total_otros += monto
@@ -815,7 +828,7 @@ class EstadoResultadosView(ContabilidadMixin, View):
                 row = {'cuenta': cuenta, 'saldo': monto}
                 costos.append(row)
                 total_costos += monto
-            elif cuenta.tipo == 'gasto':
+            elif cuenta.tipo in ('gasto', 'socio'):
                 monto = -saldo
                 row = {'cuenta': cuenta, 'saldo': monto}
                 gastos.append(row)

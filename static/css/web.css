@@ -44,6 +44,11 @@
   overflow: hidden;
   padding: 6rem 0 4rem;
 }
+.hero-section--image {
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+}
 .hero-section::before {
   content: '';
   position: absolute;

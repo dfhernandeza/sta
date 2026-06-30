@@ -1,29 +1,34 @@
 {% extends 'base_web.html' %}
 {% load static %}
 
-{% block title %}STA Muebles y Terminaciones - Inicio{% endblock %}
+{% block title %}{{ pagina.titulo_navegador|default:'STA Muebles y Terminaciones - Inicio' }}{% endblock %}
 
 {% block content %}
 
 <!-- HERO -->
-<section class="hero-section">
+<section
+  class="hero-section{% if secciones.hero.imagen or pagina.imagen_encabezado %} hero-section--image{% endif %}"
+  {% if secciones.hero.imagen %}
+    style="background-image:linear-gradient(90deg,rgba(20,31,48,.84) 0%,rgba(20,31,48,.55) 55%,rgba(20,31,48,.18) 100%),url('{{ secciones.hero.imagen.url }}');"
+  {% elif pagina.imagen_encabezado %}
+    style="background-image:linear-gradient(90deg,rgba(20,31,48,.84) 0%,rgba(20,31,48,.55) 55%,rgba(20,31,48,.18) 100%),url('{{ pagina.imagen_encabezado.url }}');"
+  {% endif %}
+>
   <div class="container">
     <div class="row align-items-center">
       <div class="col-lg-7 hero-content" data-aos="fade-right">
         <h1 class="hero-title">
-          Muebles y Terminaciones<br>
-          <span>de alta calidad</span>
+          {{ secciones.hero.titulo|default:'Muebles y Terminaciones de alta calidad'|linebreaksbr }}
         </h1>
         <p class="hero-subtitle">
-          Diseñamos y fabricamos muebles a medida, cocinas, closets y terminaciones
-          para proyectos residenciales y comerciales en todo Chile.
+          {{ secciones.hero.subtitulo|default:'Diseñamos y fabricamos muebles a medida, cocinas, closets y terminaciones para proyectos residenciales y comerciales en todo Chile.' }}
         </p>
         <div class="d-flex gap-3 flex-wrap">
-          <a href="{% url 'web:proyectos' %}" class="btn btn-light btn-lg px-4 fw-600 rounded-pill">
-            Ver Proyectos
+          <a href="{{ secciones.hero.url_boton|default:'/proyectos/' }}" class="btn btn-light btn-lg px-4 fw-600 rounded-pill">
+            {{ secciones.hero.texto_boton|default:'Ver Proyectos' }}
           </a>
-          <a href="{% url 'web:contacto' %}" class="btn btn-outline-light btn-lg px-4 fw-600 rounded-pill">
-            Cotizar ahora <i class="bi bi-arrow-right ms-1"></i>
+          <a href="{{ secciones.hero.url_boton_secundario|default:'/contacto/' }}" class="btn btn-outline-light btn-lg px-4 fw-600 rounded-pill">
+            {{ secciones.hero.texto_boton_secundario|default:'Cotizar ahora' }} <i class="bi bi-arrow-right ms-1"></i>
           </a>
         </div>
       </div>
@@ -35,22 +40,19 @@
 <section class="py-5 bg-white border-bottom">
   <div class="container">
     <div class="row text-center g-4">
-      <div class="col-6 col-md-3">
-        <div class="fw-800 fs-1 text-sta">+500</div>
-        <div class="text-muted small">Proyectos Realizados</div>
-      </div>
-      <div class="col-6 col-md-3">
-        <div class="fw-800 fs-1 text-sta">+15</div>
-        <div class="text-muted small">Años de Experiencia</div>
-      </div>
-      <div class="col-6 col-md-3">
-        <div class="fw-800 fs-1 text-sta">+300</div>
-        <div class="text-muted small">Clientes Satisfechos</div>
-      </div>
-      <div class="col-6 col-md-3">
-        <div class="fw-800 fs-1 text-sta">100%</div>
-        <div class="text-muted small">Comprometidos</div>
-      </div>
+      {% if secciones.estadisticas.items_activos %}
+        {% for stat in secciones.estadisticas.items_activos %}
+          <div class="col-6 col-md-3">
+            <div class="fw-800 fs-1 text-sta">{{ stat.valor }}</div>
+            <div class="text-muted small">{{ stat.titulo }}</div>
+          </div>
+        {% endfor %}
+      {% else %}
+        <div class="col-6 col-md-3"><div class="fw-800 fs-1 text-sta">+500</div><div class="text-muted small">Proyectos Realizados</div></div>
+        <div class="col-6 col-md-3"><div class="fw-800 fs-1 text-sta">+15</div><div class="text-muted small">Años de Experiencia</div></div>
+        <div class="col-6 col-md-3"><div class="fw-800 fs-1 text-sta">+300</div><div class="text-muted small">Clientes Satisfechos</div></div>
+        <div class="col-6 col-md-3"><div class="fw-800 fs-1 text-sta">100%</div><div class="text-muted small">Comprometidos</div></div>
+      {% endif %}
     </div>
   </div>
 </section>
@@ -61,8 +63,8 @@
   <div class="container">
     <div class="text-center mb-5">
       <div class="section-divider mx-auto"></div>
-      <h2 class="section-title">Nuestros Servicios</h2>
-      <p class="section-subtitle">Soluciones integrales en muebles y terminaciones</p>
+      <h2 class="section-title">{{ secciones.servicios.titulo|default:'Nuestros Servicios' }}</h2>
+      <p class="section-subtitle">{{ secciones.servicios.subtitulo|default:'Soluciones integrales en muebles y terminaciones' }}</p>
     </div>
     <div class="row g-4">
       {% for servicio in servicios %}
@@ -79,7 +81,7 @@
     </div>
     <div class="text-center mt-4">
       <a href="{% url 'web:servicios' %}" class="btn btn-sta btn-lg px-5 rounded-pill">
-        Ver todos los servicios
+        {{ secciones.servicios.texto_boton|default:'Ver todos los servicios' }}
       </a>
     </div>
   </div>
@@ -92,8 +94,8 @@
   <div class="container">
     <div class="text-center mb-5">
       <div class="section-divider mx-auto"></div>
-      <h2 class="section-title">Proyectos Destacados</h2>
-      <p class="section-subtitle">Una selección de nuestros mejores trabajos</p>
+      <h2 class="section-title">{{ secciones.proyectos_destacados.titulo|default:'Proyectos Destacados' }}</h2>
+      <p class="section-subtitle">{{ secciones.proyectos_destacados.subtitulo|default:'Una selección de nuestros mejores trabajos' }}</p>
     </div>
     <div class="row g-4">
       {% for p in proyectos_destacados %}
@@ -119,7 +121,7 @@
     </div>
     <div class="text-center mt-4">
       <a href="{% url 'web:proyectos' %}" class="btn btn-sta btn-lg px-5 rounded-pill">
-        Ver todos los proyectos
+        {{ secciones.proyectos_destacados.texto_boton|default:'Ver todos los proyectos' }}
       </a>
     </div>
   </div>
@@ -129,10 +131,10 @@
 <!-- CTA CONTACTO -->
 <section class="py-5" style="background:linear-gradient(135deg,var(--sta-navy),var(--sta-steel));">
   <div class="container text-center text-white">
-    <h2 class="fw-800 mb-3" style="font-size:2rem;">¿Tienes un proyecto en mente?</h2>
-    <p class="mb-4 opacity-75">Cuéntanos tu idea y te ayudamos a hacerla realidad con calidad y precisión.</p>
-    <a href="{% url 'web:contacto' %}" class="btn btn-light btn-lg px-5 fw-600 rounded-pill text-sta">
-      Solicitar cotización gratis
+    <h2 class="fw-800 mb-3" style="font-size:2rem;">{{ secciones.cta.titulo|default:'¿Tienes un proyecto en mente?' }}</h2>
+    <p class="mb-4 opacity-75">{{ secciones.cta.subtitulo|default:'Cuéntanos tu idea y te ayudamos a hacerla realidad con calidad y precisión.' }}</p>
+    <a href="{{ secciones.cta.url_boton|default:'/contacto/' }}" class="btn btn-light btn-lg px-5 fw-600 rounded-pill text-sta">
+      {{ secciones.cta.texto_boton|default:'Solicitar cotización gratis' }}
     </a>
   </div>
 </section>

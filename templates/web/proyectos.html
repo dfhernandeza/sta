@@ -1,14 +1,14 @@
 {% extends 'base_web.html' %}
 {% load static %}
 
-{% block title %}Proyectos | STA Muebles y Terminaciones{% endblock %}
+{% block title %}{{ pagina.titulo_navegador|default:'Proyectos | STA Muebles y Terminaciones' }}{% endblock %}
 
 {% block content %}
 <!-- PAGE HEADER -->
-<div style="background:linear-gradient(135deg,var(--sta-navy),var(--sta-steel));padding:7rem 0 3.5rem;margin-top:70px;">
+<div style="background:{% if pagina.imagen_encabezado %}linear-gradient(135deg,rgba(61,78,107,.88),rgba(106,133,168,.72)),url('{{ pagina.imagen_encabezado.url }}') center/cover{% else %}linear-gradient(135deg,var(--sta-navy),var(--sta-steel)){% endif %};padding:7rem 0 3.5rem;margin-top:70px;">
   <div class="container text-white text-center">
-    <h1 class="fw-800 mb-2">Nuestros Proyectos</h1>
-    <p class="opacity-75">Trabajos que reflejan nuestra pasión por la calidad y el detalle</p>
+    <h1 class="fw-800 mb-2">{{ pagina.titulo_encabezado|default:'Nuestros Proyectos' }}</h1>
+    <p class="opacity-75">{{ pagina.subtitulo_encabezado|default:'Trabajos que reflejan nuestra pasión por la calidad y el detalle' }}</p>
   </div>
 </div>
 
@@ -67,9 +67,12 @@
 <!-- CTA -->
 <section class="py-5 text-center" style="background:var(--sta-bg);">
   <div class="container">
-    <h3 class="fw-700 text-sta mb-3">¿Te gustaría tener un proyecto como estos?</h3>
-    <a href="{% url 'web:contacto' %}" class="btn btn-sta btn-lg px-5 rounded-pill">
-      Contáctanos <i class="bi bi-arrow-right ms-1"></i>
+    <h3 class="fw-700 text-sta mb-3">{{ secciones.cta.titulo|default:'¿Te gustaría tener un proyecto como estos?' }}</h3>
+    {% if secciones.cta.subtitulo %}
+      <p class="text-muted mb-4">{{ secciones.cta.subtitulo }}</p>
+    {% endif %}
+    <a href="{{ secciones.cta.url_boton|default:'/contacto/' }}" class="btn btn-sta btn-lg px-5 rounded-pill">
+      {{ secciones.cta.texto_boton|default:'Contáctanos' }} <i class="bi bi-arrow-right ms-1"></i>
     </a>
   </div>
 </section>

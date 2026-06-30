@@ -1,13 +1,13 @@
 {% extends 'base_web.html' %}
 {% load static %}
 
-{% block title %}Servicios | STA Muebles y Terminaciones{% endblock %}
+{% block title %}{{ pagina.titulo_navegador|default:'Servicios | STA Muebles y Terminaciones' }}{% endblock %}
 
 {% block content %}
-<div style="background:linear-gradient(135deg,var(--sta-navy),var(--sta-steel));padding:7rem 0 3.5rem;margin-top:70px;">
+<div style="background:{% if pagina.imagen_encabezado %}linear-gradient(135deg,rgba(61,78,107,.88),rgba(106,133,168,.72)),url('{{ pagina.imagen_encabezado.url }}') center/cover{% else %}linear-gradient(135deg,var(--sta-navy),var(--sta-steel)){% endif %};padding:7rem 0 3.5rem;margin-top:70px;">
   <div class="container text-white text-center">
-    <h1 class="fw-800 mb-2">Nuestros Servicios</h1>
-    <p class="opacity-75">Soluciones integrales en muebles y terminaciones para cada proyecto</p>
+    <h1 class="fw-800 mb-2">{{ pagina.titulo_encabezado|default:'Nuestros Servicios' }}</h1>
+    <p class="opacity-75">{{ pagina.subtitulo_encabezado|default:'Soluciones integrales en muebles y terminaciones para cada proyecto' }}</p>
   </div>
 </div>
 
@@ -49,39 +49,39 @@
   <div class="container">
     <div class="text-center mb-5">
       <div class="section-divider mx-auto"></div>
-      <h2 class="section-title">¿Por qué elegirnos?</h2>
+      <h2 class="section-title">{{ secciones.beneficios.titulo|default:'¿Por qué elegirnos?' }}</h2>
+      {% if secciones.beneficios.subtitulo %}
+        <p class="section-subtitle">{{ secciones.beneficios.subtitulo }}</p>
+      {% endif %}
     </div>
     <div class="row g-4 text-center">
-      <div class="col-md-4">
-        <div class="value-item">
-          <div class="value-icon"><i class="bi bi-award"></i></div>
-          <h4 class="fw-700 text-sta">Calidad Superior</h4>
-          <p class="text-muted">Utilizamos materiales de primera calidad para garantizar durabilidad y estética en cada producto.</p>
-        </div>
-      </div>
-      <div class="col-md-4">
-        <div class="value-item">
-          <div class="value-icon"><i class="bi bi-rulers"></i></div>
-          <h4 class="fw-700 text-sta">Medida Exacta</h4>
-          <p class="text-muted">Cada proyecto es diseñado y fabricado según las medidas y requerimientos específicos del cliente.</p>
-        </div>
-      </div>
-      <div class="col-md-4">
-        <div class="value-item">
-          <div class="value-icon"><i class="bi bi-headset"></i></div>
-          <h4 class="fw-700 text-sta">Soporte Total</h4>
-          <p class="text-muted">Acompañamos cada proyecto desde el diseño hasta la instalación y post-venta.</p>
-        </div>
-      </div>
+      {% if secciones.beneficios.items_activos %}
+        {% for beneficio in secciones.beneficios.items_activos %}
+          <div class="col-md-4">
+            <div class="value-item">
+              <div class="value-icon"><i class="bi {{ beneficio.icono|default:'bi-award' }}"></i></div>
+              <h4 class="fw-700 text-sta">{{ beneficio.titulo }}</h4>
+              <p class="text-muted">{{ beneficio.descripcion }}</p>
+            </div>
+          </div>
+        {% endfor %}
+      {% else %}
+        <div class="col-md-4"><div class="value-item"><div class="value-icon"><i class="bi bi-award"></i></div><h4 class="fw-700 text-sta">Calidad Superior</h4><p class="text-muted">Utilizamos materiales de primera calidad para garantizar durabilidad y estética en cada producto.</p></div></div>
+        <div class="col-md-4"><div class="value-item"><div class="value-icon"><i class="bi bi-rulers"></i></div><h4 class="fw-700 text-sta">Medida Exacta</h4><p class="text-muted">Cada proyecto es diseñado y fabricado según las medidas y requerimientos específicos del cliente.</p></div></div>
+        <div class="col-md-4"><div class="value-item"><div class="value-icon"><i class="bi bi-headset"></i></div><h4 class="fw-700 text-sta">Soporte Total</h4><p class="text-muted">Acompañamos cada proyecto desde el diseño hasta la instalación y post-venta.</p></div></div>
+      {% endif %}
     </div>
   </div>
 </section>
 
 <section class="py-5 text-center" style="background:linear-gradient(135deg,var(--sta-navy),var(--sta-steel));">
   <div class="container text-white">
-    <h3 class="fw-700 mb-3">¿Listo para comenzar tu proyecto?</h3>
-    <a href="{% url 'web:contacto' %}" class="btn btn-light btn-lg px-5 fw-600 rounded-pill text-sta">
-      Solicitar cotización
+    <h3 class="fw-700 mb-3">{{ secciones.cta.titulo|default:'¿Listo para comenzar tu proyecto?' }}</h3>
+    {% if secciones.cta.subtitulo %}
+      <p class="mb-4 opacity-75">{{ secciones.cta.subtitulo }}</p>
+    {% endif %}
+    <a href="{{ secciones.cta.url_boton|default:'/contacto/' }}" class="btn btn-light btn-lg px-5 fw-600 rounded-pill text-sta">
+      {{ secciones.cta.texto_boton|default:'Solicitar cotización' }}
     </a>
   </div>
 </section>

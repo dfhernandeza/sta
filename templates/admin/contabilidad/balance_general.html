@@ -83,7 +83,13 @@
         <tbody>
           {% for row in patrimonio %}
           <tr>
-            <td class="small">{{ row.cuenta.codigo }} {{ row.cuenta.nombre }}</td>
+            <td class="small">
+              {% if row.es_resultado_ejercicio %}
+                Resultado del ejercicio
+              {% else %}
+                {{ row.cuenta.codigo }} {{ row.cuenta.nombre }}
+              {% endif %}
+            </td>
             <td class="text-end small font-monospace">{{ row.saldo|moneda_chilena }}</td>
           </tr>
           {% empty %}
