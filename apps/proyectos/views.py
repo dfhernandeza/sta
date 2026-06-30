@@ -75,7 +75,6 @@ class ProyectoDetailView(ProyectosMixin, DetailView):
 
     def get_context_data(self, **kwargs):
         from apps.proveedores.models import DetalleFacturaRecibida
-        from django.db.models import F, ExpressionWrapper, DecimalField
         ctx = super().get_context_data(**kwargs)
         ctx['detalles_factura'] = DetalleFacturaRecibida.objects.filter(
             factura__proyecto=self.object
@@ -83,11 +82,6 @@ class ProyectoDetailView(ProyectosMixin, DetailView):
             factura__estado='anulada'
         ).select_related(
             'factura__proveedor', 'centro_costo', 'cuenta_contable'
-        ).annotate(
-            subtotal=ExpressionWrapper(
-                F('cantidad') * F('precio_unitario'),
-                output_field=DecimalField(max_digits=15, decimal_places=2)
-            )
         ).order_by('-factura__fecha_emision')
         ctx['presupuestos'] = self.object.presupuestos.all()
         return ctx
