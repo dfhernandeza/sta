@@ -558,6 +558,17 @@ class AnticipoLaboralCreateView(RrhhMixin, CreateView):
     fields = ['trabajador', 'fecha', 'monto', 'descripcion']
     success_url = reverse_lazy('rrhh:anticipo_list')
 
+    def get_form(self, form_class=None):
+        from django.forms import DateInput
+
+        form = super().get_form(form_class)
+        form.fields['fecha'].input_formats = ['%Y-%m-%d']
+        form.fields['fecha'].widget = DateInput(
+            format='%Y-%m-%d',
+            attrs={'class': 'form-control', 'type': 'text'},
+        )
+        return form
+
     def form_valid(self, form):
         form.instance.estado = 'pendiente'
         messages.success(self.request, 'Anticipo registrado.')
@@ -574,6 +585,17 @@ class AnticipoLaboralUpdateView(RrhhMixin, UpdateView):
     template_name = 'admin/rrhh/anticipo_form.html'
     fields = ['trabajador', 'fecha', 'monto', 'descripcion']
     success_url = reverse_lazy('rrhh:anticipo_list')
+
+    def get_form(self, form_class=None):
+        from django.forms import DateInput
+
+        form = super().get_form(form_class)
+        form.fields['fecha'].input_formats = ['%Y-%m-%d']
+        form.fields['fecha'].widget = DateInput(
+            format='%Y-%m-%d',
+            attrs={'class': 'form-control', 'type': 'text'},
+        )
+        return form
 
     def dispatch(self, request, *args, **kwargs):
         anticipo = self.get_object()

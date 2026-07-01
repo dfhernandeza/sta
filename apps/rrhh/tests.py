@@ -242,6 +242,14 @@ class AnticipoLaboralUpdateDeleteViewTest(TestCase):
         self.assertEqual(self.anticipo.monto, Decimal('250000'))
         self.assertEqual(self.anticipo.descripcion, 'Anticipo corregido')
 
+    def test_formulario_edicion_renderiza_fecha_iso_para_flatpickr(self):
+        response = self.client_http.get(
+            reverse('rrhh:anticipo_update', args=[self.anticipo.pk])
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'value="2026-07-01"')
+
     def test_elimina_anticipo_pagado_y_revierte_movimiento(self):
         from apps.tesoreria.models import MovimientoBancario
 
