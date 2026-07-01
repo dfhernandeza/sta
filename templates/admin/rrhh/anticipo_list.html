@@ -56,6 +56,8 @@
             <a href="{% url 'rrhh:anticipo_pagar' a.pk %}" class="btn btn-success btn-sm rounded-pill px-3" title="Registrar pago">
               <i class="bi bi-cash-coin"></i>
             </a>
+            {% endif %}
+            {% if not a.movimiento_pago_id %}
             <a href="{% url 'rrhh:anticipo_update' a.pk %}" class="btn btn-outline-secondary btn-sm" title="Editar anticipo">
               <i class="bi bi-pencil"></i>
             </a>

@@ -83,6 +83,25 @@ def _anticipo_disponible_para_liquidacion(
     return max(anticipos_pagados - ya_descontado, Decimal('0'))
 
 
+def _anticipo_laboral_respalda_descuentos(anticipo):
+    anticipos_restantes = (
+        AnticipoLaboral.objects.filter(
+            trabajador=anticipo.trabajador,
+            estado='descontado',
+        )
+        .exclude(pk=anticipo.pk)
+        .aggregate(total=Sum('monto'))['total']
+        or Decimal('0')
+    )
+    total_descontado = (
+        Remuneracion.objects.filter(
+            trabajador=anticipo.trabajador,
+        ).aggregate(total=Sum('anticipo_descontado'))['total']
+        or Decimal('0')
+    )
+    return total_descontado > anticipos_restantes
+
+
 class CargoTrabajadorListView(RrhhMixin, ListView):
     model = CargoTrabajador
     template_name = 'admin/rrhh/cargo_list.html'
@@ -558,10 +577,20 @@ class AnticipoLaboralUpdateView(RrhhMixin, UpdateView):
 
     def dispatch(self, request, *args, **kwargs):
         anticipo = self.get_object()
-        if anticipo.estado != 'pendiente' or anticipo.movimiento_pago_id:
+        if anticipo.movimiento_pago_id:
             messages.error(
                 request,
                 'Solo se puede editar un anticipo antes de registrar su pago.'
+            )
+            return redirect('rrhh:anticipo_list')
+        if (
+            anticipo.estado == 'descontado'
+            and _anticipo_laboral_respalda_descuentos(anticipo)
+        ):
+            messages.error(
+                request,
+                'No se puede editar el anticipo porque su monto respalda descuentos '
+                'registrados en liquidaciones. Corrija primero esas remuneraciones.'
             )
             return redirect('rrhh:anticipo_list')
         return super().dispatch(request, *args, **kwargs)
@@ -584,29 +613,8 @@ class AnticipoLaboralDeleteView(RrhhMixin, DeleteView):
 
     def _motivo_bloqueo(self, anticipo):
         movimiento = anticipo.movimiento_pago
-        if anticipo.estado == 'descontado' and not movimiento:
-            return (
-                'No se puede eliminar este anticipo pagado porque su movimiento histórico '
-                'no está vinculado. Debe regularizar primero el movimiento bancario.'
-            )
-
         if anticipo.estado == 'descontado' or movimiento:
-            anticipos_restantes = (
-                AnticipoLaboral.objects.filter(
-                    trabajador=anticipo.trabajador,
-                    estado='descontado',
-                )
-                .exclude(pk=anticipo.pk)
-                .aggregate(total=Sum('monto'))['total']
-                or Decimal('0')
-            )
-            total_descontado = (
-                Remuneracion.objects.filter(
-                    trabajador=anticipo.trabajador,
-                ).aggregate(total=Sum('anticipo_descontado'))['total']
-                or Decimal('0')
-            )
-            if total_descontado > anticipos_restantes:
+            if _anticipo_laboral_respalda_descuentos(anticipo):
                 return (
                     'No se puede eliminar el anticipo porque su monto ya respalda descuentos '
                     'registrados en liquidaciones. Corrija primero esas remuneraciones.'

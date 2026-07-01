@@ -277,6 +277,35 @@ class AnticipoLaboralUpdateDeleteViewTest(TestCase):
         self.assertRedirects(response, reverse('rrhh:anticipo_list'))
         self.assertTrue(AnticipoLaboral.objects.filter(pk=self.anticipo.pk).exists())
 
+    def test_elimina_estado_descontado_sin_movimiento_ni_liquidacion(self):
+        self.anticipo.estado = 'descontado'
+        self.anticipo.save(update_fields=['estado'])
+
+        response = self.client_http.post(
+            reverse('rrhh:anticipo_delete', args=[self.anticipo.pk])
+        )
+
+        self.assertRedirects(response, reverse('rrhh:anticipo_list'))
+        self.assertFalse(AnticipoLaboral.objects.filter(pk=self.anticipo.pk).exists())
+
+    def test_editar_estado_descontado_sin_movimiento_lo_regulariza_a_pendiente(self):
+        self.anticipo.estado = 'descontado'
+        self.anticipo.save(update_fields=['estado'])
+
+        response = self.client_http.post(
+            reverse('rrhh:anticipo_update', args=[self.anticipo.pk]),
+            {
+                'trabajador': self.trabajador.pk,
+                'fecha': '2026-07-01',
+                'monto': '200000',
+                'descripcion': 'Anticipo regularizado',
+            },
+        )
+
+        self.assertRedirects(response, reverse('rrhh:anticipo_list'))
+        self.anticipo.refresh_from_db()
+        self.assertEqual(self.anticipo.estado, 'pendiente')
+
 
 @override_settings(SECURE_SSL_REDIRECT=False)
 class AnticipoLaboralCreateViewTest(TestCase):
