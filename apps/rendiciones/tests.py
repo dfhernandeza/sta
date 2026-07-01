@@ -5,9 +5,10 @@ from django.test import TestCase
 from django.urls import reverse
 
 from apps.accounts.models import CustomUser
-from apps.contabilidad.models import AsientoContable
+from apps.contabilidad.models import AsientoContable, ConfiguracionContable, PlanCuentas
 from apps.proveedores.models import CuentaPorPagar
 from apps.rrhh.models import Trabajador
+from apps.tesoreria.models import Banco, CuentaBancaria
 
 from .models import DetalleRendicion, RendicionGastos
 
@@ -119,3 +120,62 @@ class RendicionGastosDeleteViewTests(TestCase):
             reverse('rendiciones:rendicion_detail', kwargs={'pk': rendicion.pk}),
         )
         self.assertTrue(RendicionGastos.objects.filter(pk=rendicion.pk).exists())
+
+    def test_pago_debita_documentos_por_pagar(self):
+        rendicion = self.crear_rendicion()
+        cxp = rendicion.cuentas_pagar.get()
+        cuenta_banco = PlanCuentas.objects.create(
+            codigo='TEST-BANCO',
+            nombre='Banco',
+            tipo='activo',
+            nivel=4,
+        )
+        cuenta_cxp = PlanCuentas.objects.create(
+            codigo='TEST-CXP',
+            nombre='Cuentas por pagar',
+            tipo='pasivo',
+            nivel=4,
+        )
+        cuenta_documentos = PlanCuentas.objects.create(
+            codigo='TEST-DOC',
+            nombre='Documentos por pagar',
+            tipo='pasivo',
+            nivel=4,
+        )
+        config = ConfiguracionContable.get()
+        config.cuenta_cxp = cuenta_cxp
+        config.cuenta_documentos_por_pagar = cuenta_documentos
+        config.save()
+        banco = Banco.objects.create(nombre='Banco prueba', codigo='BPR')
+        cuenta_bancaria = CuentaBancaria.objects.create(
+            banco=banco,
+            numero='123456',
+            tipo='corriente',
+            cuenta_contable=cuenta_banco,
+        )
+
+        response = self.client.post(
+            reverse('proveedores:cxp_pagar', kwargs={'pk': cxp.pk}),
+            {
+                'fecha_pago': '2026-07-03',
+                'monto_anticipo': '0',
+                'monto_pagado': '10000.00',
+                'cuenta_bancaria': cuenta_bancaria.pk,
+                'medio_pago': 'transferencia',
+                'numero_documento': 'TRX-001',
+                'notas': '',
+            },
+        )
+
+        self.assertRedirects(response, reverse('proveedores:cxp_list'))
+        cxp.refresh_from_db()
+        movimiento = cxp.movimiento_pago
+        self.assertEqual(movimiento.cuenta_contable, cuenta_documentos)
+        asiento = movimiento.asientos.get()
+        self.assertTrue(
+            asiento.lineas.filter(
+                cuenta=cuenta_documentos,
+                debe=Decimal('10000.00'),
+            ).exists()
+        )
+        self.assertFalse(asiento.lineas.filter(cuenta=cuenta_cxp).exists())

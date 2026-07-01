@@ -2,16 +2,13 @@ from django.views.generic import ListView, CreateView, UpdateView, DeleteView, D
 from django.urls import reverse_lazy, reverse
 from django.contrib import messages
 from django.shortcuts import get_object_or_404, redirect, render
-from django.db.models import Sum, Q, Value, DecimalField, ExpressionWrapper, F
-from django.db.models.functions import Coalesce
+from django.db.models import Sum, Q, F
 from django.utils.dateparse import parse_date
 from apps.core.mixins import GestionMixin, AppPermisoMixin
 
 class ContabilidadMixin(AppPermisoMixin):
     app_name = 'contabilidad'
 
-from apps.proveedores.models import DetalleFacturaRecibida
-from apps.rendiciones.models import DetalleRendicion
 from .models import PlanCuentas, AsientoContable, LineaAsiento, ConfiguracionContable, CentroCosto
 from decimal import Decimal
 
@@ -1186,115 +1183,79 @@ class InformeCentroCostoView(ContabilidadMixin, View):
 
         centros = CentroCosto.objects.filter(activo=True).order_by("codigo")
 
-        detalles_facturas = DetalleFacturaRecibida.objects.select_related(
-            "factura",
-            "factura__proveedor",
-            "centro_costo",
-            "cuenta_contable",
-        ).filter(
+        movimientos = LineaAsiento.objects.filter(
             centro_costo__isnull=False,
-            factura__estado__in=["pendiente", "pagada", "vencida"],
-        )
-
-        detalles_rendiciones = DetalleRendicion.objects.select_related(
-            "rendicion",
-            "rendicion__trabajador",
-            "centro_costo",
-            "cuenta_contable",
-        ).filter(
-            centro_costo__isnull=False,
-            rendicion__estado="aprobado",
+            asiento__estado="confirmado",
+            cuenta__tipo__in=("ingreso", "costo", "gasto", "socio"),
         )
 
         if centro_id:
-            detalles_facturas = detalles_facturas.filter(centro_costo_id=centro_id)
-            detalles_rendiciones = detalles_rendiciones.filter(centro_costo_id=centro_id)
+            movimientos = movimientos.filter(centro_costo_id=centro_id)
 
         if fecha_desde:
-            detalles_facturas = detalles_facturas.filter(factura__fecha_emision__gte=fecha_desde)
-            detalles_rendiciones = detalles_rendiciones.filter(rendicion__fecha__gte=fecha_desde)
+            movimientos = movimientos.filter(asiento__fecha__gte=fecha_desde)
 
         if fecha_hasta:
-            detalles_facturas = detalles_facturas.filter(factura__fecha_emision__lte=fecha_hasta)
-            detalles_rendiciones = detalles_rendiciones.filter(rendicion__fecha__lte=fecha_hasta)
+            movimientos = movimientos.filter(asiento__fecha__lte=fecha_hasta)
 
-        monto_factura_expr = ExpressionWrapper(
-            F("cantidad") * F("precio_unitario"),
-            output_field=DecimalField(max_digits=15, decimal_places=2),
-        )
-
-        resumen_facturas = (
-            detalles_facturas
-            .annotate(monto_linea=monto_factura_expr)
+        resumen = (
+            movimientos
             .values(
                 "centro_costo_id",
                 "centro_costo__codigo",
                 "centro_costo__nombre",
                 "centro_costo__presupuesto_mensual",
+                "cuenta__tipo",
             )
-            .annotate(total=Coalesce(Sum("monto_linea"), Decimal("0.00")))
-        )
-
-        resumen_rendiciones = (
-            detalles_rendiciones
-            .values(
-                "centro_costo_id",
-                "centro_costo__codigo",
-                "centro_costo__nombre",
-                "centro_costo__presupuesto_mensual",
+            .annotate(
+                total_debe=Sum("debe"),
+                total_haber=Sum("haber"),
             )
-            .annotate(total=Coalesce(Sum("monto"), Decimal("0.00")))
+            .order_by("centro_costo__codigo")
         )
 
         data = {}
 
-        for item in resumen_facturas:
-            cc_id = item["centro_costo_id"]
-
-            data.setdefault(cc_id, {
-                "centro_costo_id": cc_id,
+        for item in resumen:
+            debe = item["total_debe"] or Decimal("0.00")
+            haber = item["total_haber"] or Decimal("0.00")
+            centro_id_item = item["centro_costo_id"]
+            fila = data.setdefault(centro_id_item, {
+                "centro_costo_id": centro_id_item,
                 "codigo": item["centro_costo__codigo"],
                 "nombre": item["centro_costo__nombre"],
-                "presupuesto": item["centro_costo__presupuesto_mensual"] or Decimal("0.00"),
-                "facturas": Decimal("0.00"),
-                "rendiciones": Decimal("0.00"),
+                "presupuesto": (
+                    item["centro_costo__presupuesto_mensual"] or Decimal("0.00")
+                ),
+                "ingresos": Decimal("0.00"),
+                "egresos": Decimal("0.00"),
             })
 
-            data[cc_id]["facturas"] += item["total"] or Decimal("0.00")
-
-        for item in resumen_rendiciones:
-            cc_id = item["centro_costo_id"]
-
-            data.setdefault(cc_id, {
-                "centro_costo_id": cc_id,
-                "codigo": item["centro_costo__codigo"],
-                "nombre": item["centro_costo__nombre"],
-                "presupuesto": item["centro_costo__presupuesto_mensual"] or Decimal("0.00"),
-                "facturas": Decimal("0.00"),
-                "rendiciones": Decimal("0.00"),
-            })
-
-            data[cc_id]["rendiciones"] += item["total"] or Decimal("0.00")
+            if item["cuenta__tipo"] == "ingreso":
+                fila["ingresos"] += haber - debe
+            else:
+                fila["egresos"] += debe - haber
 
         informe = []
-        total_general = Decimal("0.00")
+        total_ingresos = Decimal("0.00")
+        total_egresos = Decimal("0.00")
 
-        for item in data.values():
-            total_real = item["facturas"] + item["rendiciones"]
-            diferencia = item["presupuesto"] - total_real
+        for fila in data.values():
+            fila["resultado"] = fila["ingresos"] - fila["egresos"]
+            fila["diferencia"] = fila["presupuesto"] - fila["egresos"]
+            informe.append(fila)
+            total_ingresos += fila["ingresos"]
+            total_egresos += fila["egresos"]
 
-            item["total_real"] = total_real
-            item["diferencia"] = diferencia
-
-            informe.append(item)
-            total_general += total_real
-
-        informe.sort(key=lambda x: x["codigo"])
+        informe.sort(key=lambda item: item["codigo"])
+        total_resultado = total_ingresos - total_egresos
 
         context = {
             "centros": centros,
             "informe": informe,
-            "total_general": total_general,
+            "total_ingresos": total_ingresos,
+            "total_egresos": total_egresos,
+            "total_resultado": total_resultado,
             "centro_id": centro_id,
             "fecha_desde": fecha_desde,
             "fecha_hasta": fecha_hasta,

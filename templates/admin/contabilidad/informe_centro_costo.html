@@ -14,7 +14,7 @@
   <div>
     <h1 class="h3 mb-1">Informe por Centro de Costo</h1>
     <p class="text-muted mb-0">
-      Resumen de facturas recibidas y rendiciones aprobadas asociadas a centros de costo.
+      Resumen de movimientos de asientos contables confirmados asociados a centros de costo.
     </p>
   </div>
 </div>
@@ -59,8 +59,26 @@
   <div class="col-md-4">
     <div class="card border-0 shadow-sm">
       <div class="card-body">
-        <div class="text-muted small">Total real</div>
-        <div class="h4 mb-0">{{ total_general|moneda_chilena }}</div>
+        <div class="text-muted small">Total ingresos</div>
+        <div class="h4 mb-0 text-success">{{ total_ingresos|moneda_chilena }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm">
+      <div class="card-body">
+        <div class="text-muted small">Total egresos</div>
+        <div class="h4 mb-0 text-danger">{{ total_egresos|moneda_chilena }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card border-0 shadow-sm">
+      <div class="card-body">
+        <div class="text-muted small">Resultado</div>
+        <div class="h4 mb-0 {% if total_resultado < 0 %}text-danger{% else %}text-success{% endif %}">
+          {{ total_resultado|moneda_chilena }}
+        </div>
       </div>
     </div>
   </div>
@@ -78,9 +96,9 @@
         <tr>
           <th>Código</th>
           <th>Centro de costo</th>
-          <th class="text-end">Facturas</th>
-          <th class="text-end">Rendiciones</th>
-          <th class="text-end">Total real</th>
+          <th class="text-end">Ingresos</th>
+          <th class="text-end">Egresos</th>
+          <th class="text-end">Resultado</th>
           <th class="text-end">Presupuesto</th>
           <th class="text-end">Diferencia</th>
         </tr>
@@ -92,9 +110,11 @@
               <span class="badge bg-secondary">{{ item.codigo }}</span>
             </td>
             <td>{{ item.nombre }}</td>
-            <td class="text-end">{{ item.facturas|moneda_chilena }}</td>
-            <td class="text-end">{{ item.rendiciones|moneda_chilena }}</td>
-            <td class="text-end fw-semibold">{{ item.total_real|moneda_chilena }}</td>
+            <td class="text-end text-success">{{ item.ingresos|moneda_chilena }}</td>
+            <td class="text-end text-danger">{{ item.egresos|moneda_chilena }}</td>
+            <td class="text-end fw-semibold {% if item.resultado < 0 %}text-danger{% else %}text-success{% endif %}">
+              {{ item.resultado|moneda_chilena }}
+            </td>
             <td class="text-end">{{ item.presupuesto|moneda_chilena }}</td>
             <td class="text-end">
               {% if item.diferencia < 0 %}
@@ -117,8 +137,12 @@
       {% if informe %}
       <tfoot class="table-light">
         <tr>
-          <th colspan="4" class="text-end">Total general</th>
-          <th class="text-end">{{ total_general|moneda_chilena }}</th>
+          <th colspan="2" class="text-end">Total general</th>
+          <th class="text-end text-success">{{ total_ingresos|moneda_chilena }}</th>
+          <th class="text-end text-danger">{{ total_egresos|moneda_chilena }}</th>
+          <th class="text-end {% if total_resultado < 0 %}text-danger{% else %}text-success{% endif %}">
+            {{ total_resultado|moneda_chilena }}
+          </th>
           <th colspan="2"></th>
         </tr>
       </tfoot>

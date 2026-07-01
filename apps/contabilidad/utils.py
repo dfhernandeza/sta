@@ -294,11 +294,11 @@ def generar_asiento_rendicion_gastos_recibida(rendicion, usuario=None):
     """
     Genera el asiento de reconocimiento de una rendición de gastos:
         DEBE  : cuenta por detalle  = monto
-        HABER : cuenta_cxp          = monto total
+        HABER : cuenta documentos por pagar         = monto total
     Retorna el AsientoContable creado (borrador) o None.
     """
     config = get_config()
-    if not config or not config.cuenta_cxp:
+    if not config or not config.cuenta_documentos_por_pagar:
         return None
 
     asiento = AsientoContable.objects.create(

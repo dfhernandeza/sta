@@ -1,9 +1,16 @@
 from decimal import Decimal
 from django.test import TestCase
+from django.urls import reverse
 from django.utils import timezone
 
 from apps.accounts.models import CustomUser
-from apps.contabilidad.models import PlanCuentas, ConfiguracionContable, AsientoContable, LineaAsiento
+from apps.contabilidad.models import (
+    PlanCuentas,
+    ConfiguracionContable,
+    AsientoContable,
+    LineaAsiento,
+    CentroCosto,
+)
 from apps.contabilidad.utils import generar_asiento_movimiento_bancario
 from apps.tesoreria.models import Banco, CuentaBancaria, MovimientoBancario
 
@@ -122,3 +129,72 @@ class ConfiguracionContableSingletonTest(TestCase):
         obj = ConfiguracionContable.get()
         self.assertIsNotNone(obj)
         self.assertEqual(ConfiguracionContable.objects.count(), 1)
+
+
+class InformeCentroCostoTest(TestCase):
+    def setUp(self):
+        self.user = CustomUser.objects.create_superuser(
+            'informe-centro-costo',
+            password='x',
+        )
+        self.client.force_login(self.user)
+        self.centro = CentroCosto.objects.create(
+            codigo='ADM',
+            nombre='Administración',
+            presupuesto_mensual=Decimal('1000.00'),
+        )
+        self.cuenta = make_cuenta('4.1.99', 'Gastos manuales', 'gasto')
+        self.cuenta_ingreso = make_cuenta('3.1.99', 'Ingresos manuales', 'ingreso')
+
+    def crear_linea(self, fecha, estado, debe=0, haber=0, cuenta=None):
+        asiento = AsientoContable.objects.create(
+            fecha=fecha,
+            descripcion='Movimiento manual',
+            tipo='otro',
+            estado=estado,
+        )
+        return LineaAsiento.objects.create(
+            asiento=asiento,
+            cuenta=cuenta or self.cuenta,
+            centro_costo=self.centro,
+            debe=Decimal(str(debe)),
+            haber=Decimal(str(haber)),
+        )
+
+    def test_clasifica_ingresos_y_egresos_desde_asientos_confirmados(self):
+        self.crear_linea('2026-06-10', 'confirmado', debe='500.00')
+        self.crear_linea('2026-06-11', 'confirmado', haber='125.00')
+        self.crear_linea(
+            '2026-06-11',
+            'confirmado',
+            haber='800.00',
+            cuenta=self.cuenta_ingreso,
+        )
+        self.crear_linea(
+            '2026-06-11',
+            'confirmado',
+            debe='50.00',
+            cuenta=self.cuenta_ingreso,
+        )
+        self.crear_linea('2026-06-12', 'borrador', debe='900.00')
+
+        response = self.client.get(reverse('contabilidad:centro_reporte'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.context['informe']), 1)
+        fila = response.context['informe'][0]
+        self.assertEqual(fila['ingresos'], Decimal('750.00'))
+        self.assertEqual(fila['egresos'], Decimal('375.00'))
+        self.assertEqual(fila['resultado'], Decimal('375.00'))
+        self.assertEqual(fila['diferencia'], Decimal('625.00'))
+
+    def test_filtra_por_fecha_del_asiento(self):
+        self.crear_linea('2026-05-31', 'confirmado', debe='100.00')
+        self.crear_linea('2026-06-01', 'confirmado', debe='250.00')
+
+        response = self.client.get(
+            reverse('contabilidad:centro_reporte'),
+            {'fecha_desde': '2026-06-01', 'fecha_hasta': '2026-06-30'},
+        )
+
+        self.assertEqual(response.context['total_egresos'], Decimal('250.00'))

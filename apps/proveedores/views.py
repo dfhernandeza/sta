@@ -1396,8 +1396,13 @@ class CxPPagarView(ProveedoresMixin, View):
                 try:
                     from apps.contabilidad.models import ConfiguracionContable
                     config = ConfiguracionContable.get()
-                    if config and config.cuenta_cxp:
-                        movimiento.cuenta_contable = config.cuenta_cxp
+                    cuenta_pasivo = (
+                        config.cuenta_documentos_por_pagar
+                        if cxp.rendicion_id
+                        else config.cuenta_cxp
+                    )
+                    if cuenta_pasivo:
+                        movimiento.cuenta_contable = cuenta_pasivo
                         movimiento.save(update_fields=['cuenta_contable'])
                 except Exception:
                     pass
