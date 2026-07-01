@@ -86,7 +86,7 @@ def _anticipo_disponible_para_liquidacion(
 def _anticipo_laboral_respalda_descuentos(anticipo):
     anticipos_restantes = (
         AnticipoLaboral.objects.filter(
-            trabajador=anticipo.trabajador,
+            trabajador_id=anticipo.trabajador_id,
             estado='descontado',
         )
         .exclude(pk=anticipo.pk)
@@ -95,7 +95,7 @@ def _anticipo_laboral_respalda_descuentos(anticipo):
     )
     total_descontado = (
         Remuneracion.objects.filter(
-            trabajador=anticipo.trabajador,
+            trabajador_id=anticipo.trabajador_id,
         ).aggregate(total=Sum('anticipo_descontado'))['total']
         or Decimal('0')
     )
@@ -671,10 +671,9 @@ class AnticipoLaboralDeleteView(RrhhMixin, DeleteView):
 
     def form_valid(self, form):
         with transaction.atomic():
-            anticipo = AnticipoLaboral.objects.select_for_update().select_related(
-                'trabajador',
-                'movimiento_pago',
-            ).get(pk=self.object.pk)
+            # Bloquear solo el anticipo. Incluir movimiento_pago (nullable) mediante
+            # select_related genera un LEFT JOIN incompatible con FOR UPDATE en PostgreSQL.
+            anticipo = AnticipoLaboral.objects.select_for_update().get(pk=self.object.pk)
             motivo = self._motivo_bloqueo(anticipo)
             if motivo:
                 messages.error(self.request, motivo)
