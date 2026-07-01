@@ -10,6 +10,33 @@
 
 {% block content %}
 
+<div class="page-header">
+  <div>
+    <h4 class="page-title">Dashboard</h4>
+    <p class="page-subtitle mb-0">
+      {{ periodo_label }}
+      {% if fecha_inicio_sistema %} · Inicio contable {{ fecha_inicio_sistema|date:"d/m/Y" }}{% endif %}
+    </p>
+  </div>
+  <form method="get" class="d-flex align-items-end gap-2">
+    <div>
+      <label for="periodo-dashboard" class="form-label small mb-1">Período</label>
+      <input id="periodo-dashboard" type="month" name="periodo" class="form-control form-control-sm"
+             value="{{ periodo_seleccionado }}"
+             {% if fecha_inicio_sistema %}min="{{ fecha_inicio_sistema|date:'Y-m' }}"{% endif %}>
+    </div>
+    <button type="submit" class="btn btn-sta btn-sm" title="Cambiar período">
+      <i class="bi bi-calendar-check"></i>
+    </button>
+  </form>
+</div>
+
+{% if periodo_fuera_sistema %}
+<div class="alert alert-info">
+  El período seleccionado es anterior al inicio contable. No hay información operativa para mostrar.
+</div>
+{% endif %}
+
 <!-- KPI CARDS -->
 <div class="row g-4 mb-4">
   <div class="col-sm-6 col-xl-3">
@@ -18,7 +45,7 @@
         <i class="bi bi-bank2"></i>
       </div>
       <div class="kpi-value">{{ saldo_total|moneda_chilena }}</div>
-      <div class="kpi-label">Saldo Bancario Total</div>
+      <div class="kpi-label">Saldo Bancario al Cierre</div>
     </div>
   </div>
   <div class="col-sm-6 col-xl-3">
@@ -27,7 +54,7 @@
         <i class="bi bi-arrow-down-circle"></i>
       </div>
       <div class="kpi-value" style="color:#28a745;">{{ ingresos_mes|moneda_chilena }}</div>
-      <div class="kpi-label">Ingresos del Mes</div>
+      <div class="kpi-label">Ingresos · {{ periodo_label }}</div>
     </div>
   </div>
   <div class="col-sm-6 col-xl-3">
@@ -36,7 +63,7 @@
         <i class="bi bi-arrow-up-circle"></i>
       </div>
       <div class="kpi-value" style="color:#dc3545;">{{ egresos_mes|moneda_chilena }}</div>
-      <div class="kpi-label">Egresos del Mes</div>
+      <div class="kpi-label">Egresos · {{ periodo_label }}</div>
     </div>
   </div>
   <div class="col-sm-6 col-xl-3">
@@ -47,7 +74,7 @@
       <div class="kpi-value" style="color:{% if utilidad_mes >= 0 %}#28a745{% else %}#dc3545{% endif %};">
         {{ utilidad_mes|moneda_chilena }}
       </div>
-      <div class="kpi-label">Utilidad del Mes</div>
+      <div class="kpi-label">Utilidad · {{ periodo_label }}</div>
     </div>
   </div>
 </div>
@@ -57,7 +84,7 @@
   <div class="col-xl-8">
     <div class="card-sta p-4">
       <h6 class="fw-700 mb-3 text-sta">
-        <i class="bi bi-bar-chart me-2"></i>Flujo de Caja — Últimos 6 Meses
+        <i class="bi bi-bar-chart me-2"></i>Flujo de Caja · 6 meses hasta {{ periodo_label }}
       </h6>
       <canvas id="flujoCajaChart" height="110"></canvas>
     </div>
@@ -65,7 +92,7 @@
   <div class="col-xl-4">
     <div class="card-sta p-4 h-100">
       <h6 class="fw-700 mb-3 text-sta">
-        <i class="bi bi-bell me-2"></i>Resumen Rápido
+        <i class="bi bi-bell me-2"></i>Resumen al Cierre
       </h6>
       <ul class="list-group list-group-flush">
         <li class="list-group-item d-flex justify-content-between px-0">
@@ -113,7 +140,7 @@
   <div class="d-flex justify-content-between align-items-center mb-3">
     <h6 class="fw-700 text-sta mb-0">
       <i class="bi bi-exclamation-triangle-fill text-danger me-2"></i>
-      Cuentas por Cobrar Vencidas
+      Cuentas por Cobrar Vencidas · {{ periodo_label }}
     </h6>
     <a href="{% url 'clientes:cxc_list' %}" class="btn btn-outline-danger btn-sm rounded-pill">
       Ver todas
