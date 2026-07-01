@@ -161,6 +161,11 @@ class AnticipoLaboral(TimeStampedModel):
     monto = models.DecimalField(max_digits=12, decimal_places=2, verbose_name='Monto')
     descripcion = models.CharField(max_length=200, blank=True, verbose_name='Descripción')
     estado = models.CharField(max_length=15, choices=ESTADO_CHOICES, default='pendiente', verbose_name='Estado')
+    movimiento_pago = models.OneToOneField(
+        'tesoreria.MovimientoBancario', null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='anticipo_laboral',
+        verbose_name='Movimiento de pago',
+    )
 
     class Meta:
         verbose_name = 'Anticipo Laboral'

@@ -31,5 +31,7 @@ urlpatterns = [
     # Anticipos
     path('anticipos/', views.AnticipoListView.as_view(), name='anticipo_list'),
     path('anticipos/crear/', views.AnticipoCreateView.as_view(), name='anticipo_create'),
+    path('anticipos/<int:pk>/editar/', views.AnticipoUpdateView.as_view(), name='anticipo_update'),
+    path('anticipos/<int:pk>/eliminar/', views.AnticipoDeleteView.as_view(), name='anticipo_delete'),
     path('anticipos/<int:pk>/pagar/', views.AnticipoProveedorPagarView.as_view(), name='anticipo_pagar'),
 ]

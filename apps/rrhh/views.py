@@ -1,11 +1,14 @@
-from django.views.generic import ListView, CreateView, UpdateView, DetailView
+from django.views.generic import ListView, CreateView, UpdateView, DetailView, DeleteView
 from django.views import View
-from django.urls import reverse_lazy
+from django.urls import reverse, reverse_lazy
 from django.contrib import messages
-from django.db.models import Count, Sum
+from django.db import transaction
+from django.db.models import Count, Q, Sum
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
+from calendar import monthrange
+from datetime import date
 from decimal import Decimal
 import json
 from apps.core.mixins import GestionMixin, AppPermisoMixin
@@ -47,16 +50,35 @@ def _generar_periodos(n=15):
     return periods
 
 
-def _anticipo_disponible_para_liquidacion(trabajador, remuneracion=None):
-    anticipos_pagados = AnticipoLaboral.objects.filter(
+def _anticipo_disponible_para_liquidacion(
+    trabajador,
+    remuneracion=None,
+    periodo_mes=None,
+    periodo_anio=None,
+):
+    if remuneracion:
+        periodo_mes = periodo_mes or remuneracion.periodo_mes
+        periodo_anio = periodo_anio or remuneracion.periodo_anio
+
+    anticipos = AnticipoLaboral.objects.filter(
         trabajador=trabajador,
         estado='descontado',
-    ).aggregate(s=Sum('monto'))['s'] or Decimal('0')
+    )
 
     remuneraciones = Remuneracion.objects.filter(trabajador=trabajador)
     if remuneracion and remuneracion.pk:
         remuneraciones = remuneraciones.exclude(pk=remuneracion.pk)
 
+    if periodo_mes and periodo_anio and 1 <= periodo_mes <= 12:
+        ultimo_dia = monthrange(periodo_anio, periodo_mes)[1]
+        cierre_periodo = date(periodo_anio, periodo_mes, ultimo_dia)
+        anticipos = anticipos.filter(fecha__lte=cierre_periodo)
+        remuneraciones = remuneraciones.filter(
+            Q(periodo_anio__lt=periodo_anio)
+            | Q(periodo_anio=periodo_anio, periodo_mes__lte=periodo_mes)
+        )
+
+    anticipos_pagados = anticipos.aggregate(s=Sum('monto'))['s'] or Decimal('0')
     ya_descontado = remuneraciones.aggregate(s=Sum('anticipo_descontado'))['s'] or Decimal('0')
     return max(anticipos_pagados - ya_descontado, Decimal('0'))
 
@@ -230,7 +252,11 @@ class RemuneracionCreateView(RrhhMixin, CreateView):
             try:
                 t = Trabajador.objects.get(pk=int(trabajador_pk))
                 bruto = t.sueldo_base
-                anticipo = _anticipo_disponible_para_liquidacion(t)
+                anticipo = _anticipo_disponible_para_liquidacion(
+                    t,
+                    periodo_mes=initial['periodo_mes'],
+                    periodo_anio=initial['periodo_anio'],
+                )
                 if t.exento_previsional:
                     afp = Decimal('0')
                     salud = Decimal('0')
@@ -295,7 +321,18 @@ class RemuneracionDatosAPI(RrhhMixin, View):
         remuneracion_id = request.GET.get('remuneracion')
         if remuneracion_id:
             remuneracion = Remuneracion.objects.filter(pk=remuneracion_id, trabajador=t).first()
-        anticipo_pendiente = _anticipo_disponible_para_liquidacion(t, remuneracion=remuneracion)
+        try:
+            periodo_mes = int(request.GET.get('mes') or 0) or None
+            periodo_anio = int(request.GET.get('anio') or 0) or None
+        except (TypeError, ValueError):
+            periodo_mes = None
+            periodo_anio = None
+        anticipo_pendiente = _anticipo_disponible_para_liquidacion(
+            t,
+            remuneracion=remuneracion,
+            periodo_mes=periodo_mes,
+            periodo_anio=periodo_anio,
+        )
         tasa_afp = AFP_TASAS.get(t.afp, Decimal('0.1144'))
         bruto = t.sueldo_base
         afp = round(bruto * tasa_afp)
@@ -330,11 +367,62 @@ class RemuneracionUpdateView(RrhhMixin, UpdateView):
                 'No se puede editar una liquidación que ya fue pagada.'
             )
             return redirect('rrhh:remuneracion_procesar_detalle', mes=rem.periodo_mes, anio=rem.periodo_anio)
+        if rem.asientos.filter(tipo='devengamiento_remuneracion', estado='confirmado').exists():
+            messages.error(
+                request,
+                'No se puede editar la liquidación porque su asiento de devengamiento está confirmado. '
+                'Anule o reverse el asiento antes de modificarla.'
+            )
+            return redirect('rrhh:remuneracion_procesar_detalle', mes=rem.periodo_mes, anio=rem.periodo_anio)
         return super().dispatch(request, *args, **kwargs)
 
+    def get_initial(self):
+        initial = super().get_initial()
+        if not (self.object.anticipo_descontado or Decimal('0')):
+            anticipo = _anticipo_disponible_para_liquidacion(
+                self.object.trabajador,
+                remuneracion=self.object,
+            )
+            if anticipo > 0:
+                initial['anticipo_descontado'] = anticipo
+                initial['liquido_pagar'] = max(
+                    (self.object.sueldo_bruto or Decimal('0'))
+                    - (self.object.descuento_afp or Decimal('0'))
+                    - (self.object.descuento_salud or Decimal('0'))
+                    - (self.object.impuesto_unico or Decimal('0'))
+                    - (self.object.otros_descuentos or Decimal('0'))
+                    - anticipo,
+                    Decimal('0'),
+                )
+        return initial
+
     def form_valid(self, form):
-        messages.success(self.request, 'Liquidación actualizada.')
-        return super().form_valid(form)
+        from apps.contabilidad.utils import generar_asiento_devengamiento_remuneracion
+
+        with transaction.atomic():
+            response = super().form_valid(form)
+            self.object.asientos.filter(
+                tipo='devengamiento_remuneracion',
+                estado='borrador',
+            ).delete()
+            asiento = generar_asiento_devengamiento_remuneracion(
+                self.object,
+                usuario=self.request.user,
+            )
+
+        if asiento:
+            messages.success(
+                self.request,
+                f'Liquidación actualizada. Asiento de devengamiento {asiento.numero} regenerado en borrador.'
+            )
+        else:
+            messages.success(self.request, 'Liquidación actualizada.')
+            messages.warning(
+                self.request,
+                'No se pudo regenerar el asiento de devengamiento. '
+                'Revise la Configuración Contable de remuneraciones.'
+            )
+        return response
 
     def get_success_url(self):
         from django.urls import reverse
@@ -422,6 +510,23 @@ class AnticipoLaboralListView(RrhhMixin, ListView):
     context_object_name = 'anticipos'
     paginate_by = 20
 
+    def get_queryset(self):
+        qs = AnticipoLaboral.objects.select_related(
+            'trabajador',
+            'movimiento_pago',
+        )
+        q = self.request.GET.get('q')
+        estado = self.request.GET.get('estado')
+        if q:
+            qs = qs.filter(
+                Q(trabajador__nombres__icontains=q)
+                | Q(trabajador__apellidos__icontains=q)
+                | Q(trabajador__rut__icontains=q)
+            )
+        if estado:
+            qs = qs.filter(estado=estado)
+        return qs
+
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         ctx['titulo'] = 'Anticipos Laborales'
@@ -431,10 +536,11 @@ class AnticipoLaboralListView(RrhhMixin, ListView):
 class AnticipoLaboralCreateView(RrhhMixin, CreateView):
     model = AnticipoLaboral
     template_name = 'admin/rrhh/anticipo_form.html'
-    fields = ['trabajador', 'fecha', 'monto', 'descripcion', 'estado']
+    fields = ['trabajador', 'fecha', 'monto', 'descripcion']
     success_url = reverse_lazy('rrhh:anticipo_list')
 
     def form_valid(self, form):
+        form.instance.estado = 'pendiente'
         messages.success(self.request, 'Anticipo registrado.')
         return super().form_valid(form)
 
@@ -442,6 +548,116 @@ class AnticipoLaboralCreateView(RrhhMixin, CreateView):
         ctx = super().get_context_data(**kwargs)
         ctx['titulo'] = 'Nuevo Anticipo Laboral'
         return ctx
+
+
+class AnticipoLaboralUpdateView(RrhhMixin, UpdateView):
+    model = AnticipoLaboral
+    template_name = 'admin/rrhh/anticipo_form.html'
+    fields = ['trabajador', 'fecha', 'monto', 'descripcion']
+    success_url = reverse_lazy('rrhh:anticipo_list')
+
+    def dispatch(self, request, *args, **kwargs):
+        anticipo = self.get_object()
+        if anticipo.estado != 'pendiente' or anticipo.movimiento_pago_id:
+            messages.error(
+                request,
+                'Solo se puede editar un anticipo antes de registrar su pago.'
+            )
+            return redirect('rrhh:anticipo_list')
+        return super().dispatch(request, *args, **kwargs)
+
+    def form_valid(self, form):
+        form.instance.estado = 'pendiente'
+        messages.success(self.request, 'Anticipo laboral actualizado.')
+        return super().form_valid(form)
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx['titulo'] = 'Editar Anticipo Laboral'
+        return ctx
+
+
+class AnticipoLaboralDeleteView(RrhhMixin, DeleteView):
+    model = AnticipoLaboral
+    template_name = 'admin/rrhh/anticipo_confirm_delete.html'
+    success_url = reverse_lazy('rrhh:anticipo_list')
+
+    def _motivo_bloqueo(self, anticipo):
+        movimiento = anticipo.movimiento_pago
+        if anticipo.estado == 'descontado' and not movimiento:
+            return (
+                'No se puede eliminar este anticipo pagado porque su movimiento histórico '
+                'no está vinculado. Debe regularizar primero el movimiento bancario.'
+            )
+
+        if anticipo.estado == 'descontado' or movimiento:
+            anticipos_restantes = (
+                AnticipoLaboral.objects.filter(
+                    trabajador=anticipo.trabajador,
+                    estado='descontado',
+                )
+                .exclude(pk=anticipo.pk)
+                .aggregate(total=Sum('monto'))['total']
+                or Decimal('0')
+            )
+            total_descontado = (
+                Remuneracion.objects.filter(
+                    trabajador=anticipo.trabajador,
+                ).aggregate(total=Sum('anticipo_descontado'))['total']
+                or Decimal('0')
+            )
+            if total_descontado > anticipos_restantes:
+                return (
+                    'No se puede eliminar el anticipo porque su monto ya respalda descuentos '
+                    'registrados en liquidaciones. Corrija primero esas remuneraciones.'
+                )
+
+        if movimiento:
+            if movimiento.conciliado:
+                return (
+                    'No se puede eliminar el anticipo porque su movimiento bancario está conciliado. '
+                    'Revierta primero la conciliación.'
+                )
+            if movimiento.asientos.filter(estado='confirmado').exists():
+                return (
+                    'No se puede eliminar el anticipo porque su pago tiene un asiento confirmado. '
+                    'Anule o reverse primero el asiento.'
+                )
+        return None
+
+    def dispatch(self, request, *args, **kwargs):
+        self.object = self.get_object()
+        motivo = self._motivo_bloqueo(self.object)
+        if motivo:
+            messages.error(request, motivo)
+            return redirect('rrhh:anticipo_list')
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx['cancel_url'] = reverse('rrhh:anticipo_list')
+        ctx['movimiento_pago'] = self.object.movimiento_pago
+        return ctx
+
+    def form_valid(self, form):
+        with transaction.atomic():
+            anticipo = AnticipoLaboral.objects.select_for_update().select_related(
+                'trabajador',
+                'movimiento_pago',
+            ).get(pk=self.object.pk)
+            motivo = self._motivo_bloqueo(anticipo)
+            if motivo:
+                messages.error(self.request, motivo)
+                return redirect('rrhh:anticipo_list')
+
+            movimiento = anticipo.movimiento_pago
+            if movimiento:
+                movimiento.asientos.filter(estado='borrador').delete()
+                movimiento.delete()
+            anticipo.delete()
+
+        messages.success(self.request, 'Anticipo laboral eliminado correctamente.')
+        return redirect(self.success_url)
 
 
 # ---------------------------------------------------------------------------
@@ -478,7 +694,7 @@ class AnticipoLaboralPagarView(RrhhMixin, View):
 
     def get(self, request, pk):
         anticipo = get_object_or_404(AnticipoLaboral, pk=pk)
-        if anticipo.estado == 'descontado':
+        if anticipo.estado != 'pendiente' or anticipo.movimiento_pago_id:
             messages.info(request, 'Este anticipo ya fue descontado/pagado.')
             return redirect('rrhh:anticipo_list')
         form = self._build_form(initial={'fecha_pago': timezone.now().date()})
@@ -489,6 +705,9 @@ class AnticipoLaboralPagarView(RrhhMixin, View):
         from apps.contabilidad.utils import generar_asiento_pago_anticipo
 
         anticipo = get_object_or_404(AnticipoLaboral, pk=pk)
+        if anticipo.estado != 'pendiente' or anticipo.movimiento_pago_id:
+            messages.error(request, 'Este anticipo ya tiene un pago registrado.')
+            return redirect('rrhh:anticipo_list')
         form = self._build_form(data=request.POST)
 
         if not form.is_valid():
@@ -497,39 +716,45 @@ class AnticipoLaboralPagarView(RrhhMixin, View):
         d = form.cleaned_data
         cuenta_bancaria = d['cuenta_bancaria']
 
-        # 1. Marcar anticipo como pagado (estado 'descontado' indica ya fue entregado)
-        anticipo.estado = 'descontado'
-        anticipo.save()
+        with transaction.atomic():
+            anticipo = AnticipoLaboral.objects.select_for_update().select_related(
+                'trabajador',
+            ).get(pk=pk)
+            if anticipo.estado != 'pendiente' or anticipo.movimiento_pago_id:
+                messages.error(request, 'Este anticipo ya tiene un pago registrado.')
+                return redirect('rrhh:anticipo_list')
 
-        # 2. Crear MovimientoBancario (egreso)
-        descripcion_mov = f'Anticipo {anticipo.trabajador.nombre_completo} - {anticipo.fecha}'
-        movimiento = MovimientoBancario.objects.create(
-            cuenta=cuenta_bancaria,
-            fecha=d['fecha_pago'],
-            tipo='egreso',
-            monto=anticipo.monto,
-            descripcion=descripcion_mov,
-            cuenta_contable=None,
-        )
+            descripcion_mov = f'Anticipo {anticipo.trabajador.nombre_completo} - {anticipo.fecha}'
+            movimiento = MovimientoBancario.objects.create(
+                cuenta=cuenta_bancaria,
+                fecha=d['fecha_pago'],
+                tipo='egreso',
+                monto=anticipo.monto,
+                descripcion=descripcion_mov,
+                cuenta_contable=None,
+            )
 
-        # La cuenta_contable del movimiento apunta a la cuenta de sueldos del trabajador
-        # (usada como fallback en el asiento si cuenta_anticipos_trabajadores no está configurada)
-        try:
-            from apps.contabilidad.models import ConfiguracionContable
-            config = ConfiguracionContable.get()
-            if anticipo.trabajador.tipo_costo == 'operacional':
-                cuenta_sueldos = config.cuenta_sueldos_operacional if config else None
-            else:
-                cuenta_sueldos = config.cuenta_sueldos_administrativo if config else None
-            if cuenta_sueldos:
-                movimiento.cuenta_contable = cuenta_sueldos
-                movimiento.save(update_fields=['cuenta_contable'])
-        except Exception:
-            pass
+            try:
+                from apps.contabilidad.models import ConfiguracionContable
+                config = ConfiguracionContable.get()
+                if anticipo.trabajador.tipo_costo == 'operacional':
+                    cuenta_sueldos = config.cuenta_sueldos_operacional if config else None
+                else:
+                    cuenta_sueldos = config.cuenta_sueldos_administrativo if config else None
+                if cuenta_sueldos:
+                    movimiento.cuenta_contable = cuenta_sueldos
+                    movimiento.save(update_fields=['cuenta_contable'])
+            except Exception:
+                pass
 
-        # 3. Generar asiento: DEBE Anticipos a Trabajadores (activo) / HABER Banco
-        #    Si cuenta_anticipos_trabajadores no está configurada, fallback a DEBE gasto / HABER banco
-        asiento = generar_asiento_pago_anticipo(anticipo, movimiento, usuario=request.user)
+            asiento = generar_asiento_pago_anticipo(
+                anticipo,
+                movimiento,
+                usuario=request.user,
+            )
+            anticipo.estado = 'descontado'
+            anticipo.movimiento_pago = movimiento
+            anticipo.save(update_fields=['estado', 'movimiento_pago'])
 
         if asiento:
             messages.success(

@@ -1,3 +1,4 @@
+from datetime import date
 from decimal import Decimal
 from django.test import TestCase, Client, override_settings
 from django.urls import reverse
@@ -10,8 +11,8 @@ from .models import CargoTrabajador, Trabajador, Remuneracion, AnticipoLaboral
 
 
 def _setup_contabilidad():
-    cta_banco = PlanCuentas.objects.create(codigo='1.1.01', nombre='Banco', tipo='activo', nivel=1)
-    cta_sueldos = PlanCuentas.objects.create(codigo='4.1.01', nombre='Sueldos', tipo='gasto', nivel=1)
+    cta_banco = PlanCuentas.objects.create(codigo='TEST.RRHH.BANCO', nombre='Banco', tipo='activo', nivel=1)
+    cta_sueldos = PlanCuentas.objects.create(codigo='TEST.RRHH.SUELDOS', nombre='Sueldos', tipo='gasto', nivel=1)
     config = ConfiguracionContable.get()
     config.cuenta_sueldos_administrativo = cta_sueldos
     config.cuenta_sueldos_operacional = cta_sueldos
@@ -42,7 +43,11 @@ def _make_trabajador():
 @override_settings(SECURE_SSL_REDIRECT=False)
 class RemuneracionPagarViewTest(TestCase):
     def setUp(self):
-        self.user = CustomUser.objects.create_user('tester_rrhh', password='pass')
+        self.user = CustomUser.objects.create_user(
+            'tester_rrhh',
+            password='pass',
+            app_permisos=['rrhh'],
+        )
         self.client_http = Client()
         self.client_http.force_login(self.user)
 
@@ -112,7 +117,11 @@ class RemuneracionPagarViewTest(TestCase):
 @override_settings(SECURE_SSL_REDIRECT=False)
 class AnticipoLaboralPagarViewTest(TestCase):
     def setUp(self):
-        self.user = CustomUser.objects.create_user('tester_ant', password='pass')
+        self.user = CustomUser.objects.create_user(
+            'tester_ant',
+            password='pass',
+            app_permisos=['rrhh'],
+        )
         self.client_http = Client()
         self.client_http.force_login(self.user)
 
@@ -169,3 +178,204 @@ class AnticipoLaboralPagarViewTest(TestCase):
         self.client_http.post(self.url, data)
         mov = MovimientoBancario.objects.filter(tipo='egreso').last()
         self.assertEqual(mov.monto, Decimal('200000'))
+
+    def test_post_vincula_movimiento_y_evitar_pago_duplicado(self):
+        from apps.tesoreria.models import MovimientoBancario
+
+        data = {
+            'fecha_pago': timezone.now().date().isoformat(),
+            'cuenta_bancaria': self.cuenta_bancaria.pk,
+            'notas': '',
+        }
+        self.client_http.post(self.url, data)
+        self.client_http.post(self.url, data)
+
+        self.anticipo.refresh_from_db()
+        self.assertIsNotNone(self.anticipo.movimiento_pago_id)
+        self.assertEqual(MovimientoBancario.objects.count(), 1)
+
+
+@override_settings(SECURE_SSL_REDIRECT=False)
+class AnticipoLaboralUpdateDeleteViewTest(TestCase):
+    def setUp(self):
+        self.user = CustomUser.objects.create_superuser(
+            'admin_ant_laboral',
+            'admin-laboral@example.com',
+            'pass',
+        )
+        self.client_http = Client()
+        self.client_http.force_login(self.user)
+        cta_banco, _ = _setup_contabilidad()
+        self.cuenta_bancaria = _make_cuenta_bancaria(cta_banco)
+        self.trabajador = _make_trabajador()
+        self.anticipo = AnticipoLaboral.objects.create(
+            trabajador=self.trabajador,
+            fecha=date(2026, 7, 1),
+            monto=Decimal('200000'),
+            descripcion='Anticipo julio',
+            estado='pendiente',
+        )
+
+    def pagar_anticipo(self):
+        return self.client_http.post(
+            reverse('rrhh:anticipo_pagar', args=[self.anticipo.pk]),
+            {
+                'fecha_pago': '2026-07-01',
+                'cuenta_bancaria': self.cuenta_bancaria.pk,
+                'notas': '',
+            },
+        )
+
+    def test_edita_anticipo_pendiente(self):
+        response = self.client_http.post(
+            reverse('rrhh:anticipo_update', args=[self.anticipo.pk]),
+            {
+                'trabajador': self.trabajador.pk,
+                'fecha': '2026-07-02',
+                'monto': '250000',
+                'descripcion': 'Anticipo corregido',
+            },
+        )
+
+        self.assertRedirects(response, reverse('rrhh:anticipo_list'))
+        self.anticipo.refresh_from_db()
+        self.assertEqual(self.anticipo.monto, Decimal('250000'))
+        self.assertEqual(self.anticipo.descripcion, 'Anticipo corregido')
+
+    def test_elimina_anticipo_pagado_y_revierte_movimiento(self):
+        from apps.tesoreria.models import MovimientoBancario
+
+        self.pagar_anticipo()
+        self.anticipo.refresh_from_db()
+        movimiento_id = self.anticipo.movimiento_pago_id
+
+        response = self.client_http.post(
+            reverse('rrhh:anticipo_delete', args=[self.anticipo.pk])
+        )
+
+        self.assertRedirects(response, reverse('rrhh:anticipo_list'))
+        self.assertFalse(AnticipoLaboral.objects.filter(pk=self.anticipo.pk).exists())
+        self.assertFalse(MovimientoBancario.objects.filter(pk=movimiento_id).exists())
+
+    def test_bloquea_eliminar_si_respalda_descuento_en_remuneracion(self):
+        self.pagar_anticipo()
+        Remuneracion.objects.create(
+            trabajador=self.trabajador,
+            periodo_mes=7,
+            periodo_anio=2026,
+            sueldo_base=Decimal('1000000'),
+            sueldo_bruto=Decimal('1000000'),
+            anticipo_descontado=Decimal('200000'),
+            liquido_pagar=Decimal('800000'),
+            estado='borrador',
+        )
+
+        response = self.client_http.post(
+            reverse('rrhh:anticipo_delete', args=[self.anticipo.pk])
+        )
+
+        self.assertRedirects(response, reverse('rrhh:anticipo_list'))
+        self.assertTrue(AnticipoLaboral.objects.filter(pk=self.anticipo.pk).exists())
+
+
+@override_settings(SECURE_SSL_REDIRECT=False)
+class AnticipoLaboralCreateViewTest(TestCase):
+    def setUp(self):
+        self.user = CustomUser.objects.create_superuser(
+            'admin_ant_create',
+            'admin-anticipo@example.com',
+            'pass',
+        )
+        self.client_http = Client()
+        self.client_http.force_login(self.user)
+        self.trabajador = _make_trabajador()
+
+    def test_crea_anticipo_pendiente_aunque_se_envie_estado_descontado(self):
+        response = self.client_http.post(reverse('rrhh:anticipo_create'), {
+            'trabajador': self.trabajador.pk,
+            'fecha': date(2026, 6, 15).isoformat(),
+            'monto': '200000',
+            'descripcion': 'Anticipo junio',
+            'estado': 'descontado',
+        })
+
+        self.assertRedirects(response, reverse('rrhh:anticipo_list'))
+        self.assertEqual(AnticipoLaboral.objects.get().estado, 'pendiente')
+
+
+@override_settings(SECURE_SSL_REDIRECT=False)
+class RemuneracionUpdateAnticipoTest(TestCase):
+    def setUp(self):
+        self.user = CustomUser.objects.create_superuser(
+            'admin_rem_update',
+            'admin@example.com',
+            'pass',
+        )
+        self.client_http = Client()
+        self.client_http.force_login(self.user)
+        self.trabajador = _make_trabajador()
+        self.rem = Remuneracion.objects.create(
+            trabajador=self.trabajador,
+            periodo_mes=6,
+            periodo_anio=2026,
+            sueldo_base=Decimal('1000000'),
+            sueldo_bruto=Decimal('1000000'),
+            descuento_afp=Decimal('100000'),
+            descuento_salud=Decimal('70000'),
+            anticipo_descontado=Decimal('0'),
+            liquido_pagar=Decimal('830000'),
+            estado='borrador',
+        )
+        self.url = reverse('rrhh:remuneracion_update', args=[self.rem.pk])
+
+    def test_carga_anticipo_pagado_si_no_estaba_en_la_remuneracion(self):
+        AnticipoLaboral.objects.create(
+            trabajador=self.trabajador,
+            fecha=date(2026, 6, 15),
+            monto=Decimal('200000'),
+            estado='descontado',
+        )
+
+        response = self.client_http.get(self.url)
+
+        self.assertEqual(
+            response.context['form']['anticipo_descontado'].value(),
+            Decimal('200000'),
+        )
+        self.assertEqual(
+            response.context['form']['liquido_pagar'].value(),
+            Decimal('630000'),
+        )
+
+    def test_no_carga_anticipo_pagado_despues_del_periodo(self):
+        AnticipoLaboral.objects.create(
+            trabajador=self.trabajador,
+            fecha=date(2026, 7, 1),
+            monto=Decimal('200000'),
+            estado='descontado',
+        )
+
+        response = self.client_http.get(self.url)
+
+        self.assertEqual(
+            response.context['form']['anticipo_descontado'].value(),
+            Decimal('0'),
+        )
+
+    def test_conserva_anticipo_ya_cargado(self):
+        self.rem.anticipo_descontado = Decimal('50000')
+        self.rem.liquido_pagar = Decimal('780000')
+        self.rem.save(update_fields=['anticipo_descontado', 'liquido_pagar'])
+        AnticipoLaboral.objects.create(
+            trabajador=self.trabajador,
+            fecha=date(2026, 6, 15),
+            monto=Decimal('200000'),
+            estado='descontado',
+        )
+
+        response = self.client_http.get(self.url)
+
+        self.assertEqual(
+            response.context['form']['anticipo_descontado'].value(),
+            Decimal('50000'),
+        )

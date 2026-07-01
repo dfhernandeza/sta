@@ -1,6 +1,6 @@
 {% extends 'base_admin.html' %}
 
-{% block title %}Nuevo Anticipo a Proveedor{% endblock %}
+{% block title %}{% if form.instance.pk %}Editar{% else %}Nuevo{% endif %} Anticipo a Proveedor{% endblock %}
 
 {% block extra_css %}
 <link href="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/css/tom-select.bootstrap5.min.css" rel="stylesheet"/>
@@ -10,12 +10,12 @@
 {% block breadcrumb %}
   <li class="breadcrumb-item"><a href="{% url 'proveedores:proveedor_list' %}">Proveedores</a></li>
   <li class="breadcrumb-item"><a href="{% url 'proveedores:anticipo_list' %}">Anticipos</a></li>
-  <li class="breadcrumb-item active">Nuevo</li>
+  <li class="breadcrumb-item active">{% if form.instance.pk %}Editar{% else %}Nuevo{% endif %}</li>
 {% endblock %}
 
 {% block content %}
 <div class="page-header">
-  <h4 class="page-title">Nuevo Anticipo a Proveedor</h4>
+  <h4 class="page-title">{% if form.instance.pk %}Editar{% else %}Nuevo{% endif %} Anticipo a Proveedor</h4>
   <a href="{% url 'proveedores:anticipo_list' %}" class="btn btn-outline-secondary rounded-pill px-4">
     <i class="bi bi-arrow-left me-1"></i>Volver
   </a>
@@ -42,10 +42,6 @@
             {% if form.monto.errors %}<div class="invalid-feedback d-block">{{ form.monto.errors.0 }}</div>{% endif %}
           </div>
           <div class="col-sm-6">
-            <label class="form-label fw-600">Estado</label>
-            {{ form.estado }}
-          </div>
-          <div class="col-sm-6">
             <label class="form-label fw-600">Origen</label>
             {{ form.origen }}
             <div class="form-text">Use “Saldo de apertura” para anticipos anteriores al inicio del sistema. No genera pago bancario.</div>
@@ -61,7 +57,7 @@
           </div>
           <div class="col-12 pt-2 border-top">
             <button type="submit" class="btn btn-sta px-5 rounded-pill">
-              <i class="bi bi-save me-1"></i>Registrar anticipo
+              <i class="bi bi-save me-1"></i>{% if form.instance.pk %}Guardar cambios{% else %}Registrar anticipo{% endif %}
             </button>
           </div>
         </div>

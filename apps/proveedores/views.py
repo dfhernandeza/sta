@@ -1530,6 +1530,17 @@ class AnticipoListView(ProveedoresMixin, ListView):
     context_object_name = 'anticipos'
     paginate_by = 20
 
+    def get_queryset(self):
+        qs = Anticipo.objects.select_related(
+            'proveedor',
+            'movimiento_pago',
+            'nota_credito_origen',
+        ).prefetch_related('aplicaciones')
+        estado = self.request.GET.get('estado')
+        if estado:
+            qs = qs.filter(estado=estado)
+        return qs
+
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         ctx['titulo'] = 'Anticipos a Proveedores'
@@ -1539,7 +1550,7 @@ class AnticipoListView(ProveedoresMixin, ListView):
 class AnticipoCreateView(ProveedoresMixin, CreateView):
     model = Anticipo
     template_name = 'admin/proveedores/anticipo_form.html'
-    fields = ['proveedor', 'fecha', 'monto', 'descripcion', 'proyecto', 'estado', 'origen']
+    fields = ['proveedor', 'fecha', 'monto', 'descripcion', 'proyecto', 'origen']
     success_url = reverse_lazy('proveedores:anticipo_list')
 
     def get_form(self, form_class=None):
@@ -1547,7 +1558,7 @@ class AnticipoCreateView(ProveedoresMixin, CreateView):
         form = super().get_form(form_class)
         for field in form.fields.values():
             field.widget.attrs.setdefault('class', 'form-control')
-        for fname in ['proveedor', 'proyecto', 'estado', 'origen']:
+        for fname in ['proveedor', 'proyecto', 'origen']:
             if fname in form.fields:
                 form.fields[fname].widget.attrs.update({'class': 'form-select'})
         if 'fecha' in form.fields:
@@ -1563,6 +1574,7 @@ class AnticipoCreateView(ProveedoresMixin, CreateView):
         if form.instance.origen == 'nota_credito':
             form.add_error('origen', 'El origen "Nota de crédito" se genera automáticamente desde una nota de crédito.')
             return self.form_invalid(form)
+        form.instance.estado = 'pendiente'
         messages.success(self.request, 'Anticipo registrado.')
         return super().form_valid(form)
 
@@ -1570,6 +1582,161 @@ class AnticipoCreateView(ProveedoresMixin, CreateView):
         ctx = super().get_context_data(**kwargs)
         ctx['titulo'] = 'Nuevo Anticipo a Proveedor'
         return ctx
+
+
+class AnticipoUpdateView(ProveedoresMixin, UpdateView):
+    model = Anticipo
+    template_name = 'admin/proveedores/anticipo_form.html'
+    fields = ['proveedor', 'fecha', 'monto', 'descripcion', 'proyecto', 'origen']
+    success_url = reverse_lazy('proveedores:anticipo_list')
+
+    def dispatch(self, request, *args, **kwargs):
+        anticipo = self.get_object()
+        if anticipo.origen == 'nota_credito' or anticipo.nota_credito_origen_id:
+            messages.error(
+                request,
+                'Este crédito fue generado por una nota de crédito. '
+                'Debe corregir o eliminar la nota de crédito de origen.'
+            )
+            return redirect('proveedores:anticipo_list')
+        if anticipo.aplicaciones.exists():
+            messages.error(
+                request,
+                'No se puede editar el anticipo porque ya fue aplicado a una cuenta por pagar. '
+                'Anule primero la aplicación.'
+            )
+            return redirect('proveedores:anticipo_list')
+        if anticipo.estado != 'pendiente':
+            messages.error(
+                request,
+                f'No se puede editar un anticipo en estado "{anticipo.get_estado_display()}".'
+            )
+            return redirect('proveedores:anticipo_list')
+        if anticipo.movimiento_pago_id:
+            messages.error(
+                request,
+                'No se puede editar un anticipo que ya fue pagado. '
+                'Elimínelo para revertir el pago y luego regístrelo nuevamente.'
+            )
+            return redirect('proveedores:anticipo_list')
+        if anticipo.asiento_apertura_id:
+            messages.error(
+                request,
+                'No se puede editar este anticipo porque está vinculado a un asiento de apertura.'
+            )
+            return redirect('proveedores:anticipo_list')
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_form(self, form_class=None):
+        from django.forms import DateInput
+
+        form = super().get_form(form_class)
+        for field in form.fields.values():
+            field.widget.attrs.setdefault('class', 'form-control')
+        for fname in ['proveedor', 'proyecto', 'origen']:
+            form.fields[fname].widget.attrs.update({'class': 'form-select'})
+        form.fields['fecha'].widget = DateInput(
+            attrs={'class': 'form-control'},
+            format='%Y-%m-%d',
+        )
+        form.fields['origen'].choices = [
+            ('operacional', 'Operacional'),
+            ('apertura', 'Saldo de apertura'),
+        ]
+        return form
+
+    def form_valid(self, form):
+        if form.instance.origen == 'nota_credito':
+            form.add_error(
+                'origen',
+                'El origen "Nota de crédito" se genera automáticamente.',
+            )
+            return self.form_invalid(form)
+        form.instance.estado = 'pendiente'
+        messages.success(self.request, 'Anticipo actualizado.')
+        return super().form_valid(form)
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx['titulo'] = 'Editar Anticipo a Proveedor'
+        return ctx
+
+
+class AnticipoDeleteView(ProveedoresMixin, DeleteView):
+    model = Anticipo
+    template_name = 'admin/proveedores/anticipo_confirm_delete.html'
+    success_url = reverse_lazy('proveedores:anticipo_list')
+
+    def _motivo_bloqueo(self, anticipo):
+        if anticipo.origen == 'nota_credito' or anticipo.nota_credito_origen_id:
+            return (
+                'Este crédito fue generado por una nota de crédito. '
+                'Debe eliminarse desde la nota de crédito de origen.'
+            )
+        if anticipo.aplicaciones.exists():
+            return (
+                'No se puede eliminar el anticipo porque tiene aplicaciones a cuentas por pagar. '
+                'Anule primero esas aplicaciones.'
+            )
+        if anticipo.asiento_apertura_id:
+            return (
+                'No se puede eliminar el anticipo porque está vinculado a un asiento de apertura. '
+                'Ajuste primero el asiento y desvincule el saldo.'
+            )
+        movimiento = anticipo.movimiento_pago
+        if movimiento:
+            if movimiento.conciliado:
+                return (
+                    'No se puede eliminar el anticipo porque su movimiento bancario está conciliado. '
+                    'Revierta primero la conciliación.'
+                )
+            if movimiento.asientos.filter(estado='confirmado').exists():
+                return (
+                    'No se puede eliminar el anticipo porque su pago tiene un asiento confirmado. '
+                    'Anule o reverse primero el asiento.'
+                )
+        return None
+
+    def dispatch(self, request, *args, **kwargs):
+        self.object = self.get_object()
+        motivo = self._motivo_bloqueo(self.object)
+        if motivo:
+            messages.error(request, motivo)
+            return redirect('proveedores:anticipo_list')
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx['cancel_url'] = reverse('proveedores:anticipo_list')
+        ctx['movimiento_pago'] = self.object.movimiento_pago
+        return ctx
+
+    def form_valid(self, form):
+        with transaction.atomic():
+            anticipo = Anticipo.objects.select_for_update().select_related(
+                'movimiento_pago',
+            ).get(pk=self.object.pk)
+            motivo = self._motivo_bloqueo(anticipo)
+            if motivo:
+                messages.error(self.request, motivo)
+                return redirect('proveedores:anticipo_list')
+
+            anticipo_id = anticipo.pk
+            proveedor = anticipo.proveedor
+            movimiento = anticipo.movimiento_pago
+            if movimiento:
+                movimiento.asientos.filter(estado='borrador').delete()
+                movimiento.delete()
+            anticipo.delete()
+
+        logger.warning(
+            'Anticipo a proveedor eliminado: pk=%s, proveedor=%s por %s',
+            anticipo_id,
+            proveedor,
+            self.request.user,
+        )
+        messages.success(self.request, 'Anticipo eliminado correctamente.')
+        return redirect(self.success_url)
 
 
 class AnticipoProveedorPagarView(ProveedoresMixin, View):
@@ -1612,6 +1779,9 @@ class AnticipoProveedorPagarView(ProveedoresMixin, View):
         if anticipo.estado != 'pendiente':
             messages.info(request, f'Este anticipo ya está en estado "{anticipo.get_estado_display()}".')
             return redirect('proveedores:anticipo_list')
+        if anticipo.movimiento_pago_id:
+            messages.info(request, 'Este anticipo ya tiene un pago bancario registrado.')
+            return redirect('proveedores:anticipo_list')
         form = self._build_form(initial={'fecha_pago': timezone.localdate()})
         return render(request, self.template_name, {'anticipo': anticipo, 'form': form})
 
@@ -1627,6 +1797,12 @@ class AnticipoProveedorPagarView(ProveedoresMixin, View):
                 'No se puede pagar este crédito desde banco. Debe aplicarse contra facturas futuras o reversarse desde su origen.'
             )
             return redirect('proveedores:anticipo_list')
+        if anticipo.estado != 'pendiente':
+            messages.error(request, f'El anticipo está en estado "{anticipo.get_estado_display()}".')
+            return redirect('proveedores:anticipo_list')
+        if anticipo.movimiento_pago_id:
+            messages.error(request, 'Este anticipo ya tiene un pago bancario registrado.')
+            return redirect('proveedores:anticipo_list')
         form = self._build_form(data=request.POST)
 
         if not form.is_valid():
@@ -1635,32 +1811,47 @@ class AnticipoProveedorPagarView(ProveedoresMixin, View):
         d = form.cleaned_data
         cuenta_bancaria = d['cuenta_bancaria']
 
-        # 1. Crear MovimientoBancario (egreso)
-        descripcion_mov = f'Anticipo {anticipo.proveedor.razon_social} - {anticipo.fecha}'
-        movimiento = MovimientoBancario.objects.create(
-            cuenta=cuenta_bancaria,
-            fecha=d['fecha_pago'],
-            tipo='egreso',
-            monto=anticipo.monto,
-            descripcion=descripcion_mov,
-            cuenta_contable=None,
-        )
+        with transaction.atomic():
+            anticipo = Anticipo.objects.select_for_update().select_related(
+                'proveedor',
+            ).get(pk=pk)
+            if anticipo.origen != 'operacional' or anticipo.estado != 'pendiente':
+                messages.error(request, 'El anticipo ya no está disponible para registrar el pago.')
+                return redirect('proveedores:anticipo_list')
+            if anticipo.movimiento_pago_id:
+                messages.error(request, 'Este anticipo ya tiene un pago bancario registrado.')
+                return redirect('proveedores:anticipo_list')
 
-        # Asignar cuenta_contable del movimiento = cuenta_anticipos_proveedores (fallback a compras)
-        try:
-            from apps.contabilidad.models import ConfiguracionContable
-            config = ConfiguracionContable.get()
-            if config and config.cuenta_anticipos_proveedores:
-                movimiento.cuenta_contable = config.cuenta_anticipos_proveedores
-            elif config and config.cuenta_compras_default:
-                movimiento.cuenta_contable = config.cuenta_compras_default
-            if movimiento.cuenta_contable:
-                movimiento.save(update_fields=['cuenta_contable'])
-        except Exception:
-            pass
+            descripcion_mov = f'Anticipo {anticipo.proveedor.razon_social} - {anticipo.fecha}'
+            movimiento = MovimientoBancario.objects.create(
+                cuenta=cuenta_bancaria,
+                fecha=d['fecha_pago'],
+                tipo='egreso',
+                monto=anticipo.monto,
+                descripcion=descripcion_mov,
+                cuenta_contable=None,
+                proyecto=anticipo.proyecto,
+            )
 
-        # 2. Generar asiento: DEBE Anticipos a Proveedores (activo) / HABER Banco
-        asiento = generar_asiento_pago_anticipo_proveedor(anticipo, movimiento, usuario=request.user)
+            try:
+                from apps.contabilidad.models import ConfiguracionContable
+                config = ConfiguracionContable.get()
+                if config and config.cuenta_anticipos_proveedores:
+                    movimiento.cuenta_contable = config.cuenta_anticipos_proveedores
+                elif config and config.cuenta_compras_default:
+                    movimiento.cuenta_contable = config.cuenta_compras_default
+                if movimiento.cuenta_contable:
+                    movimiento.save(update_fields=['cuenta_contable'])
+            except Exception:
+                pass
+
+            asiento = generar_asiento_pago_anticipo_proveedor(
+                anticipo,
+                movimiento,
+                usuario=request.user,
+            )
+            anticipo.movimiento_pago = movimiento
+            anticipo.save(update_fields=['movimiento_pago'])
 
         if asiento:
             logger.info('Anticipo pk=%s pagado. Movimiento=%s, asiento=%s. Usuario: %s', anticipo.pk, movimiento.pk, asiento.numero, request.user)

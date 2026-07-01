@@ -185,6 +185,18 @@ class MovimientoUpdateView(TesoreriaMixin, UpdateView):
 
     def dispatch(self, request, *args, **kwargs):
         movimiento = self.get_object()
+        if getattr(movimiento, 'anticipo_proveedor', None):
+            messages.error(
+                request,
+                'No se puede editar este movimiento porque corresponde al pago de un anticipo a proveedor.'
+            )
+            return redirect('tesoreria:movimiento_list')
+        if getattr(movimiento, 'anticipo_laboral', None):
+            messages.error(
+                request,
+                'No se puede editar este movimiento porque corresponde al pago de un anticipo laboral.'
+            )
+            return redirect('tesoreria:movimiento_list')
         if movimiento.conciliado:
             messages.error(
                 request,
@@ -235,6 +247,20 @@ class MovimientoDeleteView(TesoreriaMixin, DeleteView):
                 request,
                 'No se puede eliminar este movimiento directamente porque está vinculado a una Cuenta por Pagar. '
                 'Use la acción "Anular" desde Cuentas por Pagar para revertir el pago y limpiar el saldo.'
+            )
+            return redirect('tesoreria:movimiento_list')
+        if getattr(movimiento, 'anticipo_proveedor', None):
+            messages.error(
+                request,
+                'No se puede eliminar este movimiento directamente porque corresponde a un anticipo a proveedor. '
+                'Use la acción "Eliminar" desde Anticipos a Proveedores.'
+            )
+            return redirect('tesoreria:movimiento_list')
+        if getattr(movimiento, 'anticipo_laboral', None):
+            messages.error(
+                request,
+                'No se puede eliminar este movimiento directamente porque corresponde a un anticipo laboral. '
+                'Use la acción "Eliminar" desde Anticipos Laborales.'
             )
             return redirect('tesoreria:movimiento_list')
         asientos_confirmados = movimiento.asientos.filter(estado='confirmado')

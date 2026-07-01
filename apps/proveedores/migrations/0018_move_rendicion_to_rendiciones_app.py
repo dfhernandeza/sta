@@ -15,6 +15,7 @@ class Migration(migrations.Migration):
     dependencies = [
         ('proveedores', '0017_alter_detalle_decimal_places'),
         ('rendiciones', '0001_initial'),
+        ('contabilidad', '0015_update_rendicion_gastos_fk'),
     ]
 
     operations = [

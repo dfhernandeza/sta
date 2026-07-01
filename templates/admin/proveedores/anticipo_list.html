@@ -59,15 +59,25 @@
           <td class="text-end fw-600">{{ a.monto|moneda_chilena }}</td>
           <td class="text-center"><span class="badge-{{ a.estado }}">{{ a.get_estado_display }}</span></td>
           <td class="text-end">
-            {% if a.estado == 'pendiente' and a.origen == 'operacional' %}
+            {% if a.estado == 'pendiente' and a.origen == 'operacional' and not a.movimiento_pago_id %}
             <a href="{% url 'proveedores:anticipo_pagar' a.pk %}" class="btn btn-sm btn-success rounded-pill px-3">
               <i class="bi bi-cash-coin me-1"></i>Pagar
             </a>
+            {% elif a.movimiento_pago_id %}
+            <span class="badge bg-success-subtle text-success-emphasis me-1">Pagado</span>
             {% elif a.estado == 'pendiente' and a.origen == 'apertura' %}
             <span class="text-muted small">Disponible</span>
             {% elif a.estado == 'pendiente' and a.origen == 'nota_credito' %}
             <span class="text-muted small">Crédito disponible</span>
             {% endif %}
+            {% if a.origen != 'nota_credito' and not a.aplicaciones.exists and not a.movimiento_pago_id and not a.asiento_apertura_id %}
+            <a href="{% url 'proveedores:anticipo_update' a.pk %}" class="btn btn-sm btn-outline-secondary" title="Editar anticipo">
+              <i class="bi bi-pencil"></i>
+            </a>
+            {% endif %}
+            <a href="{% url 'proveedores:anticipo_delete' a.pk %}" class="btn btn-sm btn-outline-danger" title="Eliminar anticipo">
+              <i class="bi bi-trash"></i>
+            </a>
           </td>
         </tr>
         {% empty %}

@@ -186,9 +186,14 @@ document.getElementById('id_trabajador')?.addEventListener('change', function ()
   const pk = this.value;
   if (!pk) return;
   let url = `{% url 'rrhh:trabajador_datos_api' pk=0 %}`.replace('/0/', `/${pk}/`);
-  if (REMUNERACION_ID) {
-    url += `?remuneracion=${encodeURIComponent(REMUNERACION_ID)}`;
-  }
+  const params = new URLSearchParams();
+  if (REMUNERACION_ID) params.set('remuneracion', REMUNERACION_ID);
+  const mes = document.getElementById('id_periodo_mes')?.value;
+  const anio = document.getElementById('id_periodo_anio')?.value;
+  if (mes) params.set('mes', mes);
+  if (anio) params.set('anio', anio);
+  const query = params.toString();
+  if (query) url += `?${query}`;
   fetch(url)
     .then(r => r.json())
     .then(d => {

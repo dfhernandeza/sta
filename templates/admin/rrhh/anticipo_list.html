@@ -52,11 +52,17 @@
           <td class="text-end fw-600">{{ a.monto|moneda_chilena }}</td>
           <td class="text-center"><span class="badge-{{ a.estado }}">{{ a.get_estado_display }}</span></td>
           <td class="text-center">
-            {% if a.estado == 'pendiente' %}
+            {% if a.estado == 'pendiente' and not a.movimiento_pago_id %}
             <a href="{% url 'rrhh:anticipo_pagar' a.pk %}" class="btn btn-success btn-sm rounded-pill px-3" title="Registrar pago">
               <i class="bi bi-cash-coin"></i>
             </a>
+            <a href="{% url 'rrhh:anticipo_update' a.pk %}" class="btn btn-outline-secondary btn-sm" title="Editar anticipo">
+              <i class="bi bi-pencil"></i>
+            </a>
             {% endif %}
+            <a href="{% url 'rrhh:anticipo_delete' a.pk %}" class="btn btn-outline-danger btn-sm" title="Eliminar anticipo">
+              <i class="bi bi-trash"></i>
+            </a>
           </td>
         </tr>
         {% empty %}

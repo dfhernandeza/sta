@@ -338,6 +338,11 @@ class Anticipo(TimeStampedModel):
         on_delete=models.SET_NULL, related_name='anticipos_proveedores_apertura',
         verbose_name='Asiento de apertura'
     )
+    movimiento_pago = models.OneToOneField(
+        'tesoreria.MovimientoBancario', null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='anticipo_proveedor',
+        verbose_name='Movimiento de pago',
+    )
     nota_credito_origen = models.OneToOneField(
         NotaCreditoRecibida, null=True, blank=True,
         on_delete=models.CASCADE, related_name='anticipo_generado',
