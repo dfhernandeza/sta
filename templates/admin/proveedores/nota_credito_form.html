@@ -435,8 +435,12 @@ function recalcularDocumento() {
     if (isExento) exentoTotal += qty * price;
     else          netoAfecto  += qty * price;
   }
-  const iva = netoAfecto * 0.19;
-  const total = netoAfecto + iva + exentoTotal;
+  const redondearMonto = valor =>
+    Math.round((valor + Number.EPSILON) * 100) / 100;
+  netoAfecto = redondearMonto(netoAfecto);
+  exentoTotal = redondearMonto(exentoTotal);
+  const iva = redondearMonto(netoAfecto * 0.19);
+  const total = redondearMonto(netoAfecto + iva + exentoTotal);
   document.getElementById('id_neto').value   = netoAfecto.toFixed(2);
   document.getElementById('id_exento').value = exentoTotal.toFixed(2);
   document.getElementById('id_iva').value    = iva.toFixed(2);

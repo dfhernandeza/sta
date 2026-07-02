@@ -16,6 +16,7 @@ from apps.core.mixins import GestionMixin, AppPermisoMixin
 from django.db import transaction
 
 CXP_TOLERANCIA_SALDO_DECIMAL = Decimal('0.99')
+NOTA_CREDITO_TOLERANCIA_REDONDEO = Decimal('0.99')
 
 
 class ProveedoresMixin(AppPermisoMixin):
@@ -177,7 +178,21 @@ def _credito_a_favor_por_nota_credito(nota_credito):
         return Decimal('0')
 
     saldo_factura = _saldo_factura_antes_de_nota_credito(nota_credito.factura, nota_credito)
-    return max(nota_credito.total - saldo_factura, Decimal('0'))
+    credito = max(nota_credito.total - saldo_factura, Decimal('0'))
+
+    # Una NC puede exceder por centavos el total original al repartir y
+    # redondear sus líneas. Ese residual no constituye un anticipo real.
+    total_otras_notas = nota_credito.factura.notas_credito.exclude(
+        estado='anulada'
+    ).exclude(pk=nota_credito.pk).aggregate(total=Sum('total'))['total'] or Decimal('0')
+    exceso_redondeo = max(
+        total_otras_notas + nota_credito.total - nota_credito.factura.total,
+        Decimal('0'),
+    )
+    if exceso_redondeo <= NOTA_CREDITO_TOLERANCIA_REDONDEO:
+        credito = max(credito - exceso_redondeo, Decimal('0'))
+
+    return credito
 
 
 def _sincronizar_credito_proveedor_nota_credito(nota_credito):
@@ -683,10 +698,17 @@ class NotaCreditoRecibidaCreateView(ProveedoresMixin, CreateView):
             )
 
         total_existente = _total_notas_credito_activas(self.factura)
-        if form.instance.estado != 'anulada' and total_existente + totales['total'] > self.factura.total:
+        exceso_total = _monto_2(
+            total_existente + totales['total'] - self.factura.total
+        )
+        if (
+            form.instance.estado != 'anulada'
+            and exceso_total > NOTA_CREDITO_TOLERANCIA_REDONDEO
+        ):
             form.add_error(
                 'total',
-                'El total de notas de crédito activas no puede superar el total de la factura.'
+                'El total de notas de crédito activas no puede superar el total '
+                f'de la factura por más de ${NOTA_CREDITO_TOLERANCIA_REDONDEO}.'
             )
             return self.render_to_response(
                 self.get_context_data(form=form, detalle_formset=formset)
