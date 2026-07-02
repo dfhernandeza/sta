@@ -11,11 +11,9 @@ class DashboardMixin(AppPermisoMixin):
     app_name = 'dashboard'
 
 from apps.clientes.models import FacturaEmitida, CuentaPorCobrar
-from apps.proveedores.models import FacturaRecibida
 from apps.tesoreria.models import CuentaBancaria
 from apps.proyectos.models import Proyecto
 from apps.contabilidad.models import AsientoContable, ConfiguracionContable, LineaAsiento
-from apps.rrhh.models import Remuneracion
 import json
 
 
@@ -59,6 +57,33 @@ class DashboardView(DashboardMixin, TemplateView):
         return total
 
     @staticmethod
+    def _ingresos_egresos(desde, hasta):
+        """Totales de resultado desde líneas de asientos confirmados."""
+        resumen = (
+            LineaAsiento.objects
+            .filter(
+                asiento__estado='confirmado',
+                asiento__fecha__range=(desde, hasta),
+                cuenta__tipo__in=('ingreso', 'costo', 'gasto', 'socio'),
+            )
+            .values('cuenta__tipo')
+            .annotate(
+                debe=Sum('debe'),
+                haber=Sum('haber'),
+            )
+        )
+        ingresos = Decimal('0')
+        egresos = Decimal('0')
+        for fila in resumen:
+            debe = fila['debe'] or Decimal('0')
+            haber = fila['haber'] or Decimal('0')
+            if fila['cuenta__tipo'] == 'ingreso':
+                ingresos += haber - debe
+            else:
+                egresos += debe - haber
+        return ingresos, egresos
+
+    @staticmethod
     def _desplazar_mes(anio, mes, desplazamiento):
         indice = anio * 12 + mes - 1 + desplazamiento
         nuevo_anio, nuevo_mes_cero = divmod(indice, 12)
@@ -97,8 +122,7 @@ class DashboardView(DashboardMixin, TemplateView):
 
         apertura = (
             AsientoContable.objects
-            .filter(tipo='apertura')
-            .exclude(estado='anulado')
+            .filter(tipo='apertura', estado='confirmado')
             .order_by('fecha', 'id')
             .first()
         )
@@ -126,30 +150,22 @@ class DashboardView(DashboardMixin, TemplateView):
         )
         ctx['cuentas_bancarias'] = cuentas
 
-        # Facturas del mes
+        # Actividad y resultado contable del mes
         facturas_emitidas_mes = FacturaEmitida.objects.none()
-        facturas_recibidas_mes = FacturaRecibida.objects.none()
-        remuneraciones_pagadas_mes = Remuneracion.objects.none()
+        ingresos_mes = Decimal('0')
+        egresos_mes = Decimal('0')
         if not periodo_fuera_sistema:
             facturas_emitidas_mes = FacturaEmitida.objects.filter(
                 fecha_emision__range=(inicio_periodo_efectivo, fin_mes),
             ).exclude(estado='anulada')
-            facturas_recibidas_mes = FacturaRecibida.objects.filter(
-                fecha_emision__range=(inicio_periodo_efectivo, fin_mes),
-            ).exclude(estado='anulada')
-            remuneraciones_pagadas_mes = Remuneracion.objects.filter(
-                estado='pagado',
-                fecha_pago__range=(inicio_periodo_efectivo, fin_mes),
+            ingresos_mes, egresos_mes = self._ingresos_egresos(
+                inicio_periodo_efectivo,
+                fin_mes,
             )
 
-        ctx['ingresos_mes'] = facturas_emitidas_mes.aggregate(t=Sum('total'))['t'] or 0
+        ctx['ingresos_mes'] = ingresos_mes
         ctx['facturas_emitidas_mes'] = facturas_emitidas_mes.count()
-        ctx['egresos_mes'] = facturas_recibidas_mes.aggregate(t=Sum('total'))['t'] or 0
-
-        # Sueldos pagados el mes
-        ctx['sueldos_pagados_mes'] = remuneraciones_pagadas_mes.aggregate(t=Sum('liquido_pagar'))['t'] or 0
-
-        ctx['egresos_mes'] += ctx['sueldos_pagados_mes']
+        ctx['egresos_mes'] = egresos_mes
         ctx['utilidad_mes'] = ctx['ingresos_mes'] - ctx['egresos_mes']
 
         # CxC vencidas
@@ -169,7 +185,10 @@ class DashboardView(DashboardMixin, TemplateView):
             config_contable, 'cuenta_cxc', **saldo_kwargs
         )
         ctx['total_cxp_pendiente'] = self._saldo_config(
-            config_contable, 'cuenta_cxp', **saldo_kwargs
+            config_contable,
+            'cuenta_cxp',
+            'cuenta_documentos_por_pagar',
+            **saldo_kwargs,
         )
         ctx['sueldos_por_pagar'] = self._saldo_config(
             config_contable, 'cuenta_sueldos_por_pagar', **saldo_kwargs
@@ -219,17 +238,10 @@ class DashboardView(DashboardMixin, TemplateView):
             ing = Decimal('0')
             egr = Decimal('0')
             if inicio_grafico_efectivo <= fin_grafico:
-                ing = FacturaEmitida.objects.filter(
-                    fecha_emision__range=(inicio_grafico_efectivo, fin_grafico),
-                ).exclude(estado='anulada').aggregate(t=Sum('total'))['t'] or Decimal('0')
-                egr = FacturaRecibida.objects.filter(
-                    fecha_emision__range=(inicio_grafico_efectivo, fin_grafico),
-                ).exclude(estado='anulada').aggregate(t=Sum('total'))['t'] or Decimal('0')
-                sueldos = Remuneracion.objects.filter(
-                    estado='pagado',
-                    fecha_pago__range=(inicio_grafico_efectivo, fin_grafico),
-                ).aggregate(t=Sum('liquido_pagar'))['t'] or Decimal('0')
-                egr += sueldos
+                ing, egr = self._ingresos_egresos(
+                    inicio_grafico_efectivo,
+                    fin_grafico,
+                )
 
             ingresos_data.append(float(ing))
             egresos_data.append(float(egr))
