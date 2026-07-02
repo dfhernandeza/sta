@@ -76,7 +76,71 @@
   {% endif %}
 </div>
 
+{# ── Movimientos contables ────────────────────────────────────────── #}
+<div class="card-sta p-0 mb-4">
+  <div class="p-3 border-bottom d-flex justify-content-between align-items-center">
+    <div>
+      <h6 class="mb-0 fw-700 text-sta"><i class="bi bi-journal-text me-2"></i>Movimientos contables</h6>
+      <span class="text-muted small">Líneas de asientos confirmados asociadas al centro de costo.</span>
+    </div>
+    <span class="badge bg-secondary">{{ movimientos_contables|length }} movimiento(s)</span>
+  </div>
+  {% if movimientos_contables %}
+  <div class="table-responsive">
+    <table class="table table-sm table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Fecha</th>
+          <th>Asiento</th>
+          <th>Cuenta</th>
+          <th>Descripción</th>
+          <th class="text-end">Debe</th>
+          <th class="text-end">Haber</th>
+          <th class="text-end">Ingreso</th>
+          <th class="text-end">Egreso</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for movimiento in movimientos_contables %}
+        <tr>
+          <td class="text-nowrap">{{ movimiento.linea.asiento.fecha }}</td>
+          <td>
+            <a href="{% url 'contabilidad:asiento_detail' movimiento.linea.asiento.pk %}" class="font-monospace fw-600">
+              {{ movimiento.linea.asiento.numero }}
+            </a>
+          </td>
+          <td class="small">
+            <span class="font-monospace">{{ movimiento.linea.cuenta.codigo }}</span><br>
+            <span class="text-muted">{{ movimiento.linea.cuenta.nombre }}</span>
+          </td>
+          <td class="small text-muted">{{ movimiento.linea.descripcion|default:movimiento.linea.asiento.descripcion|truncatechars:60 }}</td>
+          <td class="text-end font-monospace">{{ movimiento.linea.debe|moneda_chilena }}</td>
+          <td class="text-end font-monospace">{{ movimiento.linea.haber|moneda_chilena }}</td>
+          <td class="text-end fw-600 text-success">
+            {% if movimiento.ingreso %}{{ movimiento.ingreso|moneda_chilena }}{% else %}—{% endif %}
+          </td>
+          <td class="text-end fw-600 text-danger">
+            {% if movimiento.egreso %}{{ movimiento.egreso|moneda_chilena }}{% else %}—{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot class="table-light fw-700">
+        <tr>
+          <td colspan="6" class="text-end">Totales contables</td>
+          <td class="text-end text-success">{{ total_ingresos|moneda_chilena }}</td>
+          <td class="text-end text-danger">{{ total_egresos|moneda_chilena }}</td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+  {% else %}
+  <p class="text-muted small p-3 mb-0">No hay líneas de asientos confirmados para este centro de costo en el período seleccionado.</p>
+  {% endif %}
+</div>
+
 {# ── Desglose egresos ─────────────────────────────────────────────── #}
+<h6 class="fw-700 text-muted mb-3">Desglose documental referencial</h6>
 <div class="row g-3 mb-4">
   <div class="col-sm-6 col-lg-3">
     <div class="card-sta p-3 text-center">
@@ -108,7 +172,7 @@
 <div class="card-sta p-0 mb-4">
   <div class="p-3 border-bottom d-flex justify-content-between align-items-center">
     <h6 class="mb-0 fw-700 text-success"><i class="bi bi-arrow-down-circle me-2"></i>Facturas Emitidas — Ingresos</h6>
-    <span class="badge bg-success fs-6">{{ total_ingresos|moneda_chilena }}</span>
+    <span class="badge bg-success fs-6">{{ total_fact_emitidas|moneda_chilena }}</span>
   </div>
   {% if facturas_emitidas %}
   <div class="table-responsive">
@@ -148,7 +212,7 @@
       <tfoot class="table-light fw-700">
         <tr>
           <td colspan="5" class="text-end">Total Ingresos</td>
-          <td class="text-end text-success">{{ total_ingresos|moneda_chilena }}</td>
+          <td class="text-end text-success">{{ total_fact_emitidas|moneda_chilena }}</td>
           <td></td>
         </tr>
       </tfoot>

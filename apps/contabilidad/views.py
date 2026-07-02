@@ -1022,9 +1022,43 @@ class CentroCostoDetalleView(ContabilidadMixin, View):
         costos_proyecto = list(cp_qs)
         total_costos_proyecto = sum(c.monto for c in costos_proyecto)
 
-        # ── Totals ────────────────────────────────────────────────────────
-        total_egresos = total_fact_recibidas + total_rendiciones + total_remuneraciones + total_costos_proyecto
-        resultado = total_ingresos - total_egresos
+        # ── Movimientos contables del centro de costo ─────────────────────
+        lineas_qs = (
+            LineaAsiento.objects
+            .filter(
+                centro_costo=centro,
+                asiento__estado='confirmado',
+            )
+            .select_related('asiento', 'cuenta')
+            .order_by('asiento__fecha', 'asiento__numero', 'orden', 'pk')
+        )
+        if fecha_desde:
+            lineas_qs = lineas_qs.filter(asiento__fecha__gte=fecha_desde)
+        if fecha_hasta:
+            lineas_qs = lineas_qs.filter(asiento__fecha__lte=fecha_hasta)
+
+        movimientos_contables = []
+        total_ingresos_contables = Decimal('0')
+        total_egresos_contables = Decimal('0')
+        tipos_egreso = {'costo', 'gasto', 'socio'}
+
+        for linea in lineas_qs:
+            ingreso = Decimal('0')
+            egreso = Decimal('0')
+            if linea.cuenta.tipo == 'ingreso':
+                ingreso = linea.haber - linea.debe
+                total_ingresos_contables += ingreso
+            elif linea.cuenta.tipo in tipos_egreso:
+                egreso = linea.debe - linea.haber
+                total_egresos_contables += egreso
+
+            movimientos_contables.append({
+                'linea': linea,
+                'ingreso': ingreso,
+                'egreso': egreso,
+            })
+
+        resultado_contable = total_ingresos_contables - total_egresos_contables
 
         return render(request, self.template_name, {
             'titulo': f'Detalle Centro de Costo: {centro}',
@@ -1033,7 +1067,7 @@ class CentroCostoDetalleView(ContabilidadMixin, View):
             'fecha_hasta': fecha_hasta or '',
             # ingresos
             'facturas_emitidas': facturas_emitidas,
-            'total_ingresos': total_ingresos,
+            'total_fact_emitidas': total_ingresos,
             # egresos
             'facturas_recibidas': facturas_recibidas,
             'total_fact_recibidas': total_fact_recibidas,
@@ -1043,9 +1077,11 @@ class CentroCostoDetalleView(ContabilidadMixin, View):
             'total_remuneraciones': total_remuneraciones,
             'costos_proyecto': costos_proyecto,
             'total_costos_proyecto': total_costos_proyecto,
-            # summary
-            'total_egresos': total_egresos,
-            'resultado': resultado,
+            # resumen y detalle contable
+            'movimientos_contables': movimientos_contables,
+            'total_ingresos': total_ingresos_contables,
+            'total_egresos': total_egresos_contables,
+            'resultado': resultado_contable,
         })
 
 

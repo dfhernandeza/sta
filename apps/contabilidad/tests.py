@@ -231,3 +231,67 @@ class AsientoDetailViewTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'OPE')
         self.assertContains(response, 'Operaciones')
+
+
+class CentroCostoDetalleViewTest(TestCase):
+    def test_incluye_ingresos_y_egresos_de_asientos_confirmados(self):
+        user = CustomUser.objects.create_superuser(
+            'detalle-centro-costo',
+            password='x',
+        )
+        self.client.force_login(user)
+        centro = CentroCosto.objects.create(
+            codigo='PRY',
+            nombre='Proyecto',
+        )
+        cuenta_ingreso = make_cuenta('3.1.97', 'Ingreso manual', 'ingreso')
+        cuenta_gasto = make_cuenta('4.1.97', 'Gasto manual', 'gasto')
+        cuenta_banco = make_cuenta('1.1.97', 'Banco')
+        asiento = AsientoContable.objects.create(
+            fecha='2026-07-02',
+            descripcion='Movimiento manual centro de costo',
+            estado='confirmado',
+        )
+        LineaAsiento.objects.create(
+            asiento=asiento,
+            cuenta=cuenta_ingreso,
+            centro_costo=centro,
+            haber=Decimal('1000.00'),
+            orden=1,
+        )
+        LineaAsiento.objects.create(
+            asiento=asiento,
+            cuenta=cuenta_gasto,
+            centro_costo=centro,
+            debe=Decimal('400.00'),
+            orden=2,
+        )
+        LineaAsiento.objects.create(
+            asiento=asiento,
+            cuenta=cuenta_banco,
+            debe=Decimal('600.00'),
+            orden=3,
+        )
+        asiento_borrador = AsientoContable.objects.create(
+            fecha='2026-07-02',
+            descripcion='No debe aparecer',
+            estado='borrador',
+        )
+        LineaAsiento.objects.create(
+            asiento=asiento_borrador,
+            cuenta=cuenta_gasto,
+            centro_costo=centro,
+            debe=Decimal('900.00'),
+        )
+
+        response = self.client.get(
+            reverse('contabilidad:centro_detalle', kwargs={'pk': centro.pk})
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['total_ingresos'], Decimal('1000.00'))
+        self.assertEqual(response.context['total_egresos'], Decimal('400.00'))
+        self.assertEqual(response.context['resultado'], Decimal('600.00'))
+        self.assertEqual(len(response.context['movimientos_contables']), 2)
+        self.assertContains(response, asiento.numero)
+        self.assertNotContains(response, 'No debe aparecer')
