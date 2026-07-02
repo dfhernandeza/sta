@@ -769,6 +769,175 @@ class NotaCreditoRecibidaCreateView(ProveedoresMixin, CreateView):
         return ctx
 
 
+class NotaCreditoRecibidaUpdateView(ProveedoresMixin, UpdateView):
+    model = NotaCreditoRecibida
+    template_name = 'admin/proveedores/nota_credito_form.html'
+    fields = ['numero', 'fecha_emision', 'neto', 'exento', 'iva', 'total', 'estado', 'observaciones']
+
+    def dispatch(self, request, *args, **kwargs):
+        self.object = self.get_object()
+        self.factura = self.object.factura
+
+        if self.object.asientos.filter(estado='confirmado').exists():
+            messages.error(
+                request,
+                'No se puede editar la nota de crédito porque tiene un asiento contable confirmado. '
+                'Debe anular o reversar el asiento antes de modificarla.'
+            )
+            return redirect('proveedores:nota_credito_detail', pk=self.object.pk)
+
+        anticipo = getattr(self.object, 'anticipo_generado', None)
+        if anticipo and anticipo.aplicaciones.exists():
+            messages.error(
+                request,
+                'No se puede editar la nota de crédito porque su crédito a favor ya tiene aplicaciones. '
+                'Anule primero las aplicaciones de anticipo relacionadas.'
+            )
+            return redirect('proveedores:nota_credito_detail', pk=self.object.pk)
+
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_success_url(self):
+        return reverse('proveedores:nota_credito_detail', kwargs={'pk': self.object.pk})
+
+    def get_form(self, form_class=None):
+        from django.forms import DateInput, HiddenInput
+
+        form = super().get_form(form_class)
+        if 'fecha_emision' in form.fields:
+            form.fields['fecha_emision'].widget = DateInput(
+                attrs={'class': 'form-control'},
+                format='%Y-%m-%d',
+            )
+        for fname in ['neto', 'exento', 'iva', 'total']:
+            if fname in form.fields:
+                form.fields[fname].required = False
+                form.fields[fname].widget = HiddenInput()
+        return form
+
+    def form_valid(self, form):
+        form.instance.factura = self.factura
+        form.instance.proveedor = self.factura.proveedor
+        formset = DetalleNotaCreditoFormSet(
+            self.request.POST,
+            instance=form.instance,
+        )
+
+        if not formset.is_valid():
+            return self.render_to_response(
+                self.get_context_data(form=form, detalle_formset=formset)
+            )
+
+        lineas_activas = [
+            detalle_form
+            for detalle_form in formset.forms
+            if detalle_form.cleaned_data and not detalle_form.cleaned_data.get('DELETE')
+        ]
+        totales = _calcular_totales_desde_formset(formset)
+        if not lineas_activas or totales['total'] <= 0:
+            form.add_error(
+                'total',
+                'La nota de crédito debe tener al menos una línea y un total mayor que cero.',
+            )
+            return self.render_to_response(
+                self.get_context_data(form=form, detalle_formset=formset)
+            )
+
+        total_otras_notas = self.factura.notas_credito.exclude(
+            estado='anulada',
+        ).exclude(pk=self.object.pk).aggregate(total=Sum('total'))['total'] or Decimal('0')
+        exceso_total = _monto_2(
+            total_otras_notas + totales['total'] - self.factura.total
+        )
+        if (
+            form.instance.estado != 'anulada'
+            and exceso_total > NOTA_CREDITO_TOLERANCIA_REDONDEO
+        ):
+            form.add_error(
+                'total',
+                'El total de notas de crédito activas no puede superar el total '
+                f'de la factura por más de ${NOTA_CREDITO_TOLERANCIA_REDONDEO}.',
+            )
+            return self.render_to_response(
+                self.get_context_data(form=form, detalle_formset=formset)
+            )
+
+        for campo, valor in totales.items():
+            setattr(form.instance, campo, valor)
+
+        with transaction.atomic():
+            nota_credito = NotaCreditoRecibida.objects.select_for_update().get(
+                pk=self.object.pk
+            )
+            if nota_credito.asientos.filter(estado='confirmado').exists():
+                messages.error(
+                    self.request,
+                    'La nota de crédito fue confirmada contablemente mientras se editaba. '
+                    'No se guardaron los cambios.',
+                )
+                return redirect('proveedores:nota_credito_detail', pk=nota_credito.pk)
+
+            anticipo = getattr(nota_credito, 'anticipo_generado', None)
+            if anticipo and anticipo.aplicaciones.exists():
+                messages.error(
+                    self.request,
+                    'El crédito a favor fue aplicado mientras se editaba. No se guardaron los cambios.',
+                )
+                return redirect('proveedores:nota_credito_detail', pk=nota_credito.pk)
+
+            nota_credito.asientos.filter(estado='borrador').delete()
+            RegistroCompra.objects.filter(nota_credito=nota_credito).delete()
+
+            self.object = form.save()
+            formset.instance = self.object
+            formset.save()
+
+            if self.object.estado != 'anulada':
+                RegistroCompra.objects.create(
+                    nota_credito=self.object,
+                    tipo_documento='nota_credito',
+                    proveedor=self.object.proveedor,
+                    factura=None,
+                    periodo_mes=self.object.fecha_emision.month,
+                    periodo_anio=self.object.fecha_emision.year,
+                    neto=-self.object.neto,
+                    iva_credito=-self.object.iva,
+                    total=-self.object.total,
+                )
+                _generar_asiento_automatico_nota_credito(
+                    self.request,
+                    self.object,
+                    reemplazar_borrador=False,
+                )
+
+            _sincronizar_credito_proveedor_nota_credito(self.object)
+            _sincronizar_cxp_factura(self.factura)
+
+        logger.info(
+            'Nota de crédito recibida actualizada: %s (factura: %s) por %s',
+            self.object.numero,
+            self.factura.numero,
+            self.request.user,
+        )
+        messages.success(self.request, f'Nota de crédito {self.object.numero} actualizada.')
+        return redirect(self.get_success_url())
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx['factura'] = self.factura
+        ctx['es_edicion'] = True
+        total_otras_notas = self.factura.notas_credito.exclude(
+            estado='anulada',
+        ).exclude(pk=self.object.pk).aggregate(total=Sum('total'))['total'] or Decimal('0')
+        ctx['saldo_disponible_nota_credito'] = self.factura.total - total_otras_notas
+        if 'detalle_formset' not in ctx:
+            ctx['detalle_formset'] = DetalleNotaCreditoFormSet(
+                self.request.POST or None,
+                instance=self.object,
+            )
+        return ctx
+
+
 class NotaCreditoRecibidaDetailView(ProveedoresMixin, DetailView):
     model = NotaCreditoRecibida
     template_name = 'admin/proveedores/nota_credito_detail.html'
@@ -778,10 +947,38 @@ class NotaCreditoRecibidaDetailView(ProveedoresMixin, DetailView):
         ctx = super().get_context_data(**kwargs)
         ctx['tiene_asiento_confirmado'] = self.object.asientos.filter(estado='confirmado').exists()
         ctx['anticipo_generado'] = getattr(self.object, 'anticipo_generado', None)
+        ctx['tiene_aplicaciones_anticipo'] = bool(
+            ctx['anticipo_generado']
+            and ctx['anticipo_generado'].aplicaciones.exists()
+        )
+        ctx['puede_modificar'] = not (
+            ctx['tiene_asiento_confirmado']
+            or ctx['tiene_aplicaciones_anticipo']
+        )
         return ctx
 
 
 class NotaCreditoRecibidaDeleteView(ProveedoresMixin, View):
+    def _motivo_bloqueo(self, nota_credito):
+        if nota_credito.asientos.filter(estado='confirmado').exists():
+            return (
+                'No se puede eliminar la nota de crédito porque tiene un asiento contable confirmado. '
+                'Debe anular o reversar el asiento contable antes de eliminar el documento.'
+            )
+
+        anticipo = getattr(nota_credito, 'anticipo_generado', None)
+        if anticipo and anticipo.aplicaciones.exists():
+            return (
+                'No se puede eliminar la nota de crédito porque el crédito a favor del proveedor '
+                'tiene aplicaciones. Debe anular primero los pagos donde fue utilizado.'
+            )
+        if anticipo and anticipo.movimiento_pago_id:
+            return (
+                'No se puede eliminar la nota de crédito porque el crédito asociado tiene '
+                'un movimiento bancario. Debe reversarlo primero.'
+            )
+        return None
+
     def get(self, request, *args, **kwargs):
         nota_credito = get_object_or_404(NotaCreditoRecibida, pk=kwargs['pk'])
         return redirect('proveedores:nota_credito_detail', pk=nota_credito.pk)
@@ -793,27 +990,25 @@ class NotaCreditoRecibidaDeleteView(ProveedoresMixin, View):
         )
         factura = nota_credito.factura
 
-        if nota_credito.asientos.filter(estado='confirmado').exists():
-            messages.error(
-                request,
-                'No se puede eliminar la nota de crédito porque tiene un asiento contable confirmado. '
-                'Debe anular o reversar el asiento contable antes de eliminar el documento.'
-            )
-            return redirect('proveedores:nota_credito_detail', pk=nota_credito.pk)
-
-        anticipo_generado = getattr(nota_credito, 'anticipo_generado', None)
-        if anticipo_generado and anticipo_generado.estado != 'pendiente':
-            messages.error(
-                request,
-                'No se puede eliminar la nota de crédito porque el crédito a favor del proveedor ya fue aplicado '
-                'o cerrado. Debe reversar esa aplicación antes de eliminar la nota.'
-            )
+        motivo = self._motivo_bloqueo(nota_credito)
+        if motivo:
+            messages.error(request, motivo)
             return redirect('proveedores:nota_credito_detail', pk=nota_credito.pk)
 
         numero = nota_credito.numero
         proveedor = nota_credito.proveedor
 
         with transaction.atomic():
+            nota_credito = NotaCreditoRecibida.objects.select_for_update().select_related(
+                'factura',
+                'proveedor',
+            ).get(pk=nota_credito.pk)
+            motivo = self._motivo_bloqueo(nota_credito)
+            if motivo:
+                messages.error(request, motivo)
+                return redirect('proveedores:nota_credito_detail', pk=nota_credito.pk)
+
+            anticipo_generado = getattr(nota_credito, 'anticipo_generado', None)
             RegistroCompra.objects.filter(nota_credito=nota_credito).delete()
             nota_credito.asientos.filter(estado='borrador').delete()
             if anticipo_generado:
@@ -1236,7 +1431,7 @@ class CxPPagarView(ProveedoresMixin, View):
         anticipos_disponibles = self._anticipos_disponibles(cxp)
         saldo_cxp = cxp.saldo_pendiente
 
-        class AnticipoChoiceField(forms.ModelChoiceField):
+        class AnticipoMultipleChoiceField(forms.ModelMultipleChoiceField):
             def label_from_instance(self, obj):
                 return f'{obj.fecha:%d/%m/%Y} - {obj.get_origen_display()} - Disponible ${obj.saldo_disponible:,.0f}'
 
@@ -1252,17 +1447,18 @@ class CxPPagarView(ProveedoresMixin, View):
             ),
             label='Fecha de pago',
             )
-            anticipo = AnticipoChoiceField(
+            anticipos = AnticipoMultipleChoiceField(
                 queryset=anticipos_disponibles,
                 required=False,
-                widget=forms.Select(attrs={'class': 'form-select'}),
-                label='Anticipo / crédito a aplicar',
-                empty_label='— No aplicar anticipo —',
+                widget=forms.CheckboxSelectMultiple(
+                    attrs={'class': 'form-check-input'}
+                ),
+                label='Anticipos / créditos a aplicar',
             )
             monto_anticipo = forms.DecimalField(
                 max_digits=15, decimal_places=2, required=False, min_value=0,
                 widget=forms.NumberInput(attrs={'class': 'form-control', 'step': '1', 'min': '0'}),
-                label='Monto a aplicar del anticipo',
+                label='Monto total a aplicar de los anticipos seleccionados',
             )
             monto_pagado = forms.DecimalField(
                 max_digits=15, decimal_places=2, required=False, min_value=0,
@@ -1295,16 +1491,23 @@ class CxPPagarView(ProveedoresMixin, View):
 
             def clean(self):
                 cleaned = super().clean()
-                anticipo = cleaned.get('anticipo')
+                anticipos = cleaned.get('anticipos')
                 monto_anticipo = cleaned.get('monto_anticipo') or Decimal('0')
                 monto_banco = cleaned.get('monto_pagado') or Decimal('0')
 
-                if monto_anticipo > 0 and not anticipo:
-                    self.add_error('anticipo', 'Seleccione el anticipo que desea aplicar.')
-                if anticipo and monto_anticipo <= 0:
+                if monto_anticipo > 0 and not anticipos:
+                    self.add_error('anticipos', 'Seleccione al menos un anticipo para aplicar.')
+                if anticipos and monto_anticipo <= 0:
                     self.add_error('monto_anticipo', 'Ingrese el monto del anticipo a aplicar.')
-                if anticipo and monto_anticipo > anticipo.saldo_disponible:
-                    self.add_error('monto_anticipo', 'El monto supera el saldo disponible del anticipo.')
+                saldo_anticipos = sum(
+                    (anticipo.saldo_disponible for anticipo in anticipos),
+                    Decimal('0'),
+                ) if anticipos else Decimal('0')
+                if monto_anticipo > saldo_anticipos:
+                    self.add_error(
+                        'monto_anticipo',
+                        'El monto supera el saldo disponible de los anticipos seleccionados.',
+                    )
                 if monto_anticipo > 0:
                     from apps.contabilidad.models import ConfiguracionContable
                     config = ConfiguracionContable.get()
@@ -1361,34 +1564,82 @@ class CxPPagarView(ProveedoresMixin, View):
 
         d = form.cleaned_data
         cuenta_bancaria = d['cuenta_bancaria']
-        anticipo = d.get('anticipo')
+        anticipos = list(d.get('anticipos') or [])
         monto_anticipo = d.get('monto_anticipo') or Decimal('0')
         monto_banco = d.get('monto_pagado') or Decimal('0')
         total_aplicado = monto_anticipo + monto_banco
 
         with transaction.atomic():
+            cxp = CuentaPorPagar.objects.select_for_update().get(pk=cxp.pk)
+            saldo_cxp = _saldo_pendiente_cxp(cxp)
+            if total_aplicado > saldo_cxp:
+                form.add_error(
+                    None,
+                    'El saldo de la cuenta cambió mientras se registraba el pago. Revise los montos.',
+                )
+                return render(request, self.template_name, {
+                    'cxp': cxp,
+                    'form': form,
+                    'anticipos_disponibles': self._anticipos_disponibles(cxp),
+                })
+
             if monto_anticipo > 0:
-                aplicacion = AplicacionAnticipoProveedor.objects.create(
-                    anticipo=anticipo,
-                    cuenta_pagar=cxp,
-                    fecha=d['fecha_pago'],
-                    monto=monto_anticipo,
-                    observaciones=d['notas'],
+                anticipos_bloqueados = list(
+                    Anticipo.objects.select_for_update().filter(
+                        pk__in=[anticipo.pk for anticipo in anticipos],
+                        proveedor=self._proveedor_cxp(cxp),
+                        estado='pendiente',
+                    ).order_by('fecha', 'id')
                 )
-                asiento_aplicacion = generar_asiento_aplicacion_anticipo_proveedor(
-                    aplicacion,
-                    usuario=request.user,
+                saldo_anticipos = sum(
+                    (anticipo.saldo_disponible for anticipo in anticipos_bloqueados),
+                    Decimal('0'),
                 )
-                if asiento_aplicacion:
-                    aplicacion.asiento = asiento_aplicacion
-                    aplicacion.save(update_fields=['asiento'])
-                else:
+                if monto_anticipo > saldo_anticipos:
+                    form.add_error(
+                        'monto_anticipo',
+                        'El saldo de los anticipos cambió mientras se registraba el pago. Revise el monto.',
+                    )
+                    return render(request, self.template_name, {
+                        'cxp': cxp,
+                        'form': form,
+                        'anticipos_disponibles': self._anticipos_disponibles(cxp),
+                    })
+
+                monto_restante = monto_anticipo
+                aplicaciones_sin_asiento = 0
+                for anticipo in anticipos_bloqueados:
+                    if monto_restante <= 0:
+                        break
+                    monto_aplicar = min(anticipo.saldo_disponible, monto_restante)
+                    if monto_aplicar <= 0:
+                        continue
+
+                    aplicacion = AplicacionAnticipoProveedor.objects.create(
+                        anticipo=anticipo,
+                        cuenta_pagar=cxp,
+                        fecha=d['fecha_pago'],
+                        monto=monto_aplicar,
+                        observaciones=d['notas'],
+                    )
+                    asiento_aplicacion = generar_asiento_aplicacion_anticipo_proveedor(
+                        aplicacion,
+                        usuario=request.user,
+                    )
+                    if asiento_aplicacion:
+                        aplicacion.asiento = asiento_aplicacion
+                        aplicacion.save(update_fields=['asiento'])
+                    else:
+                        aplicaciones_sin_asiento += 1
+                    self._actualizar_estado_anticipo(anticipo)
+                    monto_restante -= monto_aplicar
+
+                if aplicaciones_sin_asiento:
                     messages.warning(
                         request,
-                        'Se aplicó el anticipo, pero no se pudo generar el asiento contable. '
-                        'Revise la cuenta CxP y Anticipos a Proveedores en Configuración Contable.'
+                        f'{aplicaciones_sin_asiento} aplicación(es) de anticipo quedaron sin asiento contable. '
+                        'Revise la cuenta CxP y Anticipos a Proveedores en Configuración Contable.',
                     )
-                self._actualizar_estado_anticipo(anticipo)
 
             movimiento = None
             asiento = None
@@ -1445,7 +1696,14 @@ class CxPPagarView(ProveedoresMixin, View):
             cxp.save()
             self._actualizar_documento_cxp(cxp)
 
-        logger.info('CxP pk=%s pagada/aplicada por %s. Banco=%s, anticipo=%s', cxp.pk, request.user, monto_banco, monto_anticipo)
+        logger.info(
+            'CxP pk=%s pagada/aplicada por %s. Banco=%s, anticipos=%s (%s)',
+            cxp.pk,
+            request.user,
+            monto_banco,
+            len(anticipos),
+            monto_anticipo,
+        )
         if monto_banco > 0 and asiento:
             messages.success(
                 request,

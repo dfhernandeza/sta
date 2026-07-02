@@ -111,10 +111,13 @@
             </div>
           </div>
 
-          <div class="col-sm-6">
-            <label class="form-label fw-600">{{ form.anticipo.label }}</label>
-            {{ form.anticipo }}
-            {% if form.anticipo.errors %}<div class="invalid-feedback d-block">{{ form.anticipo.errors.0 }}</div>{% endif %}
+          <div class="col-12">
+            <label class="form-label fw-600">{{ form.anticipos.label }}</label>
+            <div class="border rounded p-3 bg-light">
+              {{ form.anticipos }}
+            </div>
+            <div class="form-text">El monto se utilizará por antigüedad entre los anticipos seleccionados.</div>
+            {% if form.anticipos.errors %}<div class="invalid-feedback d-block">{{ form.anticipos.errors.0 }}</div>{% endif %}
           </div>
 
           <div class="col-sm-6">

@@ -1,7 +1,7 @@
 {% extends 'base_admin.html' %}
 {% load custom_tags %}
 
-{% block title %}Nueva Nota de Crédito Recibida{% endblock %}
+{% block title %}{% if es_edicion %}Editar{% else %}Nueva{% endif %} Nota de Crédito Recibida{% endblock %}
 
 {% block extra_css %}
 <link href="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/css/tom-select.bootstrap5.min.css" rel="stylesheet"/>
@@ -18,13 +18,13 @@
   <li class="breadcrumb-item"><a href="{% url 'proveedores:proveedor_list' %}">Proveedores</a></li>
   <li class="breadcrumb-item"><a href="{% url 'proveedores:factura_list' %}">Facturas Recibidas</a></li>
   <li class="breadcrumb-item"><a href="{% url 'proveedores:factura_detail' factura.pk %}">Factura {{ factura.numero }}</a></li>
-  <li class="breadcrumb-item active">Nueva Nota de Crédito</li>
+  <li class="breadcrumb-item active">{% if es_edicion %}Editar{% else %}Nueva{% endif %} Nota de Crédito</li>
 {% endblock %}
 
 {% block content %}
 <div class="page-header">
   <div>
-    <h4 class="page-title">Nueva Nota de Crédito</h4>
+    <h4 class="page-title">{% if es_edicion %}Editar{% else %}Nueva{% endif %} Nota de Crédito</h4>
     <p class="page-subtitle mb-0">
       Factura <span class="font-monospace">{{ factura.numero }}</span> · {{ factura.proveedor.razon_social }}
     </p>
@@ -149,7 +149,7 @@
 
           <div class="col-12 pt-2 border-top">
             <button type="submit" class="btn btn-sta px-5 rounded-pill">
-              <i class="bi bi-save me-1"></i>Registrar nota de crédito
+              <i class="bi bi-save me-1"></i>{% if es_edicion %}Guardar cambios{% else %}Registrar nota de crédito{% endif %}
             </button>
           </div>
 

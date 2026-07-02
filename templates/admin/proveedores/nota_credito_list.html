@@ -74,6 +74,9 @@
               <a href="{% url 'proveedores:nota_credito_detail' nc.pk %}" class="btn btn-outline-secondary btn-sm" title="Ver">
                 <i class="bi bi-eye"></i>
               </a>
+              <a href="{% url 'proveedores:nota_credito_update' nc.pk %}" class="btn btn-outline-secondary btn-sm" title="Editar">
+                <i class="bi bi-pencil"></i>
+              </a>
               <a href="{% url 'proveedores:factura_detail' nc.factura.pk %}" class="btn btn-outline-secondary btn-sm" title="Ver factura">
                 <i class="bi bi-file-earmark-text"></i>
               </a>

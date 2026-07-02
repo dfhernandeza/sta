@@ -17,17 +17,23 @@
     <p class="page-subtitle mb-0">{{ nota_credito.proveedor.razon_social }}</p>
   </div>
   <div class="d-flex gap-2">
-    {% if tiene_asiento_confirmado %}
-      <button type="button" class="btn btn-outline-danger rounded-pill px-4" disabled title="No se puede eliminar porque existe un asiento confirmado">
-        <i class="bi bi-trash me-1"></i>Eliminar
-      </button>
-    {% else %}
+    {% if puede_modificar %}
+      <a href="{% url 'proveedores:nota_credito_update' nota_credito.pk %}" class="btn btn-outline-primary rounded-pill px-4">
+        <i class="bi bi-pencil me-1"></i>Editar
+      </a>
       <form method="post" action="{% url 'proveedores:nota_credito_delete' nota_credito.pk %}" onsubmit="return confirm('¿Eliminar la nota de crédito {{ nota_credito.numero }}? Se recalculará el saldo pendiente de la factura asociada.');">
         {% csrf_token %}
         <button type="submit" class="btn btn-outline-danger rounded-pill px-4">
           <i class="bi bi-trash me-1"></i>Eliminar
         </button>
       </form>
+    {% else %}
+      <button type="button" class="btn btn-outline-primary rounded-pill px-4" disabled title="No se puede editar porque existen movimientos contables o aplicaciones relacionadas">
+        <i class="bi bi-pencil me-1"></i>Editar
+      </button>
+      <button type="button" class="btn btn-outline-danger rounded-pill px-4" disabled title="No se puede eliminar porque existen movimientos contables o aplicaciones relacionadas">
+        <i class="bi bi-trash me-1"></i>Eliminar
+      </button>
     {% endif %}
     <a href="{% url 'proveedores:factura_detail' nota_credito.factura.pk %}" class="btn btn-outline-secondary rounded-pill px-4">
       <i class="bi bi-arrow-left me-1"></i>Volver
