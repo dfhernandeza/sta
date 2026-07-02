@@ -5,11 +5,17 @@ from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 
 from apps.accounts.models import CustomUser
+from apps.clientes.models import Cliente, CuentaPorCobrar, FacturaEmitida
 from apps.contabilidad.models import (
     AsientoContable,
     ConfiguracionContable,
     LineaAsiento,
     PlanCuentas,
+)
+from apps.proveedores.models import (
+    CuentaPorPagar,
+    FacturaRecibida,
+    Proveedor,
 )
 from apps.tesoreria.models import Banco, CuentaBancaria, MovimientoBancario
 
@@ -155,6 +161,105 @@ class DashboardPeriodoTest(TestCase):
             response.context['total_cxp_pendiente'],
             Decimal('50000'),
         )
+
+    def test_kpi_conciliacion_proyeccion_cxc_vencida_y_runway(self):
+        ingreso = self.crear_movimiento(
+            date(2026, 6, 20),
+            'ingreso',
+            Decimal('1000'),
+        )
+        ingreso.conciliado = True
+        ingreso.fecha_conciliacion = date(2026, 6, 21)
+        ingreso.save(update_fields=['conciliado', 'fecha_conciliacion'])
+        self.crear_movimiento(
+            date(2026, 6, 25),
+            'egreso',
+            Decimal('300'),
+        )
+
+        cliente = Cliente.objects.create(
+            rut='11.111.111-1',
+            razon_social='Cliente KPI',
+        )
+        factura_vencida = FacturaEmitida.objects.create(
+            numero='KPI-VENTA-1',
+            fecha_emision=date(2026, 6, 1),
+            fecha_vencimiento=date(2026, 6, 10),
+            cliente=cliente,
+            neto=Decimal('500'),
+            iva=Decimal('0'),
+            total=Decimal('500'),
+        )
+        CuentaPorCobrar.objects.create(
+            factura=factura_vencida,
+            fecha_vencimiento=date(2026, 6, 10),
+            monto=Decimal('500'),
+            monto_pagado=Decimal('100'),
+            estado='vencida',
+        )
+        factura_proxima = FacturaEmitida.objects.create(
+            numero='KPI-VENTA-2',
+            fecha_emision=date(2026, 6, 20),
+            fecha_vencimiento=date(2026, 7, 15),
+            cliente=cliente,
+            neto=Decimal('200'),
+            iva=Decimal('0'),
+            total=Decimal('200'),
+        )
+        CuentaPorCobrar.objects.create(
+            factura=factura_proxima,
+            fecha_vencimiento=date(2026, 7, 15),
+            monto=Decimal('200'),
+            estado='pendiente',
+        )
+
+        proveedor = Proveedor.objects.create(
+            rut='22.222.222-2',
+            razon_social='Proveedor KPI',
+        )
+        factura_compra = FacturaRecibida.objects.create(
+            numero='KPI-COMPRA-1',
+            fecha_emision=date(2026, 6, 20),
+            fecha_vencimiento=date(2026, 7, 10),
+            proveedor=proveedor,
+            neto=Decimal('250'),
+            iva=Decimal('0'),
+            total=Decimal('250'),
+        )
+        CuentaPorPagar.objects.create(
+            factura=factura_compra,
+            fecha_vencimiento=date(2026, 7, 10),
+            monto=Decimal('250'),
+            monto_pagado=Decimal('50'),
+            estado='pendiente',
+        )
+
+        response = self.client_http.get(
+            reverse('dashboard:index'),
+            {'periodo': '2026-06'},
+        )
+
+        self.assertEqual(
+            response.context['movimientos_sin_conciliar_count'],
+            1,
+        )
+        self.assertEqual(
+            response.context['movimientos_sin_conciliar_monto'],
+            Decimal('300'),
+        )
+        self.assertEqual(
+            response.context['total_cxc_vencida'],
+            Decimal('400'),
+        )
+        self.assertEqual(
+            response.context['proyeccion_caja_30_dias'],
+            Decimal('1100'),
+        )
+        self.assertEqual(
+            response.context['promedio_egresos_mensual'],
+            Decimal('300'),
+        )
+        self.assertEqual(response.context['runway_meses'], Decimal('2.3'))
 
     def test_resumen_contable_se_calcula_al_cierre_del_mes(self):
         asiento_julio = AsientoContable.objects.create(

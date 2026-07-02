@@ -1,5 +1,5 @@
 from calendar import monthrange
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from django.views.generic import TemplateView
@@ -11,6 +11,7 @@ class DashboardMixin(AppPermisoMixin):
     app_name = 'dashboard'
 
 from apps.clientes.models import CuentaPorCobrar
+from apps.proveedores.models import CuentaPorPagar
 from apps.tesoreria.models import CuentaBancaria, MovimientoBancario
 from apps.proyectos.models import Proyecto
 from apps.contabilidad.models import AsientoContable, ConfiguracionContable, LineaAsiento
@@ -72,6 +73,17 @@ class DashboardView(DashboardMixin, TemplateView):
         ingresos = por_tipo.get('ingreso', Decimal('0'))
         egresos = por_tipo.get('egreso', Decimal('0'))
         return ingresos, egresos
+
+    @staticmethod
+    def _saldo_pendiente(queryset):
+        totales = queryset.aggregate(
+            monto=Sum('monto'),
+            pagado=Sum('monto_pagado'),
+        )
+        return (
+            (totales['monto'] or Decimal('0'))
+            - (totales['pagado'] or Decimal('0'))
+        )
 
     @staticmethod
     def _desplazar_mes(anio, mes, desplazamiento):
@@ -154,11 +166,91 @@ class DashboardView(DashboardMixin, TemplateView):
         ctx['utilidad_mes'] = ctx['ingresos_mes'] - ctx['egresos_mes']
 
         # CxC vencidas
-        ctx['cxc_vencidas'] = CuentaPorCobrar.objects.filter(
+        cxc_vencidas_qs = CuentaPorCobrar.objects.filter(
             estado__in=['pendiente', 'vencida'],
-            factura__fecha_emision__range=(inicio_periodo_efectivo, fin_mes),
+            factura__fecha_emision__lte=fin_mes,
             fecha_vencimiento__lte=fin_mes,
-        ).select_related('factura__cliente').order_by('fecha_vencimiento')[:10]
+        ).select_related('factura__cliente').order_by('fecha_vencimiento')
+        if periodo_fuera_sistema:
+            cxc_vencidas_qs = cxc_vencidas_qs.none()
+        ctx['total_cxc_vencida'] = self._saldo_pendiente(cxc_vencidas_qs)
+        ctx['cxc_vencidas'] = cxc_vencidas_qs[:10]
+
+        # Movimientos pendientes de conciliación al cierre
+        movimientos_sin_conciliar = MovimientoBancario.objects.filter(
+            conciliado=False,
+            fecha__lte=fin_mes,
+        )
+        if fecha_inicio_sistema:
+            movimientos_sin_conciliar = movimientos_sin_conciliar.filter(
+                fecha__gte=fecha_inicio_sistema,
+            )
+        ctx['movimientos_sin_conciliar_count'] = (
+            movimientos_sin_conciliar.count()
+        )
+        ctx['movimientos_sin_conciliar_monto'] = (
+            movimientos_sin_conciliar.aggregate(total=Sum('monto'))['total']
+            or Decimal('0')
+        )
+
+        # Proyección simple de caja: saldo al cierre + cobros - pagos a 30 días
+        horizonte_30_dias = fin_mes + timedelta(days=30)
+        cxc_30_dias = CuentaPorCobrar.objects.filter(
+            estado__in=['pendiente', 'vencida'],
+            fecha_vencimiento__lte=horizonte_30_dias,
+        )
+        cxp_30_dias = CuentaPorPagar.objects.filter(
+            estado__in=['pendiente', 'vencida'],
+            fecha_vencimiento__lte=horizonte_30_dias,
+        )
+        if periodo_fuera_sistema:
+            cxc_30_dias = cxc_30_dias.none()
+            cxp_30_dias = cxp_30_dias.none()
+        ctx['cxc_proximos_30_dias'] = self._saldo_pendiente(cxc_30_dias)
+        ctx['cxp_proximos_30_dias'] = self._saldo_pendiente(cxp_30_dias)
+        ctx['proyeccion_caja_30_dias'] = (
+            ctx['saldo_total']
+            + ctx['cxc_proximos_30_dias']
+            - ctx['cxp_proximos_30_dias']
+        )
+
+        # Runway según el promedio mensual de egresos bancarios de hasta 3 meses
+        anio_inicio_promedio, mes_inicio_promedio = self._desplazar_mes(
+            anio_actual,
+            mes_actual,
+            -2,
+        )
+        inicio_promedio = date(
+            anio_inicio_promedio,
+            mes_inicio_promedio,
+            1,
+        )
+        if fecha_inicio_sistema:
+            inicio_promedio = max(inicio_promedio, fecha_inicio_sistema)
+        meses_promedio = max(
+            1,
+            (fin_mes.year - inicio_promedio.year) * 12
+            + fin_mes.month
+            - inicio_promedio.month
+            + 1,
+        )
+        total_egresos_promedio = (
+            MovimientoBancario.objects
+            .filter(
+                tipo='egreso',
+                fecha__range=(inicio_promedio, fin_mes),
+            )
+            .aggregate(total=Sum('monto'))['total']
+            or Decimal('0')
+        )
+        ctx['promedio_egresos_mensual'] = (
+            total_egresos_promedio / Decimal(meses_promedio)
+        )
+        ctx['runway_disponible'] = ctx['promedio_egresos_mensual'] > 0
+        ctx['runway_meses'] = (
+            max(ctx['saldo_total'], Decimal('0'))
+            / ctx['promedio_egresos_mensual']
+        ).quantize(Decimal('0.1')) if ctx['runway_disponible'] else None
 
         # Saldos del resumen rápido desde las cuentas configuradas
         config_contable = ConfiguracionContable.get()

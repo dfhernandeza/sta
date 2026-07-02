@@ -79,6 +79,47 @@
   </div>
 </div>
 
+<!-- INDICADORES DE GESTIÓN DE CAJA -->
+<div class="row g-4 mb-4">
+  <div class="col-sm-6 col-xl-3">
+    <div class="card-sta p-3 h-100">
+      <div class="small text-muted mb-1">Pendientes de conciliación</div>
+      <div class="h4 fw-700 mb-1">{{ movimientos_sin_conciliar_count }}</div>
+      <div class="small text-warning">{{ movimientos_sin_conciliar_monto|moneda_chilena }}</div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-xl-3">
+    <div class="card-sta p-3 h-100">
+      <div class="small text-muted mb-1">CxC vencida al cierre</div>
+      <div class="h4 fw-700 text-danger mb-1">{{ total_cxc_vencida|moneda_chilena }}</div>
+      <div class="small text-muted">Saldo pendiente vencido</div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-xl-3">
+    <div class="card-sta p-3 h-100">
+      <div class="small text-muted mb-1">Proyección de caja · 30 días</div>
+      <div class="h4 fw-700 {% if proyeccion_caja_30_dias >= 0 %}text-success{% else %}text-danger{% endif %} mb-1">
+        {{ proyeccion_caja_30_dias|moneda_chilena }}
+      </div>
+      <div class="small text-muted">
+        +{{ cxc_proximos_30_dias|moneda_chilena }} / −{{ cxp_proximos_30_dias|moneda_chilena }}
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-xl-3">
+    <div class="card-sta p-3 h-100">
+      <div class="small text-muted mb-1">Runway financiero</div>
+      {% if runway_disponible %}
+        <div class="h4 fw-700 mb-1">{{ runway_meses }} meses</div>
+        <div class="small text-muted">Egreso promedio: {{ promedio_egresos_mensual|moneda_chilena }}</div>
+      {% else %}
+        <div class="h4 fw-700 mb-1">—</div>
+        <div class="small text-muted">Sin egresos para calcular</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
 <!-- GRÁFICO + ALERTAS -->
 <div class="row g-4 mb-4">
   <div class="col-xl-8">
@@ -142,6 +183,7 @@
       <i class="bi bi-exclamation-triangle-fill text-danger me-2"></i>
       Cuentas por Cobrar Vencidas · {{ periodo_label }}
     </h6>
+    <span class="badge bg-danger">{{ total_cxc_vencida|moneda_chilena }}</span>
     <a href="{% url 'clientes:cxc_list' %}" class="btn btn-outline-danger btn-sm rounded-pill">
       Ver todas
     </a>
