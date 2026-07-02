@@ -6,6 +6,7 @@ from django.urls import reverse
 
 from apps.accounts.models import CustomUser
 from apps.contabilidad.models import AsientoContable, ConfiguracionContable, PlanCuentas
+from apps.contabilidad.utils import generar_asiento_rendicion_gastos_recibida
 from apps.proveedores.models import CuentaPorPagar
 from apps.rrhh.models import Trabajador
 from apps.tesoreria.models import Banco, CuentaBancaria
@@ -179,3 +180,30 @@ class RendicionGastosDeleteViewTests(TestCase):
             ).exists()
         )
         self.assertFalse(asiento.lineas.filter(cuenta=cuenta_cxp).exists())
+
+    def test_asiento_de_rendicion_usa_fecha_de_la_rendicion(self):
+        rendicion = self.crear_rendicion()
+        cuenta_gasto = PlanCuentas.objects.create(
+            codigo='TEST-GASTO-REND',
+            nombre='Gasto rendición',
+            tipo='gasto',
+            nivel=4,
+        )
+        cuenta_documentos = PlanCuentas.objects.create(
+            codigo='TEST-DOC-REND',
+            nombre='Documentos por pagar',
+            tipo='pasivo',
+            nivel=4,
+        )
+        rendicion.detalles.update(cuenta_contable=cuenta_gasto)
+        config = ConfiguracionContable.get()
+        config.cuenta_documentos_por_pagar = cuenta_documentos
+        config.save(update_fields=['cuenta_documentos_por_pagar'])
+
+        asiento = generar_asiento_rendicion_gastos_recibida(
+            rendicion,
+            usuario=self.user,
+        )
+
+        self.assertIsNotNone(asiento)
+        self.assertEqual(asiento.fecha, rendicion.fecha)

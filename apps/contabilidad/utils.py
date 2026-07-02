@@ -302,7 +302,7 @@ def generar_asiento_rendicion_gastos_recibida(rendicion, usuario=None):
         return None
 
     asiento = AsientoContable.objects.create(
-        fecha=timezone.now().date(),
+        fecha=rendicion.fecha,
         descripcion=f'Rendición de Gastos N° {rendicion.id} – {rendicion.trabajador.nombre_completo}',
         tipo='rendicion_gastos',
         estado='borrador',
