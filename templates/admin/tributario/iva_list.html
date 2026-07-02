@@ -26,6 +26,7 @@
           <th class="text-end">IVA Crédito</th>
           <th class="text-end">Diferencia</th>
           <th class="text-center">Estado</th>
+          <th class="text-center">Asiento</th>
           <th class="text-center">Acciones</th>
         </tr>
       </thead>
@@ -40,15 +41,38 @@
           </td>
           <td class="text-center"><span class="badge-{{ iva.estado }}">{{ iva.get_estado_display }}</span></td>
           <td class="text-center">
+            {% if iva.asiento_centralizacion %}
+              <a href="{% url 'contabilidad:asiento_detail' iva.asiento_centralizacion.pk %}" class="text-decoration-none">
+                <span class="badge {% if iva.asiento_centralizacion.estado == 'confirmado' %}bg-success{% else %}bg-secondary{% endif %}">
+                  {{ iva.asiento_centralizacion.numero }} · {{ iva.asiento_centralizacion.get_estado_display }}
+                </span>
+              </a>
+            {% elif iva.estado == 'presentado' and iva.iva_debito > 0 %}
+              <span class="badge bg-warning text-dark">Sin asiento</span>
+            {% else %}
+              <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+          <td class="text-center">
             <div class="btn-group btn-group-sm">
+              {% if iva.estado == 'pagado' %}
+              <button type="button" class="btn btn-outline-secondary btn-sm" disabled title="El F29 de esta declaración ya fue pagado">
+                <i class="bi bi-lock"></i>
+              </button>
+              {% elif iva.asiento_centralizacion.estado == 'confirmado' %}
+              <button type="button" class="btn btn-outline-secondary btn-sm" disabled title="Anule el asiento confirmado antes de editar">
+                <i class="bi bi-lock"></i>
+              </button>
+              {% else %}
               <a href="{% url 'tributario:iva_update' iva.pk %}" class="btn btn-outline-secondary btn-sm" title="Editar">
                 <i class="bi bi-pencil"></i>
               </a>
+              {% endif %}
             </div>
           </td>
         </tr>
         {% empty %}
-        <tr><td colspan="6" class="text-center text-muted py-4">No hay declaraciones registradas.</td></tr>
+        <tr><td colspan="7" class="text-center text-muted py-4">No hay declaraciones registradas.</td></tr>
         {% endfor %}
       </tbody>
     </table>

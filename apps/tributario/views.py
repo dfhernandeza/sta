@@ -2,7 +2,8 @@ from django.views.generic import ListView, CreateView, UpdateView, TemplateView
 from django.views import View
 from django.urls import reverse_lazy
 from django.contrib import messages
-from django.db.models import Sum
+from django.db import transaction
+from django.db.models import Sum, Prefetch
 from django import forms
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -46,6 +47,33 @@ class IVAForm(forms.ModelForm):
             'estado':            forms.Select(attrs={'class': 'form-select'}),
             'fecha_presentacion': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['estado'].choices = [
+            ('borrador', 'Borrador'),
+            ('presentado', 'Presentado'),
+        ]
+
+
+def _sincronizar_asiento_declaracion_iva(declaracion, usuario=None):
+    from apps.contabilidad.utils import generar_asiento_declaracion_iva
+
+    asiento_confirmado = declaracion.asientos.filter(
+        tipo='centralizacion_iva',
+        estado='confirmado',
+    ).first()
+    if asiento_confirmado:
+        return asiento_confirmado
+
+    declaracion.asientos.filter(
+        tipo='centralizacion_iva',
+        estado='borrador',
+    ).delete()
+    if declaracion.estado != 'presentado':
+        return None
+
+    return generar_asiento_declaracion_iva(declaracion, usuario=usuario)
 
 
 class PPMForm(forms.ModelForm):
@@ -166,9 +194,27 @@ class DeclaracionIVAListView(TributarioMixin, ListView):
     template_name = 'admin/tributario/iva_list.html'
     context_object_name = 'declaraciones'
 
+    def get_queryset(self):
+        from apps.contabilidad.models import AsientoContable
+
+        return super().get_queryset().prefetch_related(
+            Prefetch(
+                'asientos',
+                queryset=AsientoContable.objects.filter(
+                    tipo='centralizacion_iva',
+                ).exclude(estado='anulado').order_by('-id'),
+                to_attr='asientos_centralizacion_activos',
+            )
+        )
+
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         ctx['titulo'] = 'Declaraciones IVA'
+        for declaracion in ctx['declaraciones']:
+            declaracion.asiento_centralizacion = next(
+                iter(declaracion.asientos_centralizacion_activos),
+                None,
+            )
         return ctx
 
 
@@ -206,8 +252,32 @@ class DeclaracionIVACreateView(TributarioMixin, CreateView):
         return initial
 
     def form_valid(self, form):
-        messages.success(self.request, 'Declaración IVA registrada.')
-        return super().form_valid(form)
+        if form.instance.estado == 'presentado' and not form.instance.fecha_presentacion:
+            form.instance.fecha_presentacion = timezone.localdate()
+
+        with transaction.atomic():
+            self.object = form.save()
+            asiento = _sincronizar_asiento_declaracion_iva(
+                self.object,
+                usuario=self.request.user,
+            )
+
+        if asiento:
+            messages.success(
+                self.request,
+                f'Declaración IVA registrada. Se generó el asiento '
+                f'{asiento.numero} en borrador.',
+            )
+        elif self.object.estado == 'presentado' and self.object.iva_debito > 0:
+            messages.success(self.request, 'Declaración IVA registrada.')
+            messages.warning(
+                self.request,
+                'No se pudo generar la centralización. Configure las cuentas de '
+                'IVA Débito, IVA Crédito e Impuestos SII.',
+            )
+        else:
+            messages.success(self.request, 'Declaración IVA registrada.')
+        return redirect(self.success_url)
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
@@ -236,13 +306,77 @@ class DeclaracionIVAUpdateView(TributarioMixin, UpdateView):
     form_class = IVAForm
     success_url = reverse_lazy('tributario:iva_list')
 
+    def dispatch(self, request, *args, **kwargs):
+        self.object = self.get_object()
+        if self.object.estado == 'pagado':
+            messages.error(
+                request,
+                'No se puede editar una declaración cuyo F29 ya fue pagado.',
+            )
+            return redirect('tributario:iva_list')
+        asiento_confirmado = self.object.asientos.filter(
+            tipo='centralizacion_iva',
+            estado='confirmado',
+        ).first()
+        if asiento_confirmado:
+            messages.error(
+                request,
+                f'No se puede editar la declaración porque el asiento '
+                f'{asiento_confirmado.numero} está confirmado. Anúlelo primero.',
+            )
+            return redirect('tributario:iva_list')
+        return super().dispatch(request, *args, **kwargs)
+
     def form_valid(self, form):
-        messages.success(self.request, 'Declaración IVA actualizada.')
-        return super().form_valid(form)
+        if form.instance.estado == 'presentado' and not form.instance.fecha_presentacion:
+            form.instance.fecha_presentacion = timezone.localdate()
+        elif form.instance.estado == 'borrador':
+            form.instance.fecha_presentacion = None
+
+        with transaction.atomic():
+            declaracion_bloqueada = DeclaracionIVA.objects.select_for_update().get(
+                pk=self.object.pk
+            )
+            asiento_confirmado = declaracion_bloqueada.asientos.filter(
+                tipo='centralizacion_iva',
+                estado='confirmado',
+            ).first()
+            if asiento_confirmado:
+                messages.error(
+                    self.request,
+                    f'El asiento {asiento_confirmado.numero} fue confirmado mientras '
+                    'se editaba. No se guardaron los cambios.',
+                )
+                return redirect('tributario:iva_list')
+
+            self.object = form.save()
+            asiento = _sincronizar_asiento_declaracion_iva(
+                self.object,
+                usuario=self.request.user,
+            )
+
+        if asiento:
+            messages.success(
+                self.request,
+                f'Declaración IVA actualizada. Se regeneró el asiento '
+                f'{asiento.numero} en borrador.',
+            )
+        elif self.object.estado == 'presentado' and self.object.iva_debito > 0:
+            messages.success(self.request, 'Declaración IVA actualizada.')
+            messages.warning(
+                self.request,
+                'No se pudo generar la centralización. Revise la configuración contable.',
+            )
+        else:
+            messages.success(self.request, 'Declaración IVA actualizada.')
+        return redirect(self.success_url)
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         ctx['titulo'] = f'Editar Declaración IVA {self.object.periodo_mes:02d}/{self.object.periodo_anio}'
+        ctx['asiento_centralizacion'] = self.object.asientos.filter(
+            tipo='centralizacion_iva',
+        ).exclude(estado='anulado').first()
         return ctx
 
 
@@ -629,6 +763,10 @@ class F29PagarView(TributarioMixin, View):
 
         # 3. Generar asiento contable borrador
         asiento = generar_asiento_movimiento_bancario(movimiento, usuario=request.user)
+        DeclaracionIVA.objects.filter(
+            periodo_mes=f29.periodo_mes,
+            periodo_anio=f29.periodo_anio,
+        ).update(estado='pagado')
 
         if asiento:
             messages.success(

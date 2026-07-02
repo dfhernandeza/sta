@@ -4,6 +4,8 @@ Todas las funciones devuelven un AsientoContable en estado 'borrador',
 o None si falta la configuración necesaria.
 """
 from decimal import Decimal
+from calendar import monthrange
+from datetime import date
 from django.utils import timezone
 from django.db.models import Sum
 from .models import ConfiguracionContable, AsientoContable, LineaAsiento
@@ -489,6 +491,92 @@ def generar_asiento_aplicacion_anticipo_proveedor(aplicacion, usuario=None):
                descripcion=f'Aplicación de anticipo a {documento}', orden=1)
     _add_linea(asiento, config.cuenta_anticipos_proveedores, haber=aplicacion.monto,
                descripcion=f'Rebaja anticipo proveedor {anticipo.proveedor.razon_social}', orden=2)
+
+    return asiento
+
+
+def generar_asiento_declaracion_iva(declaracion, usuario=None):
+    """
+    Centraliza el IVA del período cuando la declaración está presentada.
+
+    Si existe IVA por pagar:
+        DEBE  IVA Débito Fiscal
+        HABER IVA Crédito Fiscal
+        HABER Impuestos SII por Pagar
+
+    Si existe remanente de crédito, sólo se compensa contra el débito del
+    período y el saldo restante permanece en IVA Crédito Fiscal.
+    """
+    if declaracion.estado != 'presentado':
+        return None
+
+    asiento_activo = declaracion.asientos.exclude(estado='anulado').first()
+    if asiento_activo:
+        return asiento_activo
+
+    iva_debito = declaracion.iva_debito or Decimal('0')
+    iva_credito = declaracion.iva_credito or Decimal('0')
+    credito_aplicado = min(iva_credito, iva_debito)
+    impuesto_por_pagar = max(iva_debito - credito_aplicado, Decimal('0'))
+
+    # Sin débito no hay saldo pasivo que centralizar. El crédito permanece
+    # íntegramente como activo para períodos posteriores.
+    if iva_debito <= 0:
+        return None
+
+    config = get_config()
+    if not config or not config.cuenta_iva_debito:
+        return None
+    if credito_aplicado > 0 and not config.cuenta_iva_credito:
+        return None
+    if impuesto_por_pagar > 0 and not config.cuenta_impuestos_sii:
+        return None
+
+    fecha_cierre = date(
+        declaracion.periodo_anio,
+        declaracion.periodo_mes,
+        monthrange(declaracion.periodo_anio, declaracion.periodo_mes)[1],
+    )
+    asiento = AsientoContable.objects.create(
+        fecha=fecha_cierre,
+        descripcion=(
+            f'Centralización IVA '
+            f'{declaracion.periodo_mes:02d}/{declaracion.periodo_anio}'
+        ),
+        tipo='centralizacion_iva',
+        estado='borrador',
+        declaracion_iva=declaracion,
+        creado_por=usuario,
+    )
+
+    orden = 1
+    _add_linea(
+        asiento,
+        config.cuenta_iva_debito,
+        debe=iva_debito,
+        descripcion='Cierre IVA Débito Fiscal',
+        orden=orden,
+    )
+    orden += 1
+
+    if credito_aplicado > 0:
+        _add_linea(
+            asiento,
+            config.cuenta_iva_credito,
+            haber=credito_aplicado,
+            descripcion='Aplicación IVA Crédito Fiscal',
+            orden=orden,
+        )
+        orden += 1
+
+    if impuesto_por_pagar > 0:
+        _add_linea(
+            asiento,
+            config.cuenta_impuestos_sii,
+            haber=impuesto_por_pagar,
+            descripcion='IVA por Pagar al SII',
+            orden=orden,
+        )
 
     return asiento
 

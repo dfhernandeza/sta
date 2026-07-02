@@ -69,6 +69,16 @@
     {% endif %}
 
     <div class="card-sta p-4">
+      {% if asiento_centralizacion %}
+      <div class="alert alert-info py-2 small">
+        <i class="bi bi-journal-check me-1"></i>
+        Centralización:
+        <a href="{% url 'contabilidad:asiento_detail' asiento_centralizacion.pk %}" class="fw-700">
+          {{ asiento_centralizacion.numero }}
+        </a>
+        · {{ asiento_centralizacion.get_estado_display }}
+      </div>
+      {% endif %}
       <form method="post" novalidate>
         {% csrf_token %}
         <div class="row g-3">

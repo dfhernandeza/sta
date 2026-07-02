@@ -222,6 +222,7 @@ class AsientoContable(TimeStampedModel):
         ('pago_remuneracion', 'Pago de Remuneración'),
         ('pago_anticipo', 'Pago de Anticipo Laboral'),
         ('pago_anticipo_proveedor', 'Pago de Anticipo a Proveedor'),
+        ('centralizacion_iva', 'Centralización de IVA'),
         ('ajuste', 'Ajuste Contable'),
         ('rendicion_gastos', 'Rendición de Gastos'),
         ('otro', 'Otro'),
@@ -265,6 +266,10 @@ class AsientoContable(TimeStampedModel):
     remuneracion = models.ForeignKey(
         'rrhh.Remuneracion', null=True, blank=True, on_delete=models.SET_NULL,
         related_name='asientos', verbose_name='Remuneración'
+    )
+    declaracion_iva = models.ForeignKey(
+        'tributario.DeclaracionIVA', null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='asientos', verbose_name='Declaración IVA'
     )
     creado_por = models.ForeignKey(
         'accounts.CustomUser', null=True, blank=True, on_delete=models.SET_NULL,

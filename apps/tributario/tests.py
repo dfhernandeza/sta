@@ -4,15 +4,23 @@ from django.urls import reverse
 from django.utils import timezone
 
 from apps.accounts.models import CustomUser
-from apps.contabilidad.models import PlanCuentas, ConfiguracionContable
+from apps.contabilidad.models import AsientoContable, PlanCuentas, ConfiguracionContable
 from apps.tesoreria.models import Banco, CuentaBancaria
 from .models import FormularioF29, PPM, DeclaracionIVA
 
 
 def _setup_contabilidad():
     cta_banco = PlanCuentas.objects.create(codigo='1.1.01', nombre='Banco', tipo='activo', nivel=1)
+    cta_iva_credito = PlanCuentas.objects.create(
+        codigo='1.1.02', nombre='IVA Crédito Fiscal', tipo='activo', nivel=1
+    )
+    cta_iva_debito = PlanCuentas.objects.create(
+        codigo='2.1.04', nombre='IVA Débito Fiscal', tipo='pasivo', nivel=1
+    )
     cta_sii = PlanCuentas.objects.create(codigo='2.1.05', nombre='Impuestos SII', tipo='pasivo', nivel=1)
     config = ConfiguracionContable.get()
+    config.cuenta_iva_credito = cta_iva_credito
+    config.cuenta_iva_debito = cta_iva_debito
     config.cuenta_impuestos_sii = cta_sii
     config.save()
     return cta_banco, cta_sii
@@ -47,6 +55,90 @@ class DeclaracionIVAModelTest(TestCase):
         self.assertEqual(d.diferencia, Decimal('0'))
 
 
+@override_settings(SECURE_SSL_REDIRECT=False)
+class DeclaracionIVAContabilizacionTest(TestCase):
+    def setUp(self):
+        self.user = CustomUser.objects.create_superuser(
+            'iva_admin',
+            'iva-admin@example.com',
+            'pass',
+        )
+        self.client_http = Client()
+        self.client_http.force_login(self.user)
+        _, self.cuenta_sii = _setup_contabilidad()
+
+    def _crear_presentada(self, debito='500000', credito='200000', mes='5'):
+        return self.client_http.post(
+            reverse('tributario:iva_create'),
+            {
+                'periodo_mes': mes,
+                'periodo_anio': '2026',
+                'iva_debito': debito,
+                'iva_credito': credito,
+                'estado': 'presentado',
+                'fecha_presentacion': '',
+            },
+        )
+
+    def test_crear_presentada_genera_centralizacion_borrador(self):
+        response = self._crear_presentada()
+
+        self.assertRedirects(response, reverse('tributario:iva_list'))
+        declaracion = DeclaracionIVA.objects.get(periodo_mes=5, periodo_anio=2026)
+        asiento = declaracion.asientos.get(tipo='centralizacion_iva')
+        self.assertEqual(asiento.estado, 'borrador')
+        self.assertEqual(asiento.total_debe, Decimal('500000.00'))
+        self.assertEqual(asiento.total_haber, Decimal('500000.00'))
+        self.assertEqual(
+            asiento.lineas.get(cuenta=self.cuenta_sii).haber,
+            Decimal('300000.00'),
+        )
+
+    def test_crear_borrador_no_genera_asiento(self):
+        response = self.client_http.post(
+            reverse('tributario:iva_create'),
+            {
+                'periodo_mes': '5',
+                'periodo_anio': '2026',
+                'iva_debito': '500000',
+                'iva_credito': '200000',
+                'estado': 'borrador',
+                'fecha_presentacion': '',
+            },
+        )
+
+        self.assertRedirects(response, reverse('tributario:iva_list'))
+        self.assertFalse(
+            AsientoContable.objects.filter(tipo='centralizacion_iva').exists()
+        )
+
+    def test_remanente_credito_no_genera_impuesto_por_pagar(self):
+        self._crear_presentada(debito='100000', credito='300000')
+
+        declaracion = DeclaracionIVA.objects.get(periodo_mes=5, periodo_anio=2026)
+        asiento = declaracion.asientos.get(tipo='centralizacion_iva')
+        self.assertEqual(asiento.total_debe, Decimal('100000.00'))
+        self.assertEqual(asiento.total_haber, Decimal('100000.00'))
+        self.assertFalse(asiento.lineas.filter(cuenta=self.cuenta_sii).exists())
+
+    def test_dashboard_muestra_deuda_despues_de_confirmar(self):
+        self._crear_presentada()
+        asiento = AsientoContable.objects.get(tipo='centralizacion_iva')
+        asiento.estado = 'confirmado'
+        asiento.save(update_fields=['estado'])
+
+        response = self.client_http.get(
+            reverse('dashboard:index'),
+            {'periodo': '2026-05'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.context['impuestos_sii_por_pagar'],
+            Decimal('300000.00'),
+        )
+
+
 class F29ModelTest(TestCase):
     def test_total_pagar_calculado(self):
         f = FormularioF29(
@@ -56,13 +148,17 @@ class F29ModelTest(TestCase):
             retenciones=Decimal('10000'),
         )
         f.save()
-        self.assertEqual(f.total_pagar, Decimal('340000'))
+        self.assertEqual(f.total_pagar, Decimal('360000'))
 
 
 @override_settings(SECURE_SSL_REDIRECT=False)
 class F29PagarViewTest(TestCase):
     def setUp(self):
-        self.user = CustomUser.objects.create_user('trib_user', password='pass')
+        self.user = CustomUser.objects.create_superuser(
+            'trib_user',
+            'trib-user@example.com',
+            'pass',
+        )
         self.client_http = Client()
         self.client_http.force_login(self.user)
 
@@ -94,6 +190,13 @@ class F29PagarViewTest(TestCase):
         self.assertEqual(resp.status_code, 200)
 
     def test_post_valido_marca_pagado(self):
+        declaracion = DeclaracionIVA.objects.create(
+            periodo_mes=5,
+            periodo_anio=2026,
+            iva_debito=Decimal('300000'),
+            iva_credito=Decimal('100000'),
+            estado='presentado',
+        )
         data = {
             'fecha_pago': timezone.now().date().isoformat(),
             'cuenta_bancaria': self.cuenta_bancaria.pk,
@@ -102,8 +205,10 @@ class F29PagarViewTest(TestCase):
         }
         self.client_http.post(self.url, data)
         self.f29.refresh_from_db()
+        declaracion.refresh_from_db()
         self.assertEqual(self.f29.estado, 'pagado')
         self.assertEqual(self.f29.folio, 'F29-001')
+        self.assertEqual(declaracion.estado, 'pagado')
 
     def test_post_crea_movimiento_por_total_pagar(self):
         from apps.tesoreria.models import MovimientoBancario
@@ -133,7 +238,11 @@ class F29PagarViewTest(TestCase):
 @override_settings(SECURE_SSL_REDIRECT=False)
 class PPMPagarViewTest(TestCase):
     def setUp(self):
-        self.user = CustomUser.objects.create_user('ppm_user', password='pass')
+        self.user = CustomUser.objects.create_superuser(
+            'ppm_user',
+            'ppm-user@example.com',
+            'pass',
+        )
         self.client_http = Client()
         self.client_http.force_login(self.user)
 
