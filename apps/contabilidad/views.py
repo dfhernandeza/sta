@@ -317,6 +317,31 @@ class AsientoUpdateView(ContabilidadMixin, View):
     def _get_asiento(self, pk):
         return get_object_or_404(AsientoContable, pk=pk, estado='borrador')
 
+    def _form_class(self):
+        from django import forms
+
+        class AsientoForm(forms.ModelForm):
+            class Meta:
+                model = AsientoContable
+                fields = ['fecha', 'descripcion', 'tipo']
+                widgets = {
+                    'fecha': forms.DateInput(
+                        format='%Y-%m-%d',
+                        attrs={
+                            'type': 'date',
+                            'class': 'form-control form-control-sm',
+                        },
+                    ),
+                    'descripcion': forms.TextInput(
+                        attrs={'class': 'form-control form-control-sm'}
+                    ),
+                    'tipo': forms.Select(
+                        attrs={'class': 'form-select form-select-sm'}
+                    ),
+                }
+
+        return AsientoForm
+
     def _formset_class(self):
         from django import forms
         from django.forms import inlineformset_factory
@@ -336,21 +361,10 @@ class AsientoUpdateView(ContabilidadMixin, View):
         return inlineformset_factory(AsientoContable, LineaAsiento, form=LineaForm, extra=1, can_delete=True)
 
     def get(self, request, pk):
-        from django import forms
         from django.shortcuts import render
         asiento = self._get_asiento(pk)
 
-        class AsientoForm(forms.ModelForm):
-            class Meta:
-                model = AsientoContable
-                fields = ['fecha', 'descripcion', 'tipo']
-                widgets = {
-                    'fecha': forms.DateInput(attrs={'type': 'date', 'class': 'form-control form-control-sm'}),
-                    'descripcion': forms.TextInput(attrs={'class': 'form-control form-control-sm'}),
-                    'tipo': forms.Select(attrs={'class': 'form-select form-select-sm'}),
-                }
-
-        form = AsientoForm(instance=asiento)
+        form = self._form_class()(instance=asiento)
         formset = self._formset_class()(instance=asiento)
         cuentas = PlanCuentas.objects.filter(activa=True, acepta_movimientos=True).order_by('codigo')
         centros_costo = CentroCosto.objects.filter(activo=True).order_by('codigo')
@@ -361,16 +375,10 @@ class AsientoUpdateView(ContabilidadMixin, View):
         })
 
     def post(self, request, pk):
-        from django import forms
         from django.shortcuts import render
         asiento = self._get_asiento(pk)
 
-        class AsientoForm(forms.ModelForm):
-            class Meta:
-                model = AsientoContable
-                fields = ['fecha', 'descripcion', 'tipo']
-
-        form = AsientoForm(request.POST, instance=asiento)
+        form = self._form_class()(request.POST, instance=asiento)
         formset = self._formset_class()(request.POST, instance=asiento)
         if form.is_valid() and formset.is_valid():
             form.save()

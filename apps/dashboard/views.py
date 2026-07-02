@@ -10,8 +10,8 @@ from apps.core.mixins import AppPermisoMixin
 class DashboardMixin(AppPermisoMixin):
     app_name = 'dashboard'
 
-from apps.clientes.models import FacturaEmitida, CuentaPorCobrar
-from apps.tesoreria.models import CuentaBancaria
+from apps.clientes.models import CuentaPorCobrar
+from apps.tesoreria.models import CuentaBancaria, MovimientoBancario
 from apps.proyectos.models import Proyecto
 from apps.contabilidad.models import AsientoContable, ConfiguracionContable, LineaAsiento
 import json
@@ -58,29 +58,19 @@ class DashboardView(DashboardMixin, TemplateView):
 
     @staticmethod
     def _ingresos_egresos(desde, hasta):
-        """Totales de resultado desde líneas de asientos confirmados."""
+        """Flujo del período basado exclusivamente en movimientos bancarios."""
         resumen = (
-            LineaAsiento.objects
-            .filter(
-                asiento__estado='confirmado',
-                asiento__fecha__range=(desde, hasta),
-                cuenta__tipo__in=('ingreso', 'costo', 'gasto', 'socio'),
-            )
-            .values('cuenta__tipo')
-            .annotate(
-                debe=Sum('debe'),
-                haber=Sum('haber'),
-            )
+            MovimientoBancario.objects
+            .filter(fecha__range=(desde, hasta))
+            .values('tipo')
+            .annotate(total=Sum('monto'))
         )
-        ingresos = Decimal('0')
-        egresos = Decimal('0')
-        for fila in resumen:
-            debe = fila['debe'] or Decimal('0')
-            haber = fila['haber'] or Decimal('0')
-            if fila['cuenta__tipo'] == 'ingreso':
-                ingresos += haber - debe
-            else:
-                egresos += debe - haber
+        por_tipo = {
+            fila['tipo']: fila['total'] or Decimal('0')
+            for fila in resumen
+        }
+        ingresos = por_tipo.get('ingreso', Decimal('0'))
+        egresos = por_tipo.get('egreso', Decimal('0'))
         return ingresos, egresos
 
     @staticmethod
@@ -150,21 +140,16 @@ class DashboardView(DashboardMixin, TemplateView):
         )
         ctx['cuentas_bancarias'] = cuentas
 
-        # Actividad y resultado contable del mes
-        facturas_emitidas_mes = FacturaEmitida.objects.none()
+        # Flujo bancario del mes
         ingresos_mes = Decimal('0')
         egresos_mes = Decimal('0')
         if not periodo_fuera_sistema:
-            facturas_emitidas_mes = FacturaEmitida.objects.filter(
-                fecha_emision__range=(inicio_periodo_efectivo, fin_mes),
-            ).exclude(estado='anulada')
             ingresos_mes, egresos_mes = self._ingresos_egresos(
                 inicio_periodo_efectivo,
                 fin_mes,
             )
 
         ctx['ingresos_mes'] = ingresos_mes
-        ctx['facturas_emitidas_mes'] = facturas_emitidas_mes.count()
         ctx['egresos_mes'] = egresos_mes
         ctx['utilidad_mes'] = ctx['ingresos_mes'] - ctx['egresos_mes']
 

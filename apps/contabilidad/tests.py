@@ -108,6 +108,10 @@ class AsientoMovimientoIngresoTest(TestCase):
 
         self.assertEqual(debe_linea.cuenta, cta_sueldos)
         self.assertEqual(haber_linea.cuenta, self.cta_banco)
+        self.assertEqual(
+            set(asiento.lineas.values_list('descripcion', flat=True)),
+            {'Pago remuneración'},
+        )
 
     def test_cuadre_debe_igual_haber(self):
         mov = self._movimiento(cuenta_contable=self.cta_cxc)
@@ -115,6 +119,16 @@ class AsientoMovimientoIngresoTest(TestCase):
         total_debe = sum(l.debe for l in asiento.lineas.all())
         total_haber = sum(l.haber for l in asiento.lineas.all())
         self.assertEqual(total_debe, total_haber)
+
+    def test_ambas_lineas_usan_descripcion_del_movimiento(self):
+        mov = self._movimiento(cuenta_contable=self.cta_cxc)
+
+        asiento = generar_asiento_movimiento_bancario(mov)
+
+        self.assertEqual(
+            set(asiento.lineas.values_list('descripcion', flat=True)),
+            {'Cobro Factura 001'},
+        )
 
 
 class ConfiguracionContableSingletonTest(TestCase):
@@ -231,6 +245,28 @@ class AsientoDetailViewTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'OPE')
         self.assertContains(response, 'Operaciones')
+
+
+class AsientoUpdateViewTest(TestCase):
+    def test_carga_fecha_en_formato_iso(self):
+        user = CustomUser.objects.create_superuser(
+            'editar-asiento',
+            password='x',
+        )
+        self.client.force_login(user)
+        asiento = AsientoContable.objects.create(
+            fecha='2026-06-30',
+            descripcion='Asiento editable',
+            estado='borrador',
+        )
+
+        response = self.client.get(
+            reverse('contabilidad:asiento_update', kwargs={'pk': asiento.pk})
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'type="date"')
+        self.assertContains(response, 'value="2026-06-30"')
 
 
 class CentroCostoDetalleViewTest(TestCase):

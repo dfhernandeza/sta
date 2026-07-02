@@ -5,13 +5,13 @@ from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 
 from apps.accounts.models import CustomUser
-from apps.clientes.models import Cliente, FacturaEmitida
 from apps.contabilidad.models import (
     AsientoContable,
     ConfiguracionContable,
     LineaAsiento,
     PlanCuentas,
 )
+from apps.tesoreria.models import Banco, CuentaBancaria, MovimientoBancario
 
 
 @override_settings(SECURE_SSL_REDIRECT=False)
@@ -24,10 +24,6 @@ class DashboardPeriodoTest(TestCase):
         )
         self.client_http = Client()
         self.client_http.force_login(self.user)
-        self.cliente = Cliente.objects.create(
-            rut='11.111.111-1',
-            razon_social='Cliente Dashboard',
-        )
         self.cuenta_cxc = PlanCuentas.objects.create(
             codigo='TEST.DASH.CXC',
             nombre='CxC Dashboard',
@@ -67,6 +63,14 @@ class DashboardPeriodoTest(TestCase):
             'cuenta_cxp',
             'cuenta_documentos_por_pagar',
         ])
+        banco = Banco.objects.create(nombre='Banco Dashboard', codigo='BDASH')
+        self.cuenta_bancaria = CuentaBancaria.objects.create(
+            banco=banco,
+            numero='123456',
+            tipo='corriente',
+            saldo_inicial=Decimal('0'),
+            cuenta_contable=self.cuenta_cxc,
+        )
 
         self.apertura = AsientoContable.objects.create(
             fecha=date(2026, 6, 15),
@@ -83,46 +87,20 @@ class DashboardPeriodoTest(TestCase):
             orden=1,
         )
 
-    def crear_factura(self, numero, fecha_emision, total):
-        neto = (total / Decimal('1.19')).quantize(Decimal('0.01'))
-        return FacturaEmitida.objects.create(
-            numero=numero,
-            fecha_emision=fecha_emision,
-            fecha_vencimiento=fecha_emision,
-            cliente=self.cliente,
-            neto=neto,
-            iva=total - neto,
-            total=total,
-            estado='pendiente',
+    def crear_movimiento(self, fecha, tipo, monto, descripcion='Movimiento'):
+        return MovimientoBancario.objects.create(
+            cuenta=self.cuenta_bancaria,
+            fecha=fecha,
+            tipo=tipo,
+            monto=monto,
+            descripcion=descripcion,
         )
 
-    def test_kpi_usa_asientos_y_facturas_solo_para_contador(self):
-        self.crear_factura('MAYO', date(2026, 5, 20), Decimal('10000'))
-        self.crear_factura('JUNIO-ANTES', date(2026, 6, 10), Decimal('20000'))
-        self.crear_factura('JUNIO-DESPUES', date(2026, 6, 20), Decimal('30000'))
-        self.crear_factura('JULIO', date(2026, 7, 1), Decimal('40000'))
-        asiento = AsientoContable.objects.create(
-            fecha=date(2026, 6, 20),
-            descripcion='Ingreso manual',
-            tipo='ajuste',
-            estado='confirmado',
-        )
-        LineaAsiento.objects.create(
-            asiento=asiento,
-            cuenta=self.cuenta_ingreso,
-            haber=Decimal('45000'),
-        )
-        asiento_borrador = AsientoContable.objects.create(
-            fecha=date(2026, 6, 21),
-            descripcion='Ingreso no confirmado',
-            tipo='ajuste',
-            estado='borrador',
-        )
-        LineaAsiento.objects.create(
-            asiento=asiento_borrador,
-            cuenta=self.cuenta_ingreso,
-            haber=Decimal('90000'),
-        )
+    def test_kpi_usa_movimientos_bancarios_del_periodo(self):
+        self.crear_movimiento(date(2026, 5, 20), 'ingreso', Decimal('10000'))
+        self.crear_movimiento(date(2026, 6, 10), 'ingreso', Decimal('20000'))
+        self.crear_movimiento(date(2026, 6, 20), 'ingreso', Decimal('45000'))
+        self.crear_movimiento(date(2026, 7, 1), 'ingreso', Decimal('40000'))
 
         response = self.client_http.get(
             reverse('dashboard:index'),
@@ -131,35 +109,14 @@ class DashboardPeriodoTest(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context['ingresos_mes'], Decimal('45000'))
-        self.assertEqual(response.context['facturas_emitidas_mes'], 1)
         self.assertEqual(response.context['periodo_seleccionado'], '2026-06')
 
-    def test_incluye_ingresos_egresos_manuales_y_reversos(self):
-        asiento = AsientoContable.objects.create(
-            fecha=date(2026, 6, 25),
-            descripcion='Resultado manual',
-            tipo='ajuste',
-            estado='confirmado',
+    def test_suma_ingresos_y_egresos_bancarios(self):
+        self.crear_movimiento(
+            date(2026, 6, 25), 'ingreso', Decimal('100000')
         )
-        LineaAsiento.objects.create(
-            asiento=asiento,
-            cuenta=self.cuenta_ingreso,
-            haber=Decimal('100000'),
-        )
-        LineaAsiento.objects.create(
-            asiento=asiento,
-            cuenta=self.cuenta_ingreso,
-            debe=Decimal('10000'),
-        )
-        LineaAsiento.objects.create(
-            asiento=asiento,
-            cuenta=self.cuenta_gasto,
-            debe=Decimal('40000'),
-        )
-        LineaAsiento.objects.create(
-            asiento=asiento,
-            cuenta=self.cuenta_gasto,
-            haber=Decimal('5000'),
+        self.crear_movimiento(
+            date(2026, 6, 25), 'egreso', Decimal('40000')
         )
 
         response = self.client_http.get(
@@ -167,9 +124,9 @@ class DashboardPeriodoTest(TestCase):
             {'periodo': '2026-06'},
         )
 
-        self.assertEqual(response.context['ingresos_mes'], Decimal('90000'))
-        self.assertEqual(response.context['egresos_mes'], Decimal('35000'))
-        self.assertEqual(response.context['utilidad_mes'], Decimal('55000'))
+        self.assertEqual(response.context['ingresos_mes'], Decimal('100000'))
+        self.assertEqual(response.context['egresos_mes'], Decimal('40000'))
+        self.assertEqual(response.context['utilidad_mes'], Decimal('60000'))
 
     def test_cxp_incluye_cuenta_documentos_por_pagar(self):
         asiento = AsientoContable.objects.create(
@@ -226,7 +183,9 @@ class DashboardPeriodoTest(TestCase):
         )
 
     def test_periodo_anterior_a_apertura_no_muestra_datos(self):
-        self.crear_factura('MAYO', date(2026, 5, 20), Decimal('10000'))
+        self.crear_movimiento(
+            date(2026, 5, 20), 'ingreso', Decimal('10000')
+        )
 
         response = self.client_http.get(
             reverse('dashboard:index'),

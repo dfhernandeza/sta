@@ -353,14 +353,14 @@ def generar_asiento_movimiento_bancario(movimiento, usuario=None):
 
     if movimiento.tipo == 'ingreso':
         _add_linea(asiento, cuenta_banco, debe=movimiento.monto,
-                   descripcion='Ingreso banco', orden=1)
+                   descripcion=movimiento.descripcion[:200], orden=1)
         _add_linea(asiento, cuenta_contrapartida, haber=movimiento.monto,
                    descripcion=movimiento.descripcion[:200], orden=2)
     else:  # egreso
         _add_linea(asiento, cuenta_contrapartida, debe=movimiento.monto,
                    descripcion=movimiento.descripcion[:200], orden=1)
         _add_linea(asiento, cuenta_banco, haber=movimiento.monto,
-                   descripcion='Pago banco', orden=2)
+                   descripcion=movimiento.descripcion[:200], orden=2)
 
     return asiento
 

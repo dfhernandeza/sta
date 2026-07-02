@@ -54,7 +54,7 @@
         <i class="bi bi-arrow-down-circle"></i>
       </div>
       <div class="kpi-value" style="color:#28a745;">{{ ingresos_mes|moneda_chilena }}</div>
-      <div class="kpi-label">Ingresos · {{ periodo_label }}</div>
+      <div class="kpi-label">Ingresos bancarios · {{ periodo_label }}</div>
     </div>
   </div>
   <div class="col-sm-6 col-xl-3">
@@ -63,7 +63,7 @@
         <i class="bi bi-arrow-up-circle"></i>
       </div>
       <div class="kpi-value" style="color:#dc3545;">{{ egresos_mes|moneda_chilena }}</div>
-      <div class="kpi-label">Egresos · {{ periodo_label }}</div>
+      <div class="kpi-label">Egresos bancarios · {{ periodo_label }}</div>
     </div>
   </div>
   <div class="col-sm-6 col-xl-3">
@@ -74,7 +74,7 @@
       <div class="kpi-value" style="color:{% if utilidad_mes >= 0 %}#28a745{% else %}#dc3545{% endif %};">
         {{ utilidad_mes|moneda_chilena }}
       </div>
-      <div class="kpi-label">Utilidad · {{ periodo_label }}</div>
+      <div class="kpi-label">Flujo neto · {{ periodo_label }}</div>
     </div>
   </div>
 </div>
@@ -84,7 +84,7 @@
   <div class="col-xl-8">
     <div class="card-sta p-4">
       <h6 class="fw-700 mb-3 text-sta">
-        <i class="bi bi-bar-chart me-2"></i>Resultado contable · 6 meses hasta {{ periodo_label }}
+        <i class="bi bi-bar-chart me-2"></i>Flujo de caja · 6 meses hasta {{ periodo_label }}
       </h6>
       <canvas id="flujoCajaChart" height="110"></canvas>
     </div>
