@@ -108,7 +108,7 @@ class ConfiguracionContableView(ContabilidadMixin, View):
                     'cuenta_iva_debito', 'cuenta_iva_credito',
                     'cuenta_ventas_default', 'cuenta_compras_default',
                     'cuenta_sueldos_operacional', 'cuenta_sueldos_administrativo',
-                    'cuenta_impuestos_sii',
+                    'cuenta_impuestos_sii', 'cuenta_ppm',
                     'cuenta_afp_por_pagar', 'cuenta_salud_por_pagar',
                     'cuenta_sueldos_por_pagar',
                     'cuenta_anticipos_trabajadores', 'cuenta_anticipos_proveedores',
@@ -129,6 +129,7 @@ class ConfiguracionContableView(ContabilidadMixin, View):
                 self.fields['cuenta_sueldos_operacional'].queryset = cuentas.filter(tipo='costo')
                 self.fields['cuenta_sueldos_administrativo'].queryset = cuentas.filter(tipo='gasto')
                 self.fields['cuenta_impuestos_sii'].queryset = cuentas.filter(tipo='pasivo')
+                self.fields['cuenta_ppm'].queryset = cuentas.filter(tipo='activo')
                 self.fields['cuenta_afp_por_pagar'].queryset = cuentas.filter(tipo='pasivo')
                 self.fields['cuenta_salud_por_pagar'].queryset = cuentas.filter(tipo='pasivo')
                 self.fields['cuenta_sueldos_por_pagar'].queryset = cuentas.filter(tipo='pasivo')

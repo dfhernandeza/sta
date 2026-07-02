@@ -43,10 +43,12 @@
           <td class="small">{{ f.fecha_presentacion|default:"—" }}</td>
           <td class="text-center">
             <div class="btn-group btn-group-sm">
+              {% if f.estado != 'pagado' %}
               <a href="{% url 'tributario:f29_update' f.pk %}" class="btn btn-outline-secondary btn-sm" title="Editar">
                 <i class="bi bi-pencil"></i>
               </a>
-              {% if f.estado != 'pagado' %}
+              {% endif %}
+              {% if f.estado == 'presentado' %}
               <a href="{% url 'tributario:f29_pagar' f.pk %}" class="btn btn-success btn-sm" title="Registrar pago">
                 <i class="bi bi-cash-coin"></i>
               </a>

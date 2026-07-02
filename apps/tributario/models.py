@@ -96,6 +96,7 @@ class DeclaracionIVA(TimeStampedModel):
 class PPM(TimeStampedModel):
     ESTADO_CHOICES = [
         ('pendiente', 'Pendiente'),
+        ('presentado', 'Presentado'),
         ('pagado', 'Pagado'),
     ]
 

@@ -67,6 +67,16 @@
     {% endif %}
 
     <div class="card-sta p-4">
+      {% if asiento_devengamiento %}
+      <div class="alert alert-info py-2 small">
+        <i class="bi bi-journal-check me-1"></i>
+        Devengamiento:
+        <a href="{% url 'contabilidad:asiento_detail' asiento_devengamiento.pk %}" class="fw-700">
+          {{ asiento_devengamiento.numero }}
+        </a>
+        · {{ asiento_devengamiento.get_estado_display }}
+      </div>
+      {% endif %}
       <form method="post" novalidate>
         {% csrf_token %}
         <div class="row g-3">

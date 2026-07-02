@@ -367,6 +367,61 @@ def generar_asiento_movimiento_bancario(movimiento, usuario=None):
     return asiento
 
 
+def generar_asiento_pago_f29(f29, movimiento, usuario=None):
+    """
+    Cancela las obligaciones tributarias previamente devengadas:
+
+        DEBE  Impuestos SII por Pagar = total F29
+        HABER Banco                   = total F29
+
+    El activo PPM por Recuperar se reconoce al presentar el PPM, no al pagarlo.
+    """
+    config = get_config()
+    cuenta_banco = movimiento.cuenta.cuenta_contable
+    total = f29.total_pagar or Decimal('0')
+
+    if not config or not cuenta_banco:
+        return None
+    if total > 0 and not config.cuenta_impuestos_sii:
+        return None
+    if total != movimiento.monto:
+        return None
+
+    asiento_activo = f29.asientos.exclude(estado='anulado').first()
+    if asiento_activo:
+        return asiento_activo
+
+    asiento = AsientoContable.objects.create(
+        fecha=movimiento.fecha,
+        descripcion=(
+            f'Pago F29 {f29.periodo_mes:02d}/{f29.periodo_anio}'
+        ),
+        tipo='pago_f29',
+        estado='borrador',
+        movimiento_bancario=movimiento,
+        formulario_f29=f29,
+        creado_por=usuario,
+    )
+
+    if total > 0:
+        _add_linea(
+            asiento,
+            config.cuenta_impuestos_sii,
+            debe=total,
+            descripcion='Pago obligaciones tributarias F29',
+            orden=1,
+        )
+
+    _add_linea(
+        asiento,
+        cuenta_banco,
+        haber=movimiento.monto,
+        descripcion='Pago F29 desde banco',
+        orden=2,
+    )
+    return asiento
+
+
 def generar_asiento_pago_anticipo(anticipo, movimiento, usuario=None):
     """
     Genera el asiento de pago de un anticipo laboral:
@@ -492,6 +547,60 @@ def generar_asiento_aplicacion_anticipo_proveedor(aplicacion, usuario=None):
     _add_linea(asiento, config.cuenta_anticipos_proveedores, haber=aplicacion.monto,
                descripcion=f'Rebaja anticipo proveedor {anticipo.proveedor.razon_social}', orden=2)
 
+    return asiento
+
+
+def generar_asiento_devengamiento_ppm(ppm, usuario=None):
+    """
+    Reconoce el PPM presentado como activo y como obligación incluida en F29:
+
+        DEBE  PPM por Recuperar
+        HABER Impuestos SII por Pagar
+    """
+    if ppm.estado != 'presentado' or ppm.monto <= 0:
+        return None
+
+    asiento_activo = ppm.asientos.filter(
+        tipo='devengamiento_ppm',
+    ).exclude(estado='anulado').first()
+    if asiento_activo:
+        return asiento_activo
+
+    config = get_config()
+    if (
+        not config
+        or not config.cuenta_ppm
+        or not config.cuenta_impuestos_sii
+    ):
+        return None
+
+    fecha_cierre = date(
+        ppm.periodo_anio,
+        ppm.periodo_mes,
+        monthrange(ppm.periodo_anio, ppm.periodo_mes)[1],
+    )
+    asiento = AsientoContable.objects.create(
+        fecha=fecha_cierre,
+        descripcion=f'Devengamiento PPM {ppm.periodo_mes:02d}/{ppm.periodo_anio}',
+        tipo='devengamiento_ppm',
+        estado='borrador',
+        ppm=ppm,
+        creado_por=usuario,
+    )
+    _add_linea(
+        asiento,
+        config.cuenta_ppm,
+        debe=ppm.monto,
+        descripcion='PPM por Recuperar',
+        orden=1,
+    )
+    _add_linea(
+        asiento,
+        config.cuenta_impuestos_sii,
+        haber=ppm.monto,
+        descripcion='PPM por Pagar en F29',
+        orden=2,
+    )
     return asiento
 
 

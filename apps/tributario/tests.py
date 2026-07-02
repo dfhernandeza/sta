@@ -14,6 +14,9 @@ def _setup_contabilidad():
     cta_iva_credito = PlanCuentas.objects.create(
         codigo='1.1.02', nombre='IVA Crédito Fiscal', tipo='activo', nivel=1
     )
+    cta_ppm = PlanCuentas.objects.create(
+        codigo='1.1.03', nombre='PPM por Recuperar', tipo='activo', nivel=1
+    )
     cta_iva_debito = PlanCuentas.objects.create(
         codigo='2.1.04', nombre='IVA Débito Fiscal', tipo='pasivo', nivel=1
     )
@@ -22,6 +25,7 @@ def _setup_contabilidad():
     config.cuenta_iva_credito = cta_iva_credito
     config.cuenta_iva_debito = cta_iva_debito
     config.cuenta_impuestos_sii = cta_sii
+    config.cuenta_ppm = cta_ppm
     config.save()
     return cta_banco, cta_sii
 
@@ -139,6 +143,65 @@ class DeclaracionIVAContabilizacionTest(TestCase):
         )
 
 
+@override_settings(SECURE_SSL_REDIRECT=False)
+class PPMContabilizacionTest(TestCase):
+    def setUp(self):
+        self.user = CustomUser.objects.create_superuser(
+            'ppm_contable',
+            'ppm-contable@example.com',
+            'pass',
+        )
+        self.client_http = Client()
+        self.client_http.force_login(self.user)
+        _setup_contabilidad()
+
+    def _crear(self, estado):
+        return self.client_http.post(
+            reverse('tributario:ppm_create'),
+            {
+                'periodo_mes': '6',
+                'periodo_anio': '2026',
+                'base_imponible': '12000000',
+                'tasa': '0.0025',
+                'monto': '30000',
+                'estado': estado,
+            },
+        )
+
+    def test_crear_pendiente_no_genera_asiento(self):
+        response = self._crear('pendiente')
+
+        self.assertRedirects(response, reverse('tributario:ppm_list'))
+        ppm = PPM.objects.get(periodo_mes=6, periodo_anio=2026)
+        self.assertFalse(ppm.asientos.exists())
+
+    def test_crear_presentado_genera_devengamiento_y_sincroniza_f29(self):
+        f29 = FormularioF29.objects.create(
+            periodo_mes=6,
+            periodo_anio=2026,
+            estado='pendiente',
+        )
+
+        response = self._crear('presentado')
+
+        self.assertRedirects(response, reverse('tributario:ppm_list'))
+        ppm = PPM.objects.get(periodo_mes=6, periodo_anio=2026)
+        asiento = ppm.asientos.get(tipo='devengamiento_ppm')
+        config = ConfiguracionContable.get()
+        self.assertEqual(asiento.estado, 'borrador')
+        self.assertEqual(
+            asiento.lineas.get(cuenta=config.cuenta_ppm).debe,
+            Decimal('30000.00'),
+        )
+        self.assertEqual(
+            asiento.lineas.get(cuenta=config.cuenta_impuestos_sii).haber,
+            Decimal('30000.00'),
+        )
+        f29.refresh_from_db()
+        self.assertEqual(f29.ppm_pagar, Decimal('30000.00'))
+        self.assertEqual(f29.total_pagar, Decimal('30000.00'))
+
+
 class F29ModelTest(TestCase):
     def test_total_pagar_calculado(self):
         f = FormularioF29(
@@ -170,8 +233,33 @@ class F29PagarViewTest(TestCase):
             iva_pagar=Decimal('200000'),
             ppm_pagar=Decimal('30000'),
             retenciones=Decimal('0'),
-            estado='pendiente',
+            estado='presentado',
         )
+        self.declaracion = DeclaracionIVA.objects.create(
+            periodo_mes=5,
+            periodo_anio=2026,
+            iva_debito=Decimal('300000'),
+            iva_credito=Decimal('100000'),
+            estado='presentado',
+        )
+        self.ppm = PPM.objects.create(
+            periodo_mes=5,
+            periodo_anio=2026,
+            base_imponible=Decimal('12000000'),
+            tasa=Decimal('0.0025'),
+            monto=Decimal('30000'),
+            estado='presentado',
+        )
+        from apps.contabilidad.utils import (
+            generar_asiento_declaracion_iva,
+            generar_asiento_devengamiento_ppm,
+        )
+        for asiento in [
+            generar_asiento_declaracion_iva(self.declaracion),
+            generar_asiento_devengamiento_ppm(self.ppm),
+        ]:
+            asiento.estado = 'confirmado'
+            asiento.save(update_fields=['estado'])
         self.url = reverse('tributario:f29_pagar', args=[self.f29.pk])
 
     def test_get_muestra_formulario(self):
@@ -190,13 +278,6 @@ class F29PagarViewTest(TestCase):
         self.assertEqual(resp.status_code, 200)
 
     def test_post_valido_marca_pagado(self):
-        declaracion = DeclaracionIVA.objects.create(
-            periodo_mes=5,
-            periodo_anio=2026,
-            iva_debito=Decimal('300000'),
-            iva_credito=Decimal('100000'),
-            estado='presentado',
-        )
         data = {
             'fecha_pago': timezone.now().date().isoformat(),
             'cuenta_bancaria': self.cuenta_bancaria.pk,
@@ -205,10 +286,13 @@ class F29PagarViewTest(TestCase):
         }
         self.client_http.post(self.url, data)
         self.f29.refresh_from_db()
-        declaracion.refresh_from_db()
+        self.declaracion.refresh_from_db()
+        self.ppm.refresh_from_db()
         self.assertEqual(self.f29.estado, 'pagado')
         self.assertEqual(self.f29.folio, 'F29-001')
-        self.assertEqual(declaracion.estado, 'pagado')
+        self.assertEqual(self.declaracion.estado, 'pagado')
+        self.assertEqual(self.ppm.estado, 'pagado')
+        self.assertEqual(self.ppm.fecha_pago, timezone.now().date())
 
     def test_post_crea_movimiento_por_total_pagar(self):
         from apps.tesoreria.models import MovimientoBancario
@@ -224,7 +308,6 @@ class F29PagarViewTest(TestCase):
         self.assertEqual(mov.monto, Decimal('230000'))  # 200000 + 30000
 
     def test_post_genera_asiento(self):
-        from apps.contabilidad.models import AsientoContable
         data = {
             'fecha_pago': timezone.now().date().isoformat(),
             'cuenta_bancaria': self.cuenta_bancaria.pk,
@@ -232,7 +315,20 @@ class F29PagarViewTest(TestCase):
             'notas': '',
         }
         self.client_http.post(self.url, data)
-        self.assertTrue(AsientoContable.objects.filter(tipo='movimiento_banco').exists())
+        asiento = AsientoContable.objects.get(tipo='pago_f29')
+        config = ConfiguracionContable.get()
+        self.assertEqual(asiento.total_debe, Decimal('230000'))
+        self.assertEqual(asiento.total_haber, Decimal('230000'))
+        self.assertEqual(
+            asiento.lineas.get(cuenta=config.cuenta_impuestos_sii).debe,
+            Decimal('230000'),
+        )
+        self.assertEqual(
+            self.ppm.asientos.get(
+                tipo='devengamiento_ppm',
+            ).lineas.get(cuenta=config.cuenta_ppm).debe,
+            Decimal('30000'),
+        )
 
 
 @override_settings(SECURE_SSL_REDIRECT=False)
@@ -258,8 +354,12 @@ class PPMPagarViewTest(TestCase):
             base_imponible=Decimal('2000000'),
             tasa=Decimal('0.0025'),
             monto=Decimal('5000'),
-            estado='pendiente',
+            estado='presentado',
         )
+        from apps.contabilidad.utils import generar_asiento_devengamiento_ppm
+        asiento = generar_asiento_devengamiento_ppm(self.ppm)
+        asiento.estado = 'confirmado'
+        asiento.save(update_fields=['estado'])
         self.url = reverse('tributario:ppm_pagar', args=[self.ppm.pk])
 
     def test_get_muestra_formulario(self):
@@ -292,3 +392,29 @@ class PPMPagarViewTest(TestCase):
         self.client_http.post(self.url, data)
         mov = MovimientoBancario.objects.filter(tipo='egreso').last()
         self.assertEqual(mov.monto, Decimal('5000'))
+        config = ConfiguracionContable.get()
+        asiento = mov.asientos.get(tipo='movimiento_banco')
+        self.assertEqual(
+            asiento.lineas.get(cuenta=config.cuenta_impuestos_sii).debe,
+            Decimal('5000'),
+        )
+
+    def test_bloquea_pago_separado_si_ppm_esta_incluido_en_f29(self):
+        FormularioF29.objects.create(
+            periodo_mes=self.ppm.periodo_mes,
+            periodo_anio=self.ppm.periodo_anio,
+            iva_pagar=Decimal('100000'),
+            ppm_pagar=self.ppm.monto,
+            retenciones=Decimal('0'),
+            estado='presentado',
+        )
+
+        response = self.client_http.get(self.url)
+
+        self.assertRedirects(
+            response,
+            reverse('tributario:f29_list'),
+            fetch_redirect_response=False,
+        )
+        self.ppm.refresh_from_db()
+        self.assertEqual(self.ppm.estado, 'presentado')

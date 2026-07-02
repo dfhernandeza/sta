@@ -126,8 +126,13 @@ class ConfiguracionContable(models.Model):
     )
     cuenta_impuestos_sii = models.ForeignKey(
         PlanCuentas, null=True, blank=True, on_delete=models.SET_NULL,
-        related_name='+', verbose_name='Cuenta Impuestos SII (F29 / PPM)',
+        related_name='+', verbose_name='Cuenta Impuestos SII (F29)',
         help_text='Cuenta pasivo para registrar obligaciones tributarias pagadas al SII (Debe en pago F29).'
+    )
+    cuenta_ppm = models.ForeignKey(
+        PlanCuentas, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='+', verbose_name='PPM por Recuperar',
+        help_text='Cuenta activo para registrar los pagos provisionales mensuales entregados al SII.'
     )
     cuenta_afp_por_pagar = models.ForeignKey(
         PlanCuentas, null=True, blank=True, on_delete=models.SET_NULL,
@@ -223,6 +228,8 @@ class AsientoContable(TimeStampedModel):
         ('pago_anticipo', 'Pago de Anticipo Laboral'),
         ('pago_anticipo_proveedor', 'Pago de Anticipo a Proveedor'),
         ('centralizacion_iva', 'Centralización de IVA'),
+        ('devengamiento_ppm', 'Devengamiento de PPM'),
+        ('pago_f29', 'Pago de F29'),
         ('ajuste', 'Ajuste Contable'),
         ('rendicion_gastos', 'Rendición de Gastos'),
         ('otro', 'Otro'),
@@ -270,6 +277,14 @@ class AsientoContable(TimeStampedModel):
     declaracion_iva = models.ForeignKey(
         'tributario.DeclaracionIVA', null=True, blank=True, on_delete=models.SET_NULL,
         related_name='asientos', verbose_name='Declaración IVA'
+    )
+    formulario_f29 = models.ForeignKey(
+        'tributario.FormularioF29', null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='asientos', verbose_name='Formulario F29'
+    )
+    ppm = models.ForeignKey(
+        'tributario.PPM', null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='asientos', verbose_name='PPM'
     )
     creado_por = models.ForeignKey(
         'accounts.CustomUser', null=True, blank=True, on_delete=models.SET_NULL,
