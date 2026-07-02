@@ -39,8 +39,8 @@
 
 <!-- KPI CARDS -->
 <div class="row g-4 mb-4">
-  <div class="col-sm-6 col-xl-3">
-    <div class="kpi-card">
+  <div class="col-sm-6 col-xl-3 d-flex">
+    <div class="kpi-card h-100 w-100">
       <div class="kpi-icon" style="background:linear-gradient(135deg,var(--sta-navy),var(--sta-steel));">
         <i class="bi bi-bank2"></i>
       </div>
@@ -48,8 +48,8 @@
       <div class="kpi-label">Saldo Bancario al Cierre</div>
     </div>
   </div>
-  <div class="col-sm-6 col-xl-3">
-    <div class="kpi-card">
+  <div class="col-sm-6 col-xl-3 d-flex">
+    <div class="kpi-card h-100 w-100">
       <div class="kpi-icon" style="background:linear-gradient(135deg,#28a745,#20c997);">
         <i class="bi bi-arrow-down-circle"></i>
       </div>
@@ -57,8 +57,8 @@
       <div class="kpi-label">Ingresos bancarios · {{ periodo_label }}</div>
     </div>
   </div>
-  <div class="col-sm-6 col-xl-3">
-    <div class="kpi-card">
+  <div class="col-sm-6 col-xl-3 d-flex">
+    <div class="kpi-card h-100 w-100">
       <div class="kpi-icon" style="background:linear-gradient(135deg,#dc3545,#fd7e14);">
         <i class="bi bi-arrow-up-circle"></i>
       </div>
@@ -66,8 +66,8 @@
       <div class="kpi-label">Egresos bancarios · {{ periodo_label }}</div>
     </div>
   </div>
-  <div class="col-sm-6 col-xl-3">
-    <div class="kpi-card">
+  <div class="col-sm-6 col-xl-3 d-flex">
+    <div class="kpi-card h-100 w-100">
       <div class="kpi-icon" style="background:linear-gradient(135deg,#6f42c1,#e83e8c);">
         <i class="bi bi-graph-up-arrow"></i>
       </div>
@@ -81,22 +81,22 @@
 
 <!-- INDICADORES DE GESTIÓN DE CAJA -->
 <div class="row g-4 mb-4">
-  <div class="col-sm-6 col-xl-3">
-    <div class="card-sta p-3 h-100">
+  <div class="col-sm-6 col-xl-3 d-flex">
+    <div class="card-sta p-3 h-100 w-100">
       <div class="small text-muted mb-1">Pendientes de conciliación</div>
       <div class="h4 fw-700 mb-1">{{ movimientos_sin_conciliar_count }}</div>
       <div class="small text-warning">{{ movimientos_sin_conciliar_monto|moneda_chilena }}</div>
     </div>
   </div>
-  <div class="col-sm-6 col-xl-3">
-    <div class="card-sta p-3 h-100">
+  <div class="col-sm-6 col-xl-3 d-flex">
+    <div class="card-sta p-3 h-100 w-100">
       <div class="small text-muted mb-1">CxC vencida al cierre</div>
       <div class="h4 fw-700 text-danger mb-1">{{ total_cxc_vencida|moneda_chilena }}</div>
       <div class="small text-muted">Saldo pendiente vencido</div>
     </div>
   </div>
-  <div class="col-sm-6 col-xl-3">
-    <div class="card-sta p-3 h-100">
+  <div class="col-sm-6 col-xl-3 d-flex">
+    <div class="card-sta p-3 h-100 w-100">
       <div class="small text-muted mb-1">Proyección de caja · 30 días</div>
       <div class="h4 fw-700 {% if proyeccion_caja_30_dias >= 0 %}text-success{% else %}text-danger{% endif %} mb-1">
         {{ proyeccion_caja_30_dias|moneda_chilena }}
@@ -106,8 +106,8 @@
       </div>
     </div>
   </div>
-  <div class="col-sm-6 col-xl-3">
-    <div class="card-sta p-3 h-100">
+  <div class="col-sm-6 col-xl-3 d-flex">
+    <div class="card-sta p-3 h-100 w-100">
       <div class="small text-muted mb-1">Runway financiero</div>
       {% if runway_disponible %}
         <div class="h4 fw-700 mb-1">{{ runway_meses }} meses</div>
@@ -122,16 +122,16 @@
 
 <!-- GRÁFICO + ALERTAS -->
 <div class="row g-4 mb-4">
-  <div class="col-xl-8">
-    <div class="card-sta p-4">
+  <div class="col-xl-8 d-flex">
+    <div class="card-sta p-4 h-100 w-100">
       <h6 class="fw-700 mb-3 text-sta">
         <i class="bi bi-bar-chart me-2"></i>Flujo de caja · 6 meses hasta {{ periodo_label }}
       </h6>
       <canvas id="flujoCajaChart" height="110"></canvas>
     </div>
   </div>
-  <div class="col-xl-4">
-    <div class="card-sta p-4 h-100">
+  <div class="col-xl-4 d-flex">
+    <div class="card-sta p-4 h-100 w-100">
       <h6 class="fw-700 mb-3 text-sta">
         <i class="bi bi-bell me-2"></i>Resumen al Cierre
       </h6>
