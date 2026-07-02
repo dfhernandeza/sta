@@ -2,7 +2,7 @@ from django.views.generic import ListView, CreateView, UpdateView, DeleteView, D
 from django.urls import reverse_lazy, reverse
 from django.contrib import messages
 from django.shortcuts import get_object_or_404, redirect, render
-from django.db.models import Sum, Q, F
+from django.db.models import Sum, Q, F, Prefetch
 from django.utils.dateparse import parse_date
 from apps.core.mixins import GestionMixin, AppPermisoMixin
 
@@ -197,7 +197,15 @@ class AsientoDetailView(ContabilidadMixin, DetailView):
     context_object_name = 'asiento'
 
     def get_queryset(self):
-        return super().get_queryset().prefetch_related('lineas__cuenta')
+        return super().get_queryset().prefetch_related(
+            Prefetch(
+                'lineas',
+                queryset=LineaAsiento.objects.select_related(
+                    'cuenta',
+                    'centro_costo',
+                ),
+            )
+        )
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)

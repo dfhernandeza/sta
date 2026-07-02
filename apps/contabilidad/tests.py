@@ -198,3 +198,36 @@ class InformeCentroCostoTest(TestCase):
         )
 
         self.assertEqual(response.context['total_egresos'], Decimal('250.00'))
+
+
+class AsientoDetailViewTest(TestCase):
+    def test_muestra_centro_costo_de_cada_linea(self):
+        user = CustomUser.objects.create_superuser(
+            'detalle-asiento',
+            password='x',
+        )
+        self.client.force_login(user)
+        cuenta = make_cuenta('4.1.98', 'Gasto con centro', 'gasto')
+        centro = CentroCosto.objects.create(
+            codigo='OPE',
+            nombre='Operaciones',
+        )
+        asiento = AsientoContable.objects.create(
+            fecha='2026-07-02',
+            descripcion='Asiento con centro de costo',
+            estado='confirmado',
+        )
+        LineaAsiento.objects.create(
+            asiento=asiento,
+            cuenta=cuenta,
+            centro_costo=centro,
+            debe=Decimal('1000.00'),
+        )
+
+        response = self.client.get(
+            reverse('contabilidad:asiento_detail', kwargs={'pk': asiento.pk})
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'OPE')
+        self.assertContains(response, 'Operaciones')

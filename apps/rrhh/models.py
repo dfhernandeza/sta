@@ -1,4 +1,6 @@
 from django.db import models
+from calendar import monthrange
+from datetime import date
 from apps.core.models import TimeStampedModel
 from apps.core.validators import validar_rut
 from apps.tesoreria.models import Banco, TIPO_CHOICES
@@ -115,6 +117,7 @@ class Remuneracion(TimeStampedModel):
     )
     periodo_mes = models.PositiveSmallIntegerField(verbose_name='Mes')
     periodo_anio = models.PositiveSmallIntegerField(verbose_name='Año')
+    fecha_devengamiento = models.DateField(verbose_name='Fecha de Devengamiento')
     sueldo_base = models.DecimalField(max_digits=12, decimal_places=2, verbose_name='Sueldo Base')
     horas_extra = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name='Horas Extra')
     bono = models.DecimalField(max_digits=12, decimal_places=2, default=0, verbose_name='Bonos')
@@ -136,6 +139,16 @@ class Remuneracion(TimeStampedModel):
 
     def __str__(self):
         return f'{self.trabajador.nombre_completo} - {self.periodo_mes:02d}/{self.periodo_anio}'
+
+    def save(self, *args, **kwargs):
+        if not self.fecha_devengamiento and self.periodo_mes and self.periodo_anio:
+            ultimo_dia = monthrange(self.periodo_anio, self.periodo_mes)[1]
+            self.fecha_devengamiento = date(
+                self.periodo_anio,
+                self.periodo_mes,
+                ultimo_dia,
+            )
+        super().save(*args, **kwargs)
 
     @property
     def descuentos(self):

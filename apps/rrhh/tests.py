@@ -5,7 +5,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from apps.accounts.models import CustomUser
-from apps.contabilidad.models import PlanCuentas, ConfiguracionContable
+from apps.contabilidad.models import AsientoContable, PlanCuentas, ConfiguracionContable
 from apps.tesoreria.models import Banco, CuentaBancaria
 from .models import CargoTrabajador, Trabajador, Remuneracion, AnticipoLaboral
 
@@ -365,6 +365,30 @@ class RemuneracionUpdateAnticipoTest(TestCase):
         )
         self.url = reverse('rrhh:remuneracion_update', args=[self.rem.pk])
 
+    def test_fecha_devengamiento_inferida_al_cierre_del_periodo(self):
+        self.assertEqual(self.rem.fecha_devengamiento, date(2026, 6, 30))
+
+    def test_asiento_devengamiento_usa_fecha_proporcionada(self):
+        from apps.contabilidad.utils import generar_asiento_devengamiento_remuneracion
+
+        _, cuenta_sueldos = _setup_contabilidad()
+        config = ConfiguracionContable.get()
+        config.cuenta_sueldos_por_pagar = cuenta_sueldos
+        config.cuenta_afp_por_pagar = cuenta_sueldos
+        config.cuenta_salud_por_pagar = cuenta_sueldos
+        config.save()
+        self.rem.fecha_devengamiento = date(2026, 7, 5)
+        self.rem.save(update_fields=['fecha_devengamiento'])
+
+        asiento = generar_asiento_devengamiento_remuneracion(
+            self.rem,
+            usuario=self.user,
+        )
+
+        self.assertIsNotNone(asiento)
+        self.assertEqual(asiento.fecha, date(2026, 7, 5))
+
+
     def test_carga_anticipo_pagado_si_no_estaba_en_la_remuneracion(self):
         AnticipoLaboral.objects.create(
             trabajador=self.trabajador,
@@ -416,3 +440,77 @@ class RemuneracionUpdateAnticipoTest(TestCase):
             response.context['form']['anticipo_descontado'].value(),
             Decimal('50000'),
         )
+
+
+@override_settings(SECURE_SSL_REDIRECT=False)
+class RemuneracionDeleteViewTest(TestCase):
+    def setUp(self):
+        self.user = CustomUser.objects.create_user(
+            'tester_delete_remuneracion',
+            password='pass',
+            app_permisos=['rrhh'],
+        )
+        self.client_http = Client()
+        self.client_http.force_login(self.user)
+        self.remuneracion = Remuneracion.objects.create(
+            trabajador=_make_trabajador(),
+            periodo_mes=6,
+            periodo_anio=2026,
+            sueldo_base=Decimal('900000'),
+            sueldo_bruto=Decimal('900000'),
+            liquido_pagar=Decimal('700000'),
+            estado='borrador',
+        )
+        self.url = reverse(
+            'rrhh:remuneracion_delete',
+            args=[self.remuneracion.pk],
+        )
+        self.success_url = reverse(
+            'rrhh:remuneracion_procesar_detalle',
+            kwargs={'mes': 6, 'anio': 2026},
+        )
+
+    def test_elimina_remuneracion_y_asiento_borrador(self):
+        asiento = AsientoContable.objects.create(
+            fecha=date(2026, 6, 30),
+            descripcion='Devengamiento de prueba',
+            tipo='devengamiento_remuneracion',
+            estado='borrador',
+            remuneracion=self.remuneracion,
+        )
+
+        response = self.client_http.post(self.url)
+
+        self.assertRedirects(response, self.success_url)
+        self.assertFalse(
+            Remuneracion.objects.filter(pk=self.remuneracion.pk).exists()
+        )
+        self.assertFalse(AsientoContable.objects.filter(pk=asiento.pk).exists())
+
+    def test_bloquea_remuneracion_pagada(self):
+        self.remuneracion.estado = 'pagado'
+        self.remuneracion.save(update_fields=['estado'])
+
+        response = self.client_http.post(self.url)
+
+        self.assertRedirects(response, self.success_url)
+        self.assertTrue(
+            Remuneracion.objects.filter(pk=self.remuneracion.pk).exists()
+        )
+
+    def test_bloquea_remuneracion_con_asiento_confirmado(self):
+        asiento = AsientoContable.objects.create(
+            fecha=date(2026, 6, 30),
+            descripcion='Devengamiento confirmado',
+            tipo='devengamiento_remuneracion',
+            estado='confirmado',
+            remuneracion=self.remuneracion,
+        )
+
+        response = self.client_http.post(self.url)
+
+        self.assertRedirects(response, self.success_url)
+        self.assertTrue(
+            Remuneracion.objects.filter(pk=self.remuneracion.pk).exists()
+        )
+        self.assertTrue(AsientoContable.objects.filter(pk=asiento.pk).exists())

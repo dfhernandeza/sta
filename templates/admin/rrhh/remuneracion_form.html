@@ -54,6 +54,11 @@
             <label class="form-label fw-600">Estado</label>
             {{ form.estado }}
           </div>
+          <div class="col-sm-6">
+            <label class="form-label fw-600">Fecha de devengamiento</label>
+            {{ form.fecha_devengamiento }}
+            {% if form.fecha_devengamiento.errors %}<div class="invalid-feedback d-block">{{ form.fecha_devengamiento.errors.0 }}</div>{% endif %}
+          </div>
 
           {# Haberes #}
           <div class="col-12"><hr class="my-1"><p class="fw-600 text-muted small mb-0">Haberes</p></div>

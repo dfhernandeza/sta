@@ -4,6 +4,7 @@ Uso: python manage.py cargar_datos_prueba
 Es idempotente: usa get_or_create para no duplicar datos.
 """
 
+import calendar
 import datetime
 from decimal import Decimal
 from django.core.management.base import BaseCommand
@@ -575,6 +576,11 @@ class Command(BaseCommand):
                     'anticipo_descontado': Decimal('0'),
                     'liquido_pagar': liquido,
                     'estado': 'pagado',
+                    'fecha_devengamiento': datetime.date(
+                        anio,
+                        mes,
+                        calendar.monthrange(anio, mes)[1],
+                    ),
                     'fecha_pago': hoy.replace(day=5),
                 }
             )

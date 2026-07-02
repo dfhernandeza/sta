@@ -101,6 +101,10 @@
                  class="btn btn-sm btn-success rounded-pill px-2">
                 <i class="bi bi-cash me-1"></i>Pagar
               </a>
+              <a href="{% url 'rrhh:remuneracion_delete' pk=item.remuneracion.pk %}"
+                 class="btn btn-sm btn-outline-danger rounded-pill px-2 ms-1">
+                <i class="bi bi-trash me-1"></i>Eliminar
+              </a>
             {% endif %}
           </td>
         </tr>

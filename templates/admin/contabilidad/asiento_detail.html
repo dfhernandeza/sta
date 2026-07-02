@@ -118,15 +118,17 @@
       <h6 class="fw-700 text-sta mb-3"><i class="bi bi-table me-2"></i>Partidas</h6>
       <table class="table table-bordered mb-0" style="table-layout:fixed;">
         <colgroup>
-          <col style="width:22%">
+          <col style="width:20%">
           <col>
-          <col style="width:16%">
-          <col style="width:16%">
+          <col style="width:18%">
+          <col style="width:14%">
+          <col style="width:14%">
         </colgroup>
         <thead class="table-light">
           <tr>
             <th>Cuenta</th>
             <th>Descripción</th>
+            <th>Centro de costo</th>
             <th class="text-end">Debe</th>
             <th class="text-end">Haber</th>
           </tr>
@@ -136,21 +138,29 @@
           <tr>
             <td class="small font-monospace">{{ linea.cuenta.codigo }}<br><span class="text-muted">{{ linea.cuenta.nombre|truncatechars:28 }}</span></td>
             <td class="small">{{ linea.descripcion|default:"—" }}</td>
+            <td class="small">
+              {% if linea.centro_costo %}
+                <span class="badge bg-secondary">{{ linea.centro_costo.codigo }}</span>
+                <span class="text-muted">{{ linea.centro_costo.nombre }}</span>
+              {% else %}
+                —
+              {% endif %}
+            </td>
             <td class="text-end small font-monospace">{% if linea.debe %}<span class="text-primary">{{ linea.debe|moneda_chilena }}</span>{% else %}—{% endif %}</td>
             <td class="text-end small font-monospace">{% if linea.haber %}<span class="text-success">{{ linea.haber|moneda_chilena }}</span>{% else %}—{% endif %}</td>
           </tr>
           {% empty %}
-          <tr><td colspan="4" class="text-center text-muted py-3">Sin líneas.</td></tr>
+          <tr><td colspan="5" class="text-center text-muted py-3">Sin líneas.</td></tr>
           {% endfor %}
         </tbody>
         <tfoot class="table-active fw-700">
           <tr>
-            <td colspan="2" class="text-end fw-700">Totales</td>
+            <td colspan="3" class="text-end fw-700">Totales</td>
             <td class="text-end font-monospace text-primary">{{ asiento.total_debe|moneda_chilena }}</td>
             <td class="text-end font-monospace text-success">{{ asiento.total_haber|moneda_chilena }}</td>
           </tr>
           <tr>
-            <td colspan="4" class="text-center small">
+            <td colspan="5" class="text-center small">
               {% if asiento.esta_cuadrado %}
                 <span class="text-success"><i class="bi bi-check-circle-fill me-1"></i>Asiento cuadrado</span>
               {% else %}

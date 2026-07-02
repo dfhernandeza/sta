@@ -254,7 +254,7 @@ class RemuneracionCreateView(RrhhMixin, CreateView):
     fields = ['trabajador', 'periodo_mes', 'periodo_anio', 'sueldo_base', 'horas_extra',
               'bono', 'sueldo_bruto', 'descuento_afp', 'descuento_salud',
               'impuesto_unico', 'otros_descuentos', 'anticipo_descontado',
-              'liquido_pagar', 'estado', 'fecha_pago']
+              'liquido_pagar', 'estado', 'fecha_devengamiento', 'fecha_pago']
     success_url = reverse_lazy('rrhh:remuneracion_list')
 
     def get_initial(self):
@@ -263,9 +263,17 @@ class RemuneracionCreateView(RrhhMixin, CreateView):
         try:
             initial['periodo_mes'] = int(self.request.GET.get('mes', now.month))
             initial['periodo_anio'] = int(self.request.GET.get('anio', now.year))
+            if not 1 <= initial['periodo_mes'] <= 12 or initial['periodo_anio'] < 1:
+                raise ValueError
         except (ValueError, TypeError):
             initial['periodo_mes'] = now.month
             initial['periodo_anio'] = now.year
+        ultimo_dia = monthrange(initial['periodo_anio'], initial['periodo_mes'])[1]
+        initial['fecha_devengamiento'] = date(
+            initial['periodo_anio'],
+            initial['periodo_mes'],
+            ultimo_dia,
+        )
         trabajador_pk = self.request.GET.get('trabajador')
         if trabajador_pk:
             try:
@@ -376,7 +384,7 @@ class RemuneracionUpdateView(RrhhMixin, UpdateView):
     fields = ['trabajador', 'periodo_mes', 'periodo_anio', 'sueldo_base', 'horas_extra',
               'bono', 'sueldo_bruto', 'descuento_afp', 'descuento_salud',
               'impuesto_unico', 'otros_descuentos', 'anticipo_descontado',
-              'liquido_pagar', 'estado', 'fecha_pago']
+              'liquido_pagar', 'estado', 'fecha_devengamiento', 'fecha_pago']
 
     def dispatch(self, request, *args, **kwargs):
         rem = self.get_object()
@@ -456,6 +464,86 @@ class RemuneracionUpdateView(RrhhMixin, UpdateView):
         ctx['afp_tasas_json'] = json.dumps({k: float(v) for k, v in AFP_TASAS.items()})
         ctx['tasa_salud'] = float(TASA_SALUD_DEFAULT)
         return ctx
+
+
+class RemuneracionDeleteView(RrhhMixin, DeleteView):
+    model = Remuneracion
+    template_name = 'admin/rrhh/remuneracion_confirm_delete.html'
+
+    def _motivo_bloqueo(self, remuneracion):
+        if remuneracion.estado == 'pagado':
+            return (
+                'No se puede eliminar una remuneración pagada. '
+                'Primero debe revertir su pago.'
+            )
+        if remuneracion.asientos.filter(estado='confirmado').exists():
+            return (
+                'No se puede eliminar la remuneración porque tiene asientos confirmados. '
+                'Anule o reverse primero esos asientos.'
+            )
+        if remuneracion.asientos.filter(
+            tipo='pago_remuneracion',
+        ).exclude(estado='anulado').exists():
+            return (
+                'No se puede eliminar la remuneración porque tiene un pago registrado. '
+                'Primero debe revertirlo.'
+            )
+        return None
+
+    def dispatch(self, request, *args, **kwargs):
+        self.object = self.get_object()
+        motivo = self._motivo_bloqueo(self.object)
+        if motivo:
+            messages.error(request, motivo)
+            return redirect(
+                'rrhh:remuneracion_procesar_detalle',
+                mes=self.object.periodo_mes,
+                anio=self.object.periodo_anio,
+            )
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx['cancel_url'] = reverse(
+            'rrhh:remuneracion_procesar_detalle',
+            kwargs={
+                'mes': self.object.periodo_mes,
+                'anio': self.object.periodo_anio,
+            },
+        )
+        ctx['asientos_borrador'] = self.object.asientos.filter(
+            estado='borrador'
+        ).count()
+        return ctx
+
+    def form_valid(self, form):
+        with transaction.atomic():
+            remuneracion = Remuneracion.objects.select_for_update().get(
+                pk=self.object.pk
+            )
+            motivo = self._motivo_bloqueo(remuneracion)
+            if motivo:
+                messages.error(self.request, motivo)
+                return redirect(
+                    'rrhh:remuneracion_procesar_detalle',
+                    mes=remuneracion.periodo_mes,
+                    anio=remuneracion.periodo_anio,
+                )
+
+            mes = remuneracion.periodo_mes
+            anio = remuneracion.periodo_anio
+            remuneracion.asientos.filter(estado='borrador').delete()
+            remuneracion.delete()
+
+        messages.success(
+            self.request,
+            'Remuneración eliminada. Puede crear nuevamente la liquidación.',
+        )
+        return redirect(
+            'rrhh:remuneracion_procesar_detalle',
+            mes=mes,
+            anio=anio,
+        )
 
 
 class RemuneracionPeriodoView(RrhhMixin, View):

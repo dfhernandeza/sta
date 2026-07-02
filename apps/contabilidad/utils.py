@@ -548,7 +548,7 @@ def generar_asiento_devengamiento_remuneracion(remuneracion, usuario=None):
         f'{remuneracion.periodo_mes:02d}/{remuneracion.periodo_anio}'
     )
     asiento = AsientoContable.objects.create(
-        fecha=timezone.now().date(),
+        fecha=remuneracion.fecha_devengamiento,
         descripcion=descripcion,
         tipo='devengamiento_remuneracion',
         estado='borrador',
