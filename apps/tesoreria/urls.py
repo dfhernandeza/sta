@@ -12,6 +12,7 @@ urlpatterns = [
     path('cuentas/crear/', views.CuentaBancariaCreateView.as_view(), name='cuenta_create'),
     path('cuentas/<int:pk>/editar/', views.CuentaBancariaUpdateView.as_view(), name='cuenta_update'),
     path('movimientos/', views.MovimientoListView.as_view(), name='movimiento_list'),
+    path('movimientos/excel/', views.MovimientosExcelView.as_view(), name='movimiento_excel'),
     path('movimientos/crear/', views.MovimientoCreateView.as_view(), name='movimiento_create'),
     path('movimientos/<int:pk>/editar/', views.MovimientoUpdateView.as_view(), name='movimiento_update'),
     path('movimientos/<int:pk>/eliminar/', views.MovimientoDeleteView.as_view(), name='movimiento_delete'),

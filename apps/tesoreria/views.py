@@ -2,14 +2,44 @@ from django.views.generic import ListView, CreateView, UpdateView, TemplateView,
 from django.urls import reverse_lazy
 from django.contrib import messages
 from django.db.models import Sum
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 from apps.core.mixins import GestionMixin, AppPermisoMixin
 
 class TesoreriaMixin(AppPermisoMixin):
     app_name = 'tesoreria'
 
 from .models import Banco, CuentaBancaria, MovimientoBancario
+
+
+def _movimientos_filtrados(parametros):
+    qs = MovimientoBancario.objects.select_related(
+        'cuenta__banco',
+        'cuenta__cuenta_contable',
+        'cuenta_contable',
+        'proyecto',
+        'conciliado_por',
+    )
+    cuenta_id = parametros.get('cuenta')
+    if cuenta_id:
+        qs = qs.filter(cuenta_id=cuenta_id)
+    tipo = parametros.get('tipo')
+    if tipo in {'ingreso', 'egreso'}:
+        qs = qs.filter(tipo=tipo)
+    conciliado = parametros.get('conciliado')
+    if conciliado == '1':
+        qs = qs.filter(conciliado=True)
+    elif conciliado == '0':
+        qs = qs.filter(conciliado=False)
+    desde = parse_date(parametros.get('desde', ''))
+    if desde:
+        qs = qs.filter(fecha__gte=desde)
+    hasta = parse_date(parametros.get('hasta', ''))
+    if hasta:
+        qs = qs.filter(fecha__lte=hasta)
+    return qs
 
 
 class TesoreriaResumenView(TesoreriaMixin, TemplateView):
@@ -122,31 +152,145 @@ class MovimientoListView(TesoreriaMixin, ListView):
     paginate_by = 30
 
     def get_queryset(self):
-        qs = MovimientoBancario.objects.select_related('cuenta__banco', 'proyecto')
-        cuenta_id = self.request.GET.get('cuenta')
-        if cuenta_id:
-            qs = qs.filter(cuenta_id=cuenta_id)
-        tipo = self.request.GET.get('tipo')
-        if tipo:
-            qs = qs.filter(tipo=tipo)
-        conciliado = self.request.GET.get('conciliado')
-        if conciliado == '1':
-            qs = qs.filter(conciliado=True)
-        elif conciliado == '0':
-            qs = qs.filter(conciliado=False)
-        desde = self.request.GET.get('desde')
-        if desde:
-            qs = qs.filter(fecha__gte=desde)
-        hasta = self.request.GET.get('hasta')
-        if hasta:
-            qs = qs.filter(fecha__lte=hasta)
-        return qs.order_by('-fecha', '-creado_en')
+        return _movimientos_filtrados(self.request.GET).order_by(
+            '-fecha',
+            '-creado_en',
+        )
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         ctx['cuentas'] = CuentaBancaria.objects.select_related('banco').filter(activa=True)
         ctx['titulo'] = 'Movimientos Bancarios'
         return ctx
+
+
+class MovimientosExcelView(TesoreriaMixin, View):
+    def get(self, request):
+        from io import BytesIO
+
+        import openpyxl
+        from openpyxl.styles import Alignment, Font, PatternFill
+        from openpyxl.utils import get_column_letter
+
+        movimientos = list(
+            _movimientos_filtrados(request.GET).order_by('fecha', 'creado_en')
+        )
+        total_ingresos = sum(
+            (movimiento.monto for movimiento in movimientos if movimiento.tipo == 'ingreso'),
+            0,
+        )
+        total_egresos = sum(
+            (movimiento.monto for movimiento in movimientos if movimiento.tipo == 'egreso'),
+            0,
+        )
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = 'Movimientos'
+        headers = [
+            'ID', 'Fecha', 'Banco', 'N° Cuenta', 'Tipo de cuenta',
+            'Tipo movimiento', 'Monto', 'Descripción', 'Documento',
+            'Proyecto', 'Cuenta contable', 'Conciliado',
+            'Fecha conciliación', 'Creado el',
+        ]
+        ultima_columna = get_column_letter(len(headers))
+        ws.merge_cells(f'A1:{ultima_columna}1')
+        ws['A1'] = 'Movimientos bancarios'
+        ws['A1'].font = Font(size=16, bold=True, color='FFFFFF')
+        ws['A1'].fill = PatternFill('solid', fgColor='1F3864')
+        ws['A1'].alignment = Alignment(horizontal='center')
+        ws.row_dimensions[1].height = 26
+
+        filtros = []
+        for clave, etiqueta in [
+            ('cuenta', 'Cuenta'),
+            ('tipo', 'Tipo'),
+            ('conciliado', 'Conciliación'),
+            ('desde', 'Desde'),
+            ('hasta', 'Hasta'),
+        ]:
+            valor = request.GET.get(clave)
+            if valor:
+                filtros.append(f'{etiqueta}: {valor}')
+        ws.merge_cells(f'A2:{ultima_columna}2')
+        ws['A2'] = 'Filtros: ' + (', '.join(filtros) if filtros else 'Todos los movimientos')
+        ws['A2'].font = Font(italic=True, color='666666')
+
+        ws['A3'] = 'Total ingresos'
+        ws['B3'] = float(total_ingresos)
+        ws['C3'] = 'Total egresos'
+        ws['D3'] = float(total_egresos)
+        ws['E3'] = 'Saldo neto'
+        ws['F3'] = float(total_ingresos - total_egresos)
+        for celda in ('A3', 'C3', 'E3'):
+            ws[celda].font = Font(bold=True)
+        for celda in ('B3', 'D3', 'F3'):
+            ws[celda].number_format = '$#,##0.00'
+            ws[celda].font = Font(bold=True)
+
+        fila_encabezado = 5
+        for columna, encabezado in enumerate(headers, start=1):
+            celda = ws.cell(row=fila_encabezado, column=columna, value=encabezado)
+            celda.font = Font(bold=True, color='FFFFFF')
+            celda.fill = PatternFill('solid', fgColor='4472C4')
+            celda.alignment = Alignment(horizontal='center', vertical='center')
+
+        for fila, movimiento in enumerate(movimientos, start=fila_encabezado + 1):
+            cuenta_contable = movimiento.cuenta_contable
+            creado_el = timezone.localtime(movimiento.creado_en).replace(tzinfo=None)
+            valores = [
+                movimiento.pk,
+                movimiento.fecha,
+                movimiento.cuenta.banco.nombre,
+                movimiento.cuenta.numero,
+                movimiento.cuenta.get_tipo_display(),
+                movimiento.get_tipo_display(),
+                float(movimiento.monto),
+                movimiento.descripcion,
+                movimiento.documento,
+                str(movimiento.proyecto) if movimiento.proyecto else '',
+                (
+                    f'{cuenta_contable.codigo} - {cuenta_contable.nombre}'
+                    if cuenta_contable else ''
+                ),
+                'Sí' if movimiento.conciliado else 'No',
+                movimiento.fecha_conciliacion,
+                creado_el,
+            ]
+            for columna, valor in enumerate(valores, start=1):
+                celda = ws.cell(row=fila, column=columna, value=valor)
+                if columna in (2, 13):
+                    celda.number_format = 'DD/MM/YYYY'
+                elif columna == 14:
+                    celda.number_format = 'DD/MM/YYYY HH:MM'
+                elif columna == 7:
+                    celda.number_format = '$#,##0.00'
+                    celda.alignment = Alignment(horizontal='right')
+
+        anchos = [10, 13, 24, 18, 18, 18, 18, 48, 18, 30, 38, 14, 18, 20]
+        for columna, ancho in enumerate(anchos, start=1):
+            ws.column_dimensions[get_column_letter(columna)].width = ancho
+        ws.freeze_panes = f'A{fila_encabezado + 1}'
+        ws.auto_filter.ref = (
+            f'A{fila_encabezado}:{ultima_columna}'
+            f'{max(fila_encabezado + len(movimientos), fila_encabezado)}'
+        )
+
+        salida = BytesIO()
+        wb.save(salida)
+        salida.seek(0)
+        response = HttpResponse(
+            salida.getvalue(),
+            content_type=(
+                'application/vnd.openxmlformats-officedocument.'
+                'spreadsheetml.sheet'
+            ),
+        )
+        fecha = timezone.localdate().strftime('%Y%m%d')
+        response['Content-Disposition'] = (
+            f'attachment; filename="movimientos_bancarios_{fecha}.xlsx"'
+        )
+        return response
 
 
 class MovimientoCreateView(TesoreriaMixin, CreateView):

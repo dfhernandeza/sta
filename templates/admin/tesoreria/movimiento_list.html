@@ -10,9 +10,14 @@
 {% block content %}
 <div class="page-header">
   <h4 class="page-title">Movimientos Bancarios</h4>
-  <a href="{% url 'tesoreria:movimiento_create' %}" class="btn btn-sta rounded-pill px-4">
-    <i class="bi bi-plus-circle me-1"></i>Nuevo movimiento
-  </a>
+  <div class="d-flex gap-2">
+    <a href="{% url 'tesoreria:movimiento_excel' %}{% if request.GET %}?{{ request.GET.urlencode }}{% endif %}" class="btn btn-outline-success rounded-pill px-4">
+      <i class="bi bi-file-earmark-excel me-1"></i>Descargar Excel
+    </a>
+    <a href="{% url 'tesoreria:movimiento_create' %}" class="btn btn-sta rounded-pill px-4">
+      <i class="bi bi-plus-circle me-1"></i>Nuevo movimiento
+    </a>
+  </div>
 </div>
 
 <!-- FILTROS -->
