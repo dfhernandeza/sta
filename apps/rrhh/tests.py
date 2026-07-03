@@ -98,6 +98,7 @@ class RemuneracionPagarViewTest(TestCase):
         self.rem.refresh_from_db()
         self.assertEqual(self.rem.estado, 'pagado')
         self.assertEqual(self.rem.fecha_pago, timezone.now().date())
+        self.assertIsNotNone(self.rem.movimiento_pago_id)
 
     def test_post_crea_movimiento_egreso(self):
         from apps.tesoreria.models import MovimientoBancario
@@ -524,6 +525,80 @@ class RemuneracionUpdateAnticipoTest(TestCase):
 
 
 @override_settings(SECURE_SSL_REDIRECT=False)
+class RemuneracionValidacionAnticipoTest(TestCase):
+    def setUp(self):
+        self.user = CustomUser.objects.create_user(
+            'valida_anticipo_rem',
+            password='pass',
+            app_permisos=['rrhh'],
+        )
+        self.client_http = Client()
+        self.client_http.force_login(self.user)
+        self.trabajador = _make_trabajador()
+        AnticipoLaboral.objects.create(
+            trabajador=self.trabajador,
+            fecha=date(2026, 6, 10),
+            monto=Decimal('210000'),
+            estado='descontado',
+        )
+
+    def _datos(self, anticipo):
+        return {
+            'trabajador': self.trabajador.pk,
+            'periodo_mes': 6,
+            'periodo_anio': 2026,
+            'fecha_devengamiento': '2026-06-30',
+            'sueldo_base': '1000000',
+            'horas_extra': '0',
+            'bono': '0',
+            'sueldo_bruto': '1000000',
+            'descuento_afp': '0',
+            'descuento_salud': '0',
+            'impuesto_unico': '0',
+            'otros_descuentos': '0',
+            'anticipo_descontado': str(anticipo),
+            'liquido_pagar': '700000',
+            'estado': 'borrador',
+            'fecha_pago': '',
+        }
+
+    def test_creacion_rechaza_anticipo_superior_al_disponible(self):
+        response = self.client_http.post(
+            reverse('rrhh:remuneracion_create'),
+            self._datos('300000'),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFormError(
+            response.context['form'],
+            'anticipo_descontado',
+            'El anticipo descontado no puede superar el saldo disponible ($210.000).',
+        )
+        self.assertFalse(Remuneracion.objects.exists())
+
+    def test_edicion_rechaza_anticipo_superior_al_disponible(self):
+        remuneracion = Remuneracion.objects.create(
+            trabajador=self.trabajador,
+            periodo_mes=6,
+            periodo_anio=2026,
+            sueldo_base=Decimal('1000000'),
+            sueldo_bruto=Decimal('1000000'),
+            anticipo_descontado=Decimal('100000'),
+            liquido_pagar=Decimal('900000'),
+            estado='borrador',
+        )
+
+        response = self.client_http.post(
+            reverse('rrhh:remuneracion_update', args=[remuneracion.pk]),
+            self._datos('300000'),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        remuneracion.refresh_from_db()
+        self.assertEqual(remuneracion.anticipo_descontado, Decimal('100000'))
+
+
+@override_settings(SECURE_SSL_REDIRECT=False)
 class RemuneracionDetailViewTest(TestCase):
     def setUp(self):
         self.user = CustomUser.objects.create_user(
@@ -658,16 +733,70 @@ class RemuneracionDeleteViewTest(TestCase):
         )
         self.assertFalse(AsientoContable.objects.filter(pk=asiento.pk).exists())
 
-    def test_bloquea_remuneracion_pagada(self):
+    def test_elimina_remuneracion_pagada_sin_respaldo_bancario(self):
         self.remuneracion.estado = 'pagado'
         self.remuneracion.save(update_fields=['estado'])
 
         response = self.client_http.post(self.url)
 
         self.assertRedirects(response, self.success_url)
-        self.assertTrue(
+        self.assertFalse(
             Remuneracion.objects.filter(pk=self.remuneracion.pk).exists()
         )
+
+    def test_revierte_pagada_eliminando_movimiento_y_asiento_borrador(self):
+        from apps.tesoreria.models import MovimientoBancario
+
+        cuenta_banco, _ = _setup_contabilidad()
+        cuenta = _make_cuenta_bancaria(cuenta_banco)
+        movimiento = MovimientoBancario.objects.create(
+            cuenta=cuenta,
+            fecha=date(2026, 7, 1),
+            tipo='egreso',
+            monto=self.remuneracion.liquido_pagar,
+            descripcion='Pago remuneración',
+        )
+        asiento = AsientoContable.objects.create(
+            fecha=date(2026, 7, 1),
+            descripcion='Pago remuneración',
+            tipo='pago_remuneracion',
+            estado='borrador',
+            remuneracion=self.remuneracion,
+            movimiento_bancario=movimiento,
+        )
+        self.remuneracion.estado = 'pagado'
+        self.remuneracion.movimiento_pago = movimiento
+        self.remuneracion.save(update_fields=['estado', 'movimiento_pago'])
+
+        response = self.client_http.post(self.url)
+
+        self.assertRedirects(response, self.success_url)
+        self.assertFalse(Remuneracion.objects.filter(pk=self.remuneracion.pk).exists())
+        self.assertFalse(MovimientoBancario.objects.filter(pk=movimiento.pk).exists())
+        self.assertFalse(AsientoContable.objects.filter(pk=asiento.pk).exists())
+
+    def test_bloquea_eliminar_si_movimiento_esta_conciliado(self):
+        from apps.tesoreria.models import MovimientoBancario
+
+        cuenta_banco, _ = _setup_contabilidad()
+        cuenta = _make_cuenta_bancaria(cuenta_banco)
+        movimiento = MovimientoBancario.objects.create(
+            cuenta=cuenta,
+            fecha=date(2026, 7, 1),
+            tipo='egreso',
+            monto=self.remuneracion.liquido_pagar,
+            descripcion='Pago remuneración conciliado',
+            conciliado=True,
+        )
+        self.remuneracion.estado = 'pagado'
+        self.remuneracion.movimiento_pago = movimiento
+        self.remuneracion.save(update_fields=['estado', 'movimiento_pago'])
+
+        response = self.client_http.post(self.url)
+
+        self.assertRedirects(response, self.success_url)
+        self.assertTrue(Remuneracion.objects.filter(pk=self.remuneracion.pk).exists())
+        self.assertTrue(MovimientoBancario.objects.filter(pk=movimiento.pk).exists())
 
     def test_bloquea_remuneracion_con_asiento_confirmado(self):
         asiento = AsientoContable.objects.create(

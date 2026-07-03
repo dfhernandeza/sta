@@ -130,6 +130,14 @@ class Remuneracion(TimeStampedModel):
     liquido_pagar = models.DecimalField(max_digits=12, decimal_places=2, verbose_name='Líquido a Pagar')
     estado = models.CharField(max_length=10, choices=ESTADO_CHOICES, default='borrador', verbose_name='Estado')
     fecha_pago = models.DateField(null=True, blank=True, verbose_name='Fecha de Pago')
+    movimiento_pago = models.OneToOneField(
+        'tesoreria.MovimientoBancario',
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name='remuneracion_pagada',
+        verbose_name='Movimiento de pago',
+    )
 
     class Meta:
         verbose_name = 'Remuneración'

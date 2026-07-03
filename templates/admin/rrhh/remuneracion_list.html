@@ -81,10 +81,10 @@
             <a href="{% url 'rrhh:remuneracion_pagar' rem.pk %}" class="btn btn-success btn-sm rounded-pill px-3" title="Registrar pago">
               <i class="bi bi-cash-coin"></i>
             </a>
-            <a href="{% url 'rrhh:remuneracion_delete' rem.pk %}" class="btn btn-outline-danger btn-sm rounded-pill px-2" title="Eliminar">
+            {% endif %}
+            <a href="{% url 'rrhh:remuneracion_delete' rem.pk %}" class="btn btn-outline-danger btn-sm rounded-pill px-2" title="{% if rem.estado == 'pagado' %}Revertir y eliminar{% else %}Eliminar{% endif %}">
               <i class="bi bi-trash"></i>
             </a>
-            {% endif %}
           </td>
         </tr>
         {% empty %}

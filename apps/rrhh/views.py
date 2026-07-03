@@ -83,6 +83,41 @@ def _anticipo_disponible_para_liquidacion(
     return max(anticipos_pagados - ya_descontado, Decimal('0'))
 
 
+def _validar_anticipo_remuneracion(form, remuneracion=None):
+    trabajador = form.cleaned_data.get('trabajador')
+    anticipo_ingresado = form.cleaned_data.get('anticipo_descontado') or Decimal('0')
+    try:
+        periodo_mes = int(form.cleaned_data.get('periodo_mes'))
+        periodo_anio = int(form.cleaned_data.get('periodo_anio'))
+    except (TypeError, ValueError):
+        return True
+
+    if anticipo_ingresado < 0:
+        form.add_error(
+            'anticipo_descontado',
+            'El anticipo descontado no puede ser negativo.',
+        )
+        return False
+    if not trabajador:
+        return True
+
+    disponible = _anticipo_disponible_para_liquidacion(
+        trabajador,
+        remuneracion=remuneracion,
+        periodo_mes=periodo_mes,
+        periodo_anio=periodo_anio,
+    )
+    if anticipo_ingresado > disponible:
+        disponible_formateado = f'{disponible:,.0f}'.replace(',', '.')
+        form.add_error(
+            'anticipo_descontado',
+            f'El anticipo descontado no puede superar el saldo disponible '
+            f'(${disponible_formateado}).',
+        )
+        return False
+    return True
+
+
 def _anticipo_laboral_respalda_descuentos(anticipo):
     anticipos_restantes = (
         AnticipoLaboral.objects.filter(
@@ -425,6 +460,8 @@ class RemuneracionCreateView(RrhhMixin, CreateView):
         return initial
 
     def form_valid(self, form):
+        if not _validar_anticipo_remuneracion(form):
+            return self.form_invalid(form)
         response = super().form_valid(form)
         from apps.contabilidad.utils import generar_asiento_devengamiento_remuneracion
         asiento = generar_asiento_devengamiento_remuneracion(self.object, usuario=self.request.user)
@@ -543,6 +580,9 @@ class RemuneracionUpdateView(RrhhMixin, UpdateView):
     def form_valid(self, form):
         from apps.contabilidad.utils import generar_asiento_devengamiento_remuneracion
 
+        if not _validar_anticipo_remuneracion(form, remuneracion=self.object):
+            return self.form_invalid(form)
+
         with transaction.atomic():
             response = super().form_valid(form)
             self.object.asientos.filter(
@@ -587,23 +627,37 @@ class RemuneracionDeleteView(RrhhMixin, DeleteView):
     model = Remuneracion
     template_name = 'admin/rrhh/remuneracion_confirm_delete.html'
 
+    @staticmethod
+    def _movimientos_pago(remuneracion):
+        movimientos = []
+        ids = set()
+        if remuneracion.movimiento_pago_id:
+            ids.add(remuneracion.movimiento_pago_id)
+            movimientos.append(remuneracion.movimiento_pago)
+        for asiento in remuneracion.asientos.filter(
+            tipo='pago_remuneracion',
+        ).select_related('movimiento_bancario'):
+            movimiento = asiento.movimiento_bancario
+            if movimiento and movimiento.pk not in ids:
+                ids.add(movimiento.pk)
+                movimientos.append(movimiento)
+        return movimientos
+
     def _motivo_bloqueo(self, remuneracion):
-        if remuneracion.estado == 'pagado':
-            return (
-                'No se puede eliminar una remuneración pagada. '
-                'Primero debe revertir su pago.'
-            )
         if remuneracion.asientos.filter(estado='confirmado').exists():
             return (
                 'No se puede eliminar la remuneración porque tiene asientos confirmados. '
-                'Anule o reverse primero esos asientos.'
+                'Anule primero los asientos de devengamiento y pago.'
             )
-        if remuneracion.asientos.filter(
-            tipo='pago_remuneracion',
-        ).exclude(estado='anulado').exists():
+        movimientos_conciliados = [
+            movimiento
+            for movimiento in self._movimientos_pago(remuneracion)
+            if movimiento.conciliado
+        ]
+        if movimientos_conciliados:
             return (
-                'No se puede eliminar la remuneración porque tiene un pago registrado. '
-                'Primero debe revertirlo.'
+                'No se puede eliminar la remuneración porque su movimiento bancario '
+                'está conciliado. Revierta primero la conciliación.'
             )
         return None
 
@@ -631,6 +685,8 @@ class RemuneracionDeleteView(RrhhMixin, DeleteView):
         ctx['asientos_borrador'] = self.object.asientos.filter(
             estado='borrador'
         ).count()
+        ctx['movimientos_pago'] = self._movimientos_pago(self.object)
+        ctx['es_pagada'] = self.object.estado == 'pagado'
         return ctx
 
     def form_valid(self, form):
@@ -649,7 +705,13 @@ class RemuneracionDeleteView(RrhhMixin, DeleteView):
 
             mes = remuneracion.periodo_mes
             anio = remuneracion.periodo_anio
+            movimientos_pago = self._movimientos_pago(remuneracion)
             remuneracion.asientos.filter(estado='borrador').delete()
+            if remuneracion.movimiento_pago_id:
+                remuneracion.movimiento_pago = None
+                remuneracion.save(update_fields=['movimiento_pago'])
+            for movimiento in movimientos_pago:
+                movimiento.delete()
             remuneracion.delete()
 
         messages.success(
@@ -1083,7 +1145,7 @@ class RemuneracionPagarView(RrhhMixin, View):
 
     def get(self, request, pk):
         remuneracion = get_object_or_404(Remuneracion, pk=pk)
-        if remuneracion.estado == 'pagado':
+        if remuneracion.estado == 'pagado' or remuneracion.movimiento_pago_id:
             messages.info(request, 'Esta remuneración ya fue pagada.')
             return redirect('rrhh:remuneracion_list')
         form = self._build_form(initial={'fecha_pago': timezone.now().date()})
@@ -1094,6 +1156,9 @@ class RemuneracionPagarView(RrhhMixin, View):
         from apps.contabilidad.utils import generar_asiento_pago_remuneracion
 
         remuneracion = get_object_or_404(Remuneracion, pk=pk)
+        if remuneracion.estado == 'pagado' or remuneracion.movimiento_pago_id:
+            messages.error(request, 'Esta remuneración ya tiene un pago registrado.')
+            return redirect('rrhh:remuneracion_list')
         form = self._build_form(data=request.POST)
 
         if not form.is_valid():
@@ -1102,43 +1167,54 @@ class RemuneracionPagarView(RrhhMixin, View):
         d = form.cleaned_data
         cuenta_bancaria = d['cuenta_bancaria']
 
-        # 1. Actualizar Remuneración
-        remuneracion.estado = 'pagado'
-        remuneracion.fecha_pago = d['fecha_pago']
-        remuneracion.save()
+        with transaction.atomic():
+            remuneracion = Remuneracion.objects.select_for_update().select_related(
+                'trabajador',
+            ).get(pk=pk)
+            if remuneracion.estado == 'pagado' or remuneracion.movimiento_pago_id:
+                messages.error(request, 'Esta remuneración ya tiene un pago registrado.')
+                return redirect('rrhh:remuneracion_list')
 
-        # 2. Crear MovimientoBancario (egreso por el líquido transferido al trabajador)
-        descripcion_mov = (
-            f'Rem. {remuneracion.trabajador.nombre_completo} '
-            f'{remuneracion.periodo_mes:02d}/{remuneracion.periodo_anio}'
-        )
-        movimiento = MovimientoBancario.objects.create(
-            cuenta=cuenta_bancaria,
-            fecha=d['fecha_pago'],
-            tipo='egreso',
-            monto=remuneracion.liquido_pagar,
-            descripcion=descripcion_mov,
-            cuenta_contable=None,
-        )
+            # 1. Crear movimiento bancario por el líquido transferido.
+            descripcion_mov = (
+                f'Rem. {remuneracion.trabajador.nombre_completo} '
+                f'{remuneracion.periodo_mes:02d}/{remuneracion.periodo_anio}'
+            )
+            movimiento = MovimientoBancario.objects.create(
+                cuenta=cuenta_bancaria,
+                fecha=d['fecha_pago'],
+                tipo='egreso',
+                monto=remuneracion.liquido_pagar,
+                descripcion=descripcion_mov,
+                cuenta_contable=None,
+            )
 
-        # Asignar cuenta_contable del movimiento según tipo_costo del trabajador
-        # (usado por el asiento como cuenta DEBE de gasto de sueldos)
-        try:
-            from apps.contabilidad.models import ConfiguracionContable
-            config = ConfiguracionContable.get()
-            if remuneracion.trabajador.tipo_costo == 'operacional':
-                cuenta_sueldos = config.cuenta_sueldos_operacional if config else None
-            else:
-                cuenta_sueldos = config.cuenta_sueldos_administrativo if config else None
-            if cuenta_sueldos:
-                movimiento.cuenta_contable = cuenta_sueldos
-                movimiento.save(update_fields=['cuenta_contable'])
-        except Exception:
-            pass
+            # Contrapartida usada por liquidaciones antiguas sin devengamiento.
+            try:
+                from apps.contabilidad.models import ConfiguracionContable
+                config = ConfiguracionContable.get()
+                if remuneracion.trabajador.tipo_costo == 'operacional':
+                    cuenta_sueldos = config.cuenta_sueldos_operacional if config else None
+                else:
+                    cuenta_sueldos = config.cuenta_sueldos_administrativo if config else None
+                if cuenta_sueldos:
+                    movimiento.cuenta_contable = cuenta_sueldos
+                    movimiento.save(update_fields=['cuenta_contable'])
+            except Exception:
+                pass
 
-        # 3. Generar asiento compuesto: DEBE gasto_sueldos (bruto) /
-        #    HABER banco (líquido) + AFP por Pagar + Salud por Pagar + Sueldos por Pagar (otros)
-        asiento = generar_asiento_pago_remuneracion(remuneracion, movimiento, usuario=request.user)
+            # 2. Generar asiento y vincular explícitamente el movimiento.
+            asiento = generar_asiento_pago_remuneracion(
+                remuneracion,
+                movimiento,
+                usuario=request.user,
+            )
+            remuneracion.estado = 'pagado'
+            remuneracion.fecha_pago = d['fecha_pago']
+            remuneracion.movimiento_pago = movimiento
+            remuneracion.save(
+                update_fields=['estado', 'fecha_pago', 'movimiento_pago']
+            )
 
         if asiento:
             messages.success(
