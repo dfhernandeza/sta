@@ -280,6 +280,7 @@ class DashboardView(DashboardMixin, TemplateView):
             config_contable,
             'cuenta_afp_por_pagar',
             'cuenta_salud_por_pagar',
+            'cuenta_seguro_cesantia_por_pagar',
             **saldo_kwargs,
         )
         ctx['impuestos_sii_por_pagar'] = self._saldo_config(

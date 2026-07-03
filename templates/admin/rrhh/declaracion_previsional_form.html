@@ -1,0 +1,25 @@
+{% extends 'base_admin.html' %}
+{% block title %}Declaración previsional{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h4 class="page-title">{% if form.instance.pk %}Editar{% else %}Nueva{% endif %} declaración previsional</h4>
+  <a href="{% url 'rrhh:declaracion_previsional_list' %}" class="btn btn-outline-secondary rounded-pill px-4">Volver</a>
+</div>
+<div class="row justify-content-center"><div class="col-lg-7"><div class="card-sta p-4">
+  <div class="alert alert-info small">Los montos y las liquidaciones se obtienen automáticamente del período; no son editables manualmente.</div>
+  <form method="post" novalidate>{% csrf_token %}
+    {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+    <div class="row g-3">
+      {% for field in form %}
+      <div class="col-sm-6">
+        <label class="form-label fw-600">{{ field.label }}</label>{{ field }}
+        {% for error in field.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+      </div>
+      {% endfor %}
+      <div class="col-12 border-top pt-3">
+        <button class="btn btn-sta rounded-pill px-5" type="submit"><i class="bi bi-save me-1"></i>Guardar borrador</button>
+      </div>
+    </div>
+  </form>
+</div></div></div>
+{% endblock %}

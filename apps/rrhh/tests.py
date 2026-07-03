@@ -8,7 +8,10 @@ from django.utils import timezone
 from apps.accounts.models import CustomUser
 from apps.contabilidad.models import AsientoContable, PlanCuentas, ConfiguracionContable
 from apps.tesoreria.models import Banco, CuentaBancaria
-from .models import CargoTrabajador, Trabajador, Remuneracion, AnticipoLaboral
+from .models import (
+    CargoTrabajador, Trabajador, Remuneracion, AnticipoLaboral,
+    DeclaracionPrevisional,
+)
 
 
 def _setup_contabilidad():
@@ -814,3 +817,146 @@ class RemuneracionDeleteViewTest(TestCase):
             Remuneracion.objects.filter(pk=self.remuneracion.pk).exists()
         )
         self.assertTrue(AsientoContable.objects.filter(pk=asiento.pk).exists())
+
+
+@override_settings(SECURE_SSL_REDIRECT=False)
+class DeclaracionPrevisionalFlujoTest(TestCase):
+    def setUp(self):
+        self.user = CustomUser.objects.create_user(
+            'tester_previred', password='pass', app_permisos=['rrhh', 'tesoreria'],
+        )
+        self.client_http = Client()
+        self.client_http.force_login(self.user)
+        cuenta_banco, _ = _setup_contabilidad()
+        self.cuenta_bancaria = _make_cuenta_bancaria(cuenta_banco)
+        self.cuenta_previred = PlanCuentas.objects.create(
+            codigo='TEST.RRHH.PREV', nombre='Previred por pagar',
+            tipo='pasivo', nivel=1,
+        )
+        self.cuenta_gasto_cesantia = PlanCuentas.objects.create(
+            codigo='TEST.RRHH.CES.G', nombre='Gasto cesantía',
+            tipo='gasto', nivel=1,
+        )
+        config = ConfiguracionContable.get()
+        config.cuenta_afp_por_pagar = self.cuenta_previred
+        config.cuenta_salud_por_pagar = self.cuenta_previred
+        config.cuenta_seguro_cesantia_por_pagar = self.cuenta_previred
+        config.cuenta_gasto_seguro_cesantia = self.cuenta_gasto_cesantia
+        config.cuenta_sueldos_por_pagar = self.cuenta_previred
+        config.save()
+
+        self.remuneracion = Remuneracion.objects.create(
+            trabajador=_make_trabajador(),
+            periodo_mes=6, periodo_anio=2026,
+            sueldo_base=Decimal('1000000'),
+            sueldo_bruto=Decimal('1000000'),
+            descuento_afp=Decimal('110000'),
+            descuento_salud=Decimal('70000'),
+            seguro_cesantia_trabajador=Decimal('6000'),
+            seguro_cesantia_empleador=Decimal('24000'),
+            liquido_pagar=Decimal('814000'),
+        )
+
+    def _crear_declaracion(self):
+        response = self.client_http.post(
+            reverse('rrhh:declaracion_previsional_create'),
+            {'periodo_mes': 6, 'periodo_anio': 2026, 'folio': 'PREV-1'},
+        )
+        self.assertEqual(response.status_code, 302)
+        return DeclaracionPrevisional.objects.get()
+
+    def test_crear_sincroniza_fuentes_y_totales(self):
+        declaracion = self._crear_declaracion()
+        self.assertEqual(list(declaracion.remuneraciones.all()), [self.remuneracion])
+        self.assertEqual(declaracion.total_afp, Decimal('110000'))
+        self.assertEqual(declaracion.total_salud, Decimal('70000'))
+        self.assertEqual(declaracion.total_cesantia_trabajador, Decimal('6000'))
+        self.assertEqual(declaracion.total_cesantia_empleador, Decimal('24000'))
+        self.assertEqual(declaracion.total_pagar, Decimal('210000'))
+
+    def test_devengamiento_reconoce_costo_y_pasivo_de_cesantia(self):
+        from apps.contabilidad.utils import generar_asiento_devengamiento_remuneracion
+
+        asiento = generar_asiento_devengamiento_remuneracion(
+            self.remuneracion, usuario=self.user,
+        )
+        self.assertIsNotNone(asiento)
+        self.assertEqual(asiento.total_debe, Decimal('1024000'))
+        self.assertEqual(asiento.total_haber, Decimal('1024000'))
+        self.assertTrue(
+            asiento.lineas.filter(
+                cuenta=self.cuenta_gasto_cesantia,
+                debe=Decimal('24000'),
+            ).exists()
+        )
+
+    def test_presentar_exige_devengamiento_confirmado(self):
+        declaracion = self._crear_declaracion()
+        self.client_http.post(
+            reverse('rrhh:declaracion_previsional_presentar', args=[declaracion.pk])
+        )
+        declaracion.refresh_from_db()
+        self.assertEqual(declaracion.estado, 'borrador')
+
+        AsientoContable.objects.create(
+            fecha=date(2026, 6, 30),
+            descripcion='Devengamiento confirmado',
+            tipo='devengamiento_remuneracion',
+            estado='confirmado',
+            remuneracion=self.remuneracion,
+        )
+        self.client_http.post(
+            reverse('rrhh:declaracion_previsional_presentar', args=[declaracion.pk])
+        )
+        declaracion.refresh_from_db()
+        self.assertEqual(declaracion.estado, 'presentada')
+        self.assertIsNotNone(declaracion.fecha_presentacion)
+
+    def test_pago_crea_movimiento_y_asiento_balanceado(self):
+        declaracion = self._crear_declaracion()
+        AsientoContable.objects.create(
+            fecha=date(2026, 6, 30),
+            descripcion='Devengamiento confirmado',
+            tipo='devengamiento_remuneracion',
+            estado='confirmado',
+            remuneracion=self.remuneracion,
+        )
+        self.client_http.post(
+            reverse('rrhh:declaracion_previsional_presentar', args=[declaracion.pk])
+        )
+        response = self.client_http.post(
+            reverse('rrhh:declaracion_previsional_pagar', args=[declaracion.pk]),
+            {
+                'fecha_pago': '2026-07-03',
+                'cuenta_bancaria': self.cuenta_bancaria.pk,
+                'referencia': 'TRANSFERENCIA-1',
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        declaracion.refresh_from_db()
+        self.assertEqual(declaracion.estado, 'pagada')
+        self.assertEqual(declaracion.movimiento_pago.monto, Decimal('210000'))
+        asiento = declaracion.asientos.get(tipo='pago_previsional')
+        self.assertEqual(asiento.total_debe, Decimal('210000'))
+        self.assertEqual(asiento.total_haber, Decimal('210000'))
+        self.assertEqual(
+            asiento.lineas.filter(cuenta=self.cuenta_previred).count(), 1,
+        )
+
+    def test_presentada_bloquea_edicion_y_eliminacion_de_remuneracion(self):
+        declaracion = self._crear_declaracion()
+        declaracion.estado = 'presentada'
+        declaracion.save(update_fields=['estado'])
+
+        response = self.client_http.get(
+            reverse('rrhh:remuneracion_update', args=[self.remuneracion.pk])
+        )
+        self.assertRedirects(
+            response,
+            reverse('rrhh:remuneracion_detail', args=[self.remuneracion.pk]),
+            fetch_redirect_response=False,
+        )
+        self.client_http.post(
+            reverse('rrhh:remuneracion_delete', args=[self.remuneracion.pk])
+        )
+        self.assertTrue(Remuneracion.objects.filter(pk=self.remuneracion.pk).exists())

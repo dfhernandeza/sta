@@ -1,0 +1,40 @@
+{% extends 'base_admin.html' %}
+{% load custom_tags %}
+{% block title %}Previred {{ declaracion.periodo_mes|stringformat:"02d" }}/{{ declaracion.periodo_anio }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div><h4 class="page-title">Declaración previsional {{ declaracion.periodo_mes|stringformat:"02d" }}/{{ declaracion.periodo_anio }}</h4><span class="badge-{{ declaracion.estado }}">{{ declaracion.get_estado_display }}</span></div>
+  <div class="d-flex gap-2">
+    {% if declaracion.estado == 'borrador' %}
+    <a href="{% url 'rrhh:declaracion_previsional_update' declaracion.pk %}" class="btn btn-outline-secondary rounded-pill">Editar</a>
+    <form method="post" action="{% url 'rrhh:declaracion_previsional_presentar' declaracion.pk %}">{% csrf_token %}<button class="btn btn-primary rounded-pill" type="submit">Marcar presentada</button></form>
+    <a href="{% url 'rrhh:declaracion_previsional_delete' declaracion.pk %}" class="btn btn-outline-danger rounded-pill">Eliminar</a>
+    {% elif declaracion.estado == 'presentada' %}
+    <a href="{% url 'rrhh:declaracion_previsional_pagar' declaracion.pk %}" class="btn btn-success rounded-pill"><i class="bi bi-bank me-1"></i>Registrar pago</a>
+    {% endif %}
+    <a href="{% url 'rrhh:declaracion_previsional_list' %}" class="btn btn-outline-secondary rounded-pill">Volver</a>
+  </div>
+</div>
+<div class="row g-3 mb-4">
+  <div class="col-md"><div class="card-sta p-3"><small class="text-muted">AFP</small><div class="fs-5 fw-700">{{ declaracion.total_afp|moneda_chilena }}</div></div></div>
+  <div class="col-md"><div class="card-sta p-3"><small class="text-muted">Salud</small><div class="fs-5 fw-700">{{ declaracion.total_salud|moneda_chilena }}</div></div></div>
+  <div class="col-md"><div class="card-sta p-3"><small class="text-muted">Cesantía trabajador</small><div class="fs-5 fw-700">{{ declaracion.total_cesantia_trabajador|moneda_chilena }}</div></div></div>
+  <div class="col-md"><div class="card-sta p-3"><small class="text-muted">Cesantía empleador</small><div class="fs-5 fw-700">{{ declaracion.total_cesantia_empleador|moneda_chilena }}</div></div></div>
+  <div class="col-md"><div class="card-sta p-3 bg-light"><small class="text-muted">Total a pagar</small><div class="fs-5 fw-700 text-danger">{{ declaracion.total_pagar|moneda_chilena }}</div></div></div>
+</div>
+<div class="card-sta p-0 mb-4"><div class="p-3"><h6 class="mb-0">Liquidaciones incluidas</h6></div>
+  <div class="table-responsive"><table class="table table-sta mb-0">
+    <thead><tr><th>Trabajador</th><th class="text-end">AFP</th><th class="text-end">Salud</th><th class="text-end">Cesantía trabajador</th><th class="text-end">Cesantía empleador</th><th></th></tr></thead>
+    <tbody>{% for r in declaracion.remuneraciones.all %}<tr>
+      <td>{{ r.trabajador.nombre_completo }}</td><td class="text-end">{{ r.descuento_afp|moneda_chilena }}</td><td class="text-end">{{ r.descuento_salud|moneda_chilena }}</td><td class="text-end">{{ r.seguro_cesantia_trabajador|moneda_chilena }}</td><td class="text-end">{{ r.seguro_cesantia_empleador|moneda_chilena }}</td>
+      <td><a href="{% url 'rrhh:remuneracion_detail' r.pk %}">Ver</a></td>
+    </tr>{% empty %}<tr><td colspan="6" class="text-center text-muted py-4">No hay remuneraciones en este período.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+{% if declaracion.movimiento_pago %}
+<div class="alert alert-success">Pago registrado el {{ declaracion.fecha_pago|date:"d/m/Y" }} por {{ declaracion.total_pagar|moneda_chilena }}. Movimiento #{{ declaracion.movimiento_pago_id }}.</div>
+{% endif %}
+{% if declaracion.asientos.all %}
+<div class="card-sta p-3"><h6>Asientos</h6>{% for a in declaracion.asientos.all %}<a href="{% url 'contabilidad:asiento_detail' a.pk %}" class="me-3">{{ a.numero }} · {{ a.get_estado_display }}</a>{% endfor %}</div>
+{% endif %}
+{% endblock %}

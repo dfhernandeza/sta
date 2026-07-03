@@ -341,6 +341,18 @@ class MovimientoUpdateView(TesoreriaMixin, UpdateView):
                 'No se puede editar este movimiento porque corresponde al pago de un anticipo laboral.'
             )
             return redirect('tesoreria:movimiento_list')
+        if getattr(movimiento, 'remuneracion_pagada', None):
+            messages.error(
+                request,
+                'No se puede editar este movimiento porque corresponde al pago de una remuneración.'
+            )
+            return redirect('tesoreria:movimiento_list')
+        if getattr(movimiento, 'declaracion_previsional', None):
+            messages.error(
+                request,
+                'No se puede editar este movimiento porque corresponde al pago de una declaración previsional.'
+            )
+            return redirect('tesoreria:movimiento_list')
         if movimiento.conciliado:
             messages.error(
                 request,
@@ -405,6 +417,20 @@ class MovimientoDeleteView(TesoreriaMixin, DeleteView):
                 request,
                 'No se puede eliminar este movimiento directamente porque corresponde a un anticipo laboral. '
                 'Use la acción "Eliminar" desde Anticipos Laborales.'
+            )
+            return redirect('tesoreria:movimiento_list')
+        if getattr(movimiento, 'remuneracion_pagada', None):
+            messages.error(
+                request,
+                'No se puede eliminar directamente un pago de remuneración. '
+                'Use la eliminación/reversión desde RRHH.'
+            )
+            return redirect('tesoreria:movimiento_list')
+        if getattr(movimiento, 'declaracion_previsional', None):
+            messages.error(
+                request,
+                'No se puede eliminar directamente un pago previsional porque '
+                'dejaría la declaración inconsistente.'
             )
             return redirect('tesoreria:movimiento_list')
         asientos_confirmados = movimiento.asientos.filter(estado='confirmado')

@@ -1,0 +1,40 @@
+{% extends 'base_admin.html' %}
+{% load custom_tags %}
+{% block title %}Declaraciones previsionales{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h4 class="page-title">Declaraciones previsionales</h4>
+    <p class="text-muted mb-0">Cotizaciones AFP, salud y seguro de cesantía por período.</p>
+  </div>
+  <div class="d-flex gap-2">
+    <a href="{% url 'rrhh:remuneracion_list' %}" class="btn btn-outline-secondary rounded-pill px-4">Remuneraciones</a>
+    <a href="{% url 'rrhh:declaracion_previsional_create' %}" class="btn btn-sta rounded-pill px-4">
+      <i class="bi bi-plus-circle me-1"></i>Nueva declaración
+    </a>
+  </div>
+</div>
+<div class="card-sta p-0">
+  <div class="table-responsive">
+    <table class="table table-sta mb-0">
+      <thead><tr><th>Período</th><th>Folio</th><th class="text-center">Liquidaciones</th><th class="text-end">Total</th><th>Estado</th><th>Presentación</th><th>Pago</th><th></th></tr></thead>
+      <tbody>
+      {% for d in declaraciones %}
+        <tr>
+          <td class="fw-700">{{ d.periodo_mes|stringformat:"02d" }}/{{ d.periodo_anio }}</td>
+          <td>{{ d.folio|default:"—" }}</td>
+          <td class="text-center">{{ d.cantidad_remuneraciones }}</td>
+          <td class="text-end fw-700">{{ d.total_pagar|moneda_chilena }}</td>
+          <td><span class="badge-{{ d.estado }}">{{ d.get_estado_display }}</span></td>
+          <td>{{ d.fecha_presentacion|date:"d/m/Y"|default:"—" }}</td>
+          <td>{{ d.fecha_pago|date:"d/m/Y"|default:"—" }}</td>
+          <td class="text-end"><a href="{% url 'rrhh:declaracion_previsional_detail' d.pk %}" class="btn btn-outline-primary btn-sm rounded-pill">Ver</a></td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="8" class="text-center text-muted py-4">No existen declaraciones previsionales.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

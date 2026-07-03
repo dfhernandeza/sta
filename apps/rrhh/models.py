@@ -1,6 +1,7 @@
 from django.db import models
 from calendar import monthrange
 from datetime import date
+from decimal import Decimal
 from apps.core.models import TimeStampedModel
 from apps.core.validators import validar_rut
 from apps.tesoreria.models import Banco, TIPO_CHOICES
@@ -124,6 +125,14 @@ class Remuneracion(TimeStampedModel):
     sueldo_bruto = models.DecimalField(max_digits=12, decimal_places=2, verbose_name='Sueldo Bruto')
     descuento_afp = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name='Descuento AFP')
     descuento_salud = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name='Descuento Salud')
+    seguro_cesantia_trabajador = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0, blank=True,
+        verbose_name='Seguro de Cesantía — Trabajador',
+    )
+    seguro_cesantia_empleador = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0, blank=True,
+        verbose_name='Seguro de Cesantía — Empleador',
+    )
     impuesto_unico = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name='Impuesto Único')
     otros_descuentos = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name='Otros Descuentos')
     anticipo_descontado = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name='Anticipo Descontado')
@@ -163,9 +172,80 @@ class Remuneracion(TimeStampedModel):
         return (
             (self.descuento_afp or 0) +
             (self.descuento_salud or 0) +
+            (self.seguro_cesantia_trabajador or 0) +
             (self.impuesto_unico or 0) +
             (self.otros_descuentos or 0)
         )
+
+
+class DeclaracionPrevisional(TimeStampedModel):
+    ESTADO_CHOICES = [
+        ('borrador', 'Borrador'),
+        ('presentada', 'Presentada'),
+        ('pagada', 'Pagada'),
+    ]
+
+    periodo_mes = models.PositiveSmallIntegerField(verbose_name='Mes')
+    periodo_anio = models.PositiveSmallIntegerField(verbose_name='Año')
+    remuneraciones = models.ManyToManyField(
+        Remuneracion, related_name='declaraciones_previsionales',
+        blank=True, verbose_name='Remuneraciones incluidas',
+    )
+    total_afp = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    total_salud = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    total_cesantia_trabajador = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    total_cesantia_empleador = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    total_pagar = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    estado = models.CharField(max_length=12, choices=ESTADO_CHOICES, default='borrador')
+    fecha_presentacion = models.DateField(null=True, blank=True)
+    folio = models.CharField(max_length=80, blank=True)
+    fecha_pago = models.DateField(null=True, blank=True)
+    movimiento_pago = models.OneToOneField(
+        'tesoreria.MovimientoBancario', null=True, blank=True,
+        on_delete=models.PROTECT, related_name='declaracion_previsional',
+        verbose_name='Movimiento de pago',
+    )
+
+    class Meta:
+        verbose_name = 'Declaración Previsional'
+        verbose_name_plural = 'Declaraciones Previsionales'
+        ordering = ['-periodo_anio', '-periodo_mes']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['periodo_mes', 'periodo_anio'],
+                name='rrhh_declaracion_previsional_periodo_unico',
+            ),
+            models.CheckConstraint(
+                check=models.Q(periodo_mes__gte=1, periodo_mes__lte=12),
+                name='rrhh_declaracion_previsional_mes_valido',
+            ),
+        ]
+
+    def __str__(self):
+        return f'Previred {self.periodo_mes:02d}/{self.periodo_anio}'
+
+    def recalcular_totales(self, guardar=True):
+        totales = self.remuneraciones.aggregate(
+            afp=models.Sum('descuento_afp'),
+            salud=models.Sum('descuento_salud'),
+            cesantia_trabajador=models.Sum('seguro_cesantia_trabajador'),
+            cesantia_empleador=models.Sum('seguro_cesantia_empleador'),
+        )
+        self.total_afp = totales['afp'] or Decimal('0')
+        self.total_salud = totales['salud'] or Decimal('0')
+        self.total_cesantia_trabajador = totales['cesantia_trabajador'] or Decimal('0')
+        self.total_cesantia_empleador = totales['cesantia_empleador'] or Decimal('0')
+        self.total_pagar = (
+            self.total_afp + self.total_salud
+            + self.total_cesantia_trabajador + self.total_cesantia_empleador
+        )
+        if guardar:
+            self.save(update_fields=[
+                'total_afp', 'total_salud',
+                'total_cesantia_trabajador', 'total_cesantia_empleador',
+                'total_pagar', 'actualizado_en',
+            ])
+        return self.total_pagar
 
 
 class AnticipoLaboral(TimeStampedModel):

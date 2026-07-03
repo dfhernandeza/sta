@@ -90,6 +90,15 @@
             {{ form.descuento_salud }}
           </div>
           <div class="col-sm-4">
+            <label class="form-label fw-600">Cesantía trabajador</label>
+            {{ form.seguro_cesantia_trabajador }}
+          </div>
+          <div class="col-sm-4">
+            <label class="form-label fw-600">Cesantía empleador</label>
+            {{ form.seguro_cesantia_empleador }}
+            <div class="form-text">Costo adicional; no reduce el líquido.</div>
+          </div>
+          <div class="col-sm-4">
             <label class="form-label fw-600">Impuesto Único</label>
             {{ form.impuesto_unico }}
           </div>
@@ -155,18 +164,20 @@ function recalcular() {
   const anticipo  = v('id_anticipo_descontado');
   const afp       = v('id_descuento_afp');
   const salud     = v('id_descuento_salud');
+  const cesantia  = v('id_seguro_cesantia_trabajador');
   const impuesto  = v('id_impuesto_unico');
-  setVal('id_liquido_pagar', Math.max(bruto - afp - salud - impuesto - otros - anticipo, 0));
+  setVal('id_liquido_pagar', Math.max(bruto - afp - salud - cesantia - impuesto - otros - anticipo, 0));
 }
 
 function recalcularLiquido() {
   const bruto    = v('id_sueldo_bruto');
   const afp      = v('id_descuento_afp');
   const salud    = v('id_descuento_salud');
+  const cesantia = v('id_seguro_cesantia_trabajador');
   const impuesto = v('id_impuesto_unico');
   const otros    = v('id_otros_descuentos');
   const anticipo = v('id_anticipo_descontado');
-  setVal('id_liquido_pagar', Math.max(bruto - afp - salud - impuesto - otros - anticipo, 0));
+  setVal('id_liquido_pagar', Math.max(bruto - afp - salud - cesantia - impuesto - otros - anticipo, 0));
 }
 
 function setExentoUI(exento) {
@@ -229,7 +240,7 @@ document.getElementById('id_trabajador')?.addEventListener('change', function ()
 );
 
 // Recalcular líquido al cambiar descuentos manuales
-['id_descuento_afp','id_descuento_salud','id_impuesto_unico','id_otros_descuentos','id_anticipo_descontado'].forEach(id =>
+['id_descuento_afp','id_descuento_salud','id_seguro_cesantia_trabajador','id_impuesto_unico','id_otros_descuentos','id_anticipo_descontado'].forEach(id =>
   document.getElementById(id)?.addEventListener('input', recalcularLiquido)
 );
 </script>

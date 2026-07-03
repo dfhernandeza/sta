@@ -1,5 +1,6 @@
 from django.views.generic import ListView, CreateView, UpdateView, DetailView, DeleteView
 from django.views import View
+from django import forms
 from django.urls import reverse, reverse_lazy
 from django.contrib import messages
 from django.db import transaction
@@ -16,7 +17,28 @@ from apps.core.mixins import GestionMixin, AppPermisoMixin
 class RrhhMixin(AppPermisoMixin):
     app_name = 'rrhh'
 
-from .models import Trabajador, Remuneracion, AnticipoLaboral, CargoTrabajador
+from .models import (
+    Trabajador, Remuneracion, AnticipoLaboral, CargoTrabajador,
+    DeclaracionPrevisional,
+)
+
+
+class DeclaracionPrevisionalForm(forms.ModelForm):
+    class Meta:
+        model = DeclaracionPrevisional
+        fields = ['periodo_mes', 'periodo_anio', 'folio', 'fecha_presentacion']
+        widgets = {
+            'periodo_mes': forms.NumberInput(attrs={'class': 'form-control', 'min': 1, 'max': 12}),
+            'periodo_anio': forms.NumberInput(attrs={'class': 'form-control', 'min': 2000}),
+            'folio': forms.TextInput(attrs={'class': 'form-control'}),
+            'fecha_presentacion': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+        }
+
+    def clean_periodo_mes(self):
+        mes = self.cleaned_data['periodo_mes']
+        if not 1 <= mes <= 12:
+            raise forms.ValidationError('Ingrese un mes entre 1 y 12.')
+        return mes
 
 # Tasas AFP vigentes (cotización obligatoria empleado)
 AFP_TASAS = {
@@ -48,6 +70,25 @@ def _generar_periodos(n=15):
             month = 12
             year -= 1
     return periods
+
+
+def _sincronizar_declaracion_previsional(declaracion):
+    remuneraciones = Remuneracion.objects.filter(
+        periodo_mes=declaracion.periodo_mes,
+        periodo_anio=declaracion.periodo_anio,
+    ).order_by('trabajador__apellidos', 'trabajador__nombres', 'pk')
+    declaracion.remuneraciones.set(remuneraciones)
+    declaracion.recalcular_totales()
+    return remuneraciones
+
+
+def _sincronizar_declaraciones_borrador(*periodos):
+    periodos_validos = {(mes, anio) for mes, anio in periodos if mes and anio}
+    for mes, anio in periodos_validos:
+        for declaracion in DeclaracionPrevisional.objects.filter(
+            periodo_mes=mes, periodo_anio=anio, estado='borrador',
+        ):
+            _sincronizar_declaracion_previsional(declaracion)
 
 
 def _anticipo_disponible_para_liquidacion(
@@ -113,6 +154,47 @@ def _validar_anticipo_remuneracion(form, remuneracion=None):
             'anticipo_descontado',
             f'El anticipo descontado no puede superar el saldo disponible '
             f'(${disponible_formateado}).',
+        )
+        return False
+    return True
+
+
+def _validar_montos_remuneracion(form):
+    campos_no_negativos = [
+        'sueldo_base', 'horas_extra', 'bono', 'sueldo_bruto',
+        'descuento_afp', 'descuento_salud',
+        'seguro_cesantia_trabajador', 'seguro_cesantia_empleador',
+        'impuesto_unico', 'otros_descuentos', 'anticipo_descontado',
+        'liquido_pagar',
+    ]
+    valido = True
+    for campo in campos_no_negativos:
+        monto = form.cleaned_data.get(campo)
+        if monto is not None and monto < 0:
+            form.add_error(campo, 'El monto no puede ser negativo.')
+            valido = False
+
+    if not valido:
+        return False
+
+    bruto = form.cleaned_data.get('sueldo_bruto') or Decimal('0')
+    descuentos = sum(
+        (form.cleaned_data.get(campo) or Decimal('0'))
+        for campo in [
+            'descuento_afp', 'descuento_salud',
+            'seguro_cesantia_trabajador', 'impuesto_unico',
+            'otros_descuentos', 'anticipo_descontado',
+        ]
+    )
+    liquido_esperado = bruto - descuentos
+    liquido = form.cleaned_data.get('liquido_pagar') or Decimal('0')
+    if liquido_esperado < 0:
+        form.add_error(None, 'Los descuentos no pueden superar el sueldo bruto.')
+        return False
+    if liquido != liquido_esperado:
+        form.add_error(
+            'liquido_pagar',
+            f'El líquido debe ser {liquido_esperado:.2f} según los haberes y descuentos.',
         )
         return False
     return True
@@ -405,6 +487,7 @@ class RemuneracionCreateView(RrhhMixin, CreateView):
     template_name = 'admin/rrhh/remuneracion_form.html'
     fields = ['trabajador', 'periodo_mes', 'periodo_anio', 'sueldo_base', 'horas_extra',
               'bono', 'sueldo_bruto', 'descuento_afp', 'descuento_salud',
+              'seguro_cesantia_trabajador', 'seguro_cesantia_empleador',
               'impuesto_unico', 'otros_descuentos', 'anticipo_descontado',
               'liquido_pagar', 'estado', 'fecha_devengamiento', 'fecha_pago']
     success_url = reverse_lazy('rrhh:remuneracion_list')
@@ -460,11 +543,17 @@ class RemuneracionCreateView(RrhhMixin, CreateView):
         return initial
 
     def form_valid(self, form):
-        if not _validar_anticipo_remuneracion(form):
+        if (
+            not _validar_montos_remuneracion(form)
+            or not _validar_anticipo_remuneracion(form)
+        ):
             return self.form_invalid(form)
         response = super().form_valid(form)
         from apps.contabilidad.utils import generar_asiento_devengamiento_remuneracion
         asiento = generar_asiento_devengamiento_remuneracion(self.object, usuario=self.request.user)
+        _sincronizar_declaraciones_borrador(
+            (self.object.periodo_mes, self.object.periodo_anio),
+        )
         if asiento:
             messages.success(
                 self.request,
@@ -526,6 +615,8 @@ class RemuneracionDatosAPI(RrhhMixin, View):
             'tasa_salud': float(TASA_SALUD_DEFAULT),
             'descuento_afp': float(afp),
             'descuento_salud': float(salud),
+            'seguro_cesantia_trabajador': 0,
+            'seguro_cesantia_empleador': 0,
             'impuesto_unico': 0,
             'anticipo_pendiente': float(anticipo_pendiente),
             'exento_previsional': t.exento_previsional,
@@ -537,6 +628,7 @@ class RemuneracionUpdateView(RrhhMixin, UpdateView):
     template_name = 'admin/rrhh/remuneracion_form.html'
     fields = ['trabajador', 'periodo_mes', 'periodo_anio', 'sueldo_base', 'horas_extra',
               'bono', 'sueldo_bruto', 'descuento_afp', 'descuento_salud',
+              'seguro_cesantia_trabajador', 'seguro_cesantia_empleador',
               'impuesto_unico', 'otros_descuentos', 'anticipo_descontado',
               'liquido_pagar', 'estado', 'fecha_devengamiento', 'fecha_pago']
 
@@ -548,6 +640,12 @@ class RemuneracionUpdateView(RrhhMixin, UpdateView):
                 'No se puede editar una liquidación que ya fue pagada.'
             )
             return redirect('rrhh:remuneracion_procesar_detalle', mes=rem.periodo_mes, anio=rem.periodo_anio)
+        if rem.declaraciones_previsionales.exclude(estado='borrador').exists():
+            messages.error(
+                request,
+                'No se puede editar: la remuneración pertenece a una declaración previsional presentada o pagada.'
+            )
+            return redirect('rrhh:remuneracion_detail', pk=rem.pk)
         if rem.asientos.filter(tipo='devengamiento_remuneracion', estado='confirmado').exists():
             messages.error(
                 request,
@@ -570,6 +668,7 @@ class RemuneracionUpdateView(RrhhMixin, UpdateView):
                     (self.object.sueldo_bruto or Decimal('0'))
                     - (self.object.descuento_afp or Decimal('0'))
                     - (self.object.descuento_salud or Decimal('0'))
+                    - (self.object.seguro_cesantia_trabajador or Decimal('0'))
                     - (self.object.impuesto_unico or Decimal('0'))
                     - (self.object.otros_descuentos or Decimal('0'))
                     - anticipo,
@@ -580,9 +679,13 @@ class RemuneracionUpdateView(RrhhMixin, UpdateView):
     def form_valid(self, form):
         from apps.contabilidad.utils import generar_asiento_devengamiento_remuneracion
 
-        if not _validar_anticipo_remuneracion(form, remuneracion=self.object):
+        if (
+            not _validar_montos_remuneracion(form)
+            or not _validar_anticipo_remuneracion(form, remuneracion=self.object)
+        ):
             return self.form_invalid(form)
 
+        periodo_anterior = (self.object.periodo_mes, self.object.periodo_anio)
         with transaction.atomic():
             response = super().form_valid(form)
             self.object.asientos.filter(
@@ -592,6 +695,10 @@ class RemuneracionUpdateView(RrhhMixin, UpdateView):
             asiento = generar_asiento_devengamiento_remuneracion(
                 self.object,
                 usuario=self.request.user,
+            )
+            _sincronizar_declaraciones_borrador(
+                periodo_anterior,
+                (self.object.periodo_mes, self.object.periodo_anio),
             )
 
         if asiento:
@@ -644,6 +751,11 @@ class RemuneracionDeleteView(RrhhMixin, DeleteView):
         return movimientos
 
     def _motivo_bloqueo(self, remuneracion):
+        if remuneracion.declaraciones_previsionales.exclude(estado='borrador').exists():
+            return (
+                'No se puede eliminar la remuneración porque pertenece a una '
+                'declaración previsional presentada o pagada.'
+            )
         if remuneracion.asientos.filter(estado='confirmado').exists():
             return (
                 'No se puede eliminar la remuneración porque tiene asientos confirmados. '
@@ -713,6 +825,7 @@ class RemuneracionDeleteView(RrhhMixin, DeleteView):
             for movimiento in movimientos_pago:
                 movimiento.delete()
             remuneracion.delete()
+            _sincronizar_declaraciones_borrador((mes, anio))
 
         messages.success(
             self.request,
@@ -1230,3 +1343,252 @@ class RemuneracionPagarView(RrhhMixin, View):
             )
 
         return redirect('rrhh:remuneracion_procesar_detalle', mes=remuneracion.periodo_mes, anio=remuneracion.periodo_anio)
+
+
+class DeclaracionPrevisionalListView(RrhhMixin, ListView):
+    model = DeclaracionPrevisional
+    template_name = 'admin/rrhh/declaracion_previsional_list.html'
+    context_object_name = 'declaraciones'
+    paginate_by = 25
+
+    def get_queryset(self):
+        return (
+            DeclaracionPrevisional.objects
+            .annotate(cantidad_remuneraciones=Count('remuneraciones'))
+            .select_related('movimiento_pago')
+        )
+
+
+class DeclaracionPrevisionalDetailView(RrhhMixin, DetailView):
+    model = DeclaracionPrevisional
+    template_name = 'admin/rrhh/declaracion_previsional_detail.html'
+    context_object_name = 'declaracion'
+
+    def get_queryset(self):
+        return (
+            DeclaracionPrevisional.objects
+            .select_related('movimiento_pago')
+            .prefetch_related(
+                'remuneraciones__trabajador',
+                'asientos__lineas',
+            )
+        )
+
+
+class DeclaracionPrevisionalCreateView(RrhhMixin, CreateView):
+    model = DeclaracionPrevisional
+    form_class = DeclaracionPrevisionalForm
+    template_name = 'admin/rrhh/declaracion_previsional_form.html'
+
+    def get_initial(self):
+        initial = super().get_initial()
+        hoy = timezone.now().date()
+        initial.update({'periodo_mes': hoy.month, 'periodo_anio': hoy.year})
+        return initial
+
+    def form_valid(self, form):
+        with transaction.atomic():
+            response = super().form_valid(form)
+            _sincronizar_declaracion_previsional(self.object)
+        messages.success(
+            self.request,
+            'Declaración creada en borrador y sincronizada con las remuneraciones del período.',
+        )
+        return response
+
+    def get_success_url(self):
+        return reverse('rrhh:declaracion_previsional_detail', kwargs={'pk': self.object.pk})
+
+
+class DeclaracionPrevisionalUpdateView(RrhhMixin, UpdateView):
+    model = DeclaracionPrevisional
+    form_class = DeclaracionPrevisionalForm
+    template_name = 'admin/rrhh/declaracion_previsional_form.html'
+
+    def dispatch(self, request, *args, **kwargs):
+        declaracion = self.get_object()
+        if declaracion.estado != 'borrador':
+            messages.error(request, 'Solo se puede editar una declaración en borrador.')
+            return redirect('rrhh:declaracion_previsional_detail', pk=declaracion.pk)
+        return super().dispatch(request, *args, **kwargs)
+
+    def form_valid(self, form):
+        with transaction.atomic():
+            response = super().form_valid(form)
+            _sincronizar_declaracion_previsional(self.object)
+        messages.success(self.request, 'Declaración actualizada y totales recalculados.')
+        return response
+
+    def get_success_url(self):
+        return reverse('rrhh:declaracion_previsional_detail', kwargs={'pk': self.object.pk})
+
+
+class DeclaracionPrevisionalDeleteView(RrhhMixin, DeleteView):
+    model = DeclaracionPrevisional
+    template_name = 'admin/confirm_delete.html'
+    success_url = reverse_lazy('rrhh:declaracion_previsional_list')
+
+    def dispatch(self, request, *args, **kwargs):
+        declaracion = self.get_object()
+        if (
+            declaracion.estado != 'borrador'
+            or declaracion.movimiento_pago_id
+            or declaracion.asientos.exists()
+        ):
+            messages.error(
+                request,
+                'Solo puede eliminarse una declaración en borrador, sin pago ni asientos.',
+            )
+            return redirect('rrhh:declaracion_previsional_detail', pk=declaracion.pk)
+        return super().dispatch(request, *args, **kwargs)
+
+    def form_valid(self, form):
+        messages.success(self.request, 'Declaración previsional eliminada.')
+        return super().form_valid(form)
+
+
+class DeclaracionPrevisionalPresentarView(RrhhMixin, View):
+    def post(self, request, pk):
+        with transaction.atomic():
+            declaracion = DeclaracionPrevisional.objects.select_for_update().get(pk=pk)
+            if declaracion.estado != 'borrador':
+                messages.error(request, 'La declaración ya no está en borrador.')
+                return redirect('rrhh:declaracion_previsional_detail', pk=pk)
+
+            remuneraciones = _sincronizar_declaracion_previsional(declaracion)
+            if not remuneraciones.exists():
+                messages.error(request, 'No existen remuneraciones para el período seleccionado.')
+                return redirect('rrhh:declaracion_previsional_detail', pk=pk)
+
+            sin_devengamiento = remuneraciones.exclude(
+                asientos__tipo='devengamiento_remuneracion',
+                asientos__estado='confirmado',
+            ).distinct()
+            if sin_devengamiento.exists():
+                nombres = ', '.join(
+                    sin_devengamiento.values_list(
+                        'trabajador__apellidos', flat=True
+                    )[:5]
+                )
+                messages.error(
+                    request,
+                    'No se puede presentar: todas las remuneraciones deben tener '
+                    f'su asiento de devengamiento confirmado. Pendientes: {nombres}.',
+                )
+                return redirect('rrhh:declaracion_previsional_detail', pk=pk)
+
+            if declaracion.total_pagar <= 0:
+                messages.error(request, 'La declaración no tiene cotizaciones por pagar.')
+                return redirect('rrhh:declaracion_previsional_detail', pk=pk)
+
+            declaracion.estado = 'presentada'
+            declaracion.fecha_presentacion = (
+                declaracion.fecha_presentacion or timezone.now().date()
+            )
+            declaracion.save(update_fields=['estado', 'fecha_presentacion', 'actualizado_en'])
+
+        messages.success(
+            request,
+            'Declaración presentada. Sus remuneraciones y montos quedaron bloqueados.',
+        )
+        return redirect('rrhh:declaracion_previsional_detail', pk=pk)
+
+
+class DeclaracionPrevisionalPagarView(RrhhMixin, View):
+    template_name = 'admin/rrhh/declaracion_previsional_pagar.html'
+
+    def _form(self, data=None):
+        from apps.tesoreria.models import CuentaBancaria
+
+        class PagoForm(forms.Form):
+            fecha_pago = forms.DateField(
+                widget=forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+            )
+            cuenta_bancaria = forms.ModelChoiceField(
+                queryset=CuentaBancaria.objects.filter(
+                    activa=True, cuenta_contable__isnull=False,
+                ).select_related('banco', 'cuenta_contable'),
+                widget=forms.Select(attrs={'class': 'form-select'}),
+            )
+            referencia = forms.CharField(
+                max_length=50, required=False,
+                widget=forms.TextInput(attrs={'class': 'form-control'}),
+            )
+
+        return PagoForm(data=data)
+
+    def get(self, request, pk):
+        declaracion = get_object_or_404(DeclaracionPrevisional, pk=pk)
+        if declaracion.estado != 'presentada' or declaracion.movimiento_pago_id:
+            messages.error(request, 'Solo puede pagarse una declaración presentada y pendiente.')
+            return redirect('rrhh:declaracion_previsional_detail', pk=pk)
+        form = self._form()
+        form.initial['fecha_pago'] = timezone.now().date()
+        return render(request, self.template_name, {
+            'declaracion': declaracion, 'form': form,
+        })
+
+    def post(self, request, pk):
+        from apps.tesoreria.models import MovimientoBancario
+        from apps.contabilidad.models import ConfiguracionContable
+        from apps.contabilidad.utils import generar_asiento_pago_previsional
+
+        form = self._form(request.POST)
+        declaracion = get_object_or_404(DeclaracionPrevisional, pk=pk)
+        if not form.is_valid():
+            return render(request, self.template_name, {
+                'declaracion': declaracion, 'form': form,
+            })
+
+        config = ConfiguracionContable.get()
+        requeridas = [
+            (declaracion.total_afp, config.cuenta_afp_por_pagar),
+            (declaracion.total_salud, config.cuenta_salud_por_pagar),
+            (
+                declaracion.total_cesantia_trabajador + declaracion.total_cesantia_empleador,
+                config.cuenta_seguro_cesantia_por_pagar or config.cuenta_afp_por_pagar,
+            ),
+        ]
+        if any(monto > 0 and cuenta is None for monto, cuenta in requeridas):
+            messages.error(
+                request,
+                'Faltan cuentas AFP, salud o cesantía en la Configuración Contable.',
+            )
+            return render(request, self.template_name, {
+                'declaracion': declaracion, 'form': form,
+            })
+
+        d = form.cleaned_data
+        with transaction.atomic():
+            declaracion = DeclaracionPrevisional.objects.select_for_update().get(pk=pk)
+            if declaracion.estado != 'presentada' or declaracion.movimiento_pago_id:
+                messages.error(request, 'La declaración ya fue pagada o cambió de estado.')
+                return redirect('rrhh:declaracion_previsional_detail', pk=pk)
+
+            movimiento = MovimientoBancario.objects.create(
+                cuenta=d['cuenta_bancaria'],
+                fecha=d['fecha_pago'],
+                tipo='egreso',
+                monto=declaracion.total_pagar,
+                descripcion=f'Pago Previred {declaracion.periodo_mes:02d}/{declaracion.periodo_anio}',
+                documento=d['referencia'],
+            )
+            asiento = generar_asiento_pago_previsional(
+                declaracion, movimiento, usuario=request.user,
+            )
+            if asiento is None:
+                raise ValueError(
+                    'No fue posible generar el asiento previsional; revise la configuración contable.'
+                )
+            declaracion.estado = 'pagada'
+            declaracion.fecha_pago = d['fecha_pago']
+            declaracion.movimiento_pago = movimiento
+            declaracion.save(update_fields=[
+                'estado', 'fecha_pago', 'movimiento_pago', 'actualizado_en',
+            ])
+
+        messages.success(
+            request,
+            f'Pago registrado y asiento {asiento.numero} generado en borrador.',
+        )
+        return redirect('rrhh:declaracion_previsional_detail', pk=pk)

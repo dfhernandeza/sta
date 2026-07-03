@@ -697,12 +697,13 @@ def generar_asiento_devengamiento_remuneracion(remuneracion, usuario=None):
         DEBE : Gasto Sueldos (operacional o administrativo)  = sueldo_bruto
         HABER: AFP por Pagar                                 = descuento_afp    (si > 0)
         HABER: Salud por Pagar                               = descuento_salud  (si > 0)
+        HABER: Seguro Cesantía por Pagar                     = trabajador + empleador
         HABER: Impuestos SII por Pagar                       = impuesto_unico   (si > 0)
         HABER: Anticipos a Trabajadores (liquida el activo)  = anticipo_descontado (si > 0)
         HABER: Sueldos por Pagar (otros descuentos)          = otros_descuentos  (si > 0)
         HABER: Sueldos por Pagar (neto al trabajador)        = liquido_pagar
 
-    DEBE = HABER = sueldo_bruto (siempre balanceado).
+    La cotización de cesantía del empleador se reconoce como gasto adicional.
 
     La línea HABER Anticipos a Trabajadores cancela el activo creado por
     generar_asiento_pago_anticipo cuando se entregó el adelanto; el costo
@@ -721,12 +722,19 @@ def generar_asiento_devengamiento_remuneracion(remuneracion, usuario=None):
         cuenta_gasto = config.cuenta_sueldos_operacional
     else:
         cuenta_gasto = config.cuenta_sueldos_administrativo
+    cuenta_cesantia = (
+        config.cuenta_seguro_cesantia_por_pagar
+        or config.cuenta_afp_por_pagar
+    )
+    cuenta_gasto_cesantia = config.cuenta_gasto_seguro_cesantia or cuenta_gasto
 
     if not cuenta_gasto or not config.cuenta_sueldos_por_pagar:
         return None
 
     descuento_afp    = remuneracion.descuento_afp       or Decimal('0')
     descuento_salud  = remuneracion.descuento_salud     or Decimal('0')
+    cesantia_trabajador = remuneracion.seguro_cesantia_trabajador or Decimal('0')
+    cesantia_empleador = remuneracion.seguro_cesantia_empleador or Decimal('0')
     impuesto_unico   = remuneracion.impuesto_unico      or Decimal('0')
     otros_descuentos = remuneracion.otros_descuentos    or Decimal('0')
     anticipo         = remuneracion.anticipo_descontado or Decimal('0')
@@ -734,6 +742,10 @@ def generar_asiento_devengamiento_remuneracion(remuneracion, usuario=None):
     if descuento_afp > 0 and not config.cuenta_afp_por_pagar:
         return None
     if descuento_salud > 0 and not config.cuenta_salud_por_pagar:
+        return None
+    if (cesantia_trabajador + cesantia_empleador) > 0 and not cuenta_cesantia:
+        return None
+    if cesantia_empleador > 0 and not cuenta_gasto_cesantia:
         return None
     if impuesto_unico > 0 and not config.cuenta_impuestos_sii:
         return None
@@ -761,6 +773,15 @@ def generar_asiento_devengamiento_remuneracion(remuneracion, usuario=None):
                orden=orden, centro_costo=centro_costo_trab)
     orden += 1
 
+    if cesantia_empleador > 0:
+        _add_linea(
+            asiento, cuenta_gasto_cesantia,
+            debe=cesantia_empleador,
+            descripcion='Seguro de Cesantía de cargo del empleador',
+            orden=orden, centro_costo=centro_costo_trab,
+        )
+        orden += 1
+
     # HABER: AFP por Pagar
     if descuento_afp > 0 and config.cuenta_afp_por_pagar:
         _add_linea(asiento, config.cuenta_afp_por_pagar, haber=descuento_afp,
@@ -771,6 +792,16 @@ def generar_asiento_devengamiento_remuneracion(remuneracion, usuario=None):
     if descuento_salud > 0 and config.cuenta_salud_por_pagar:
         _add_linea(asiento, config.cuenta_salud_por_pagar, haber=descuento_salud,
                    descripcion='Salud por Pagar (Isapre/FONASA)', orden=orden)
+        orden += 1
+
+    total_cesantia = cesantia_trabajador + cesantia_empleador
+    if total_cesantia > 0:
+        _add_linea(
+            asiento, cuenta_cesantia,
+            haber=total_cesantia,
+            descripcion='Seguro de Cesantía por Pagar',
+            orden=orden,
+        )
         orden += 1
 
     # HABER: Impuesto Único de Segunda Categoría por Pagar
@@ -827,6 +858,13 @@ def generar_asiento_pago_remuneracion(remuneracion, movimiento, usuario=None):
     config = get_config()
     cuenta_banco = movimiento.cuenta.cuenta_contable
     cuenta_gasto = movimiento.cuenta_contable
+    cuenta_cesantia = (
+        config.cuenta_seguro_cesantia_por_pagar
+        or config.cuenta_afp_por_pagar
+    ) if config else None
+    cuenta_gasto_cesantia = (
+        config.cuenta_gasto_seguro_cesantia or cuenta_gasto
+    ) if config else None
 
     if not config or not cuenta_banco:
         return None
@@ -865,6 +903,8 @@ def generar_asiento_pago_remuneracion(remuneracion, movimiento, usuario=None):
 
     descuento_afp    = remuneracion.descuento_afp       or Decimal('0')
     descuento_salud  = remuneracion.descuento_salud     or Decimal('0')
+    cesantia_trabajador = remuneracion.seguro_cesantia_trabajador or Decimal('0')
+    cesantia_empleador = remuneracion.seguro_cesantia_empleador or Decimal('0')
     impuesto_unico   = remuneracion.impuesto_unico      or Decimal('0')
     otros_descuentos = remuneracion.otros_descuentos    or Decimal('0')
     anticipo         = remuneracion.anticipo_descontado or Decimal('0')
@@ -873,6 +913,10 @@ def generar_asiento_pago_remuneracion(remuneracion, movimiento, usuario=None):
     if descuento_afp > 0 and not config.cuenta_afp_por_pagar:
         puede_balancear = False
     if descuento_salud > 0 and not config.cuenta_salud_por_pagar:
+        puede_balancear = False
+    if (cesantia_trabajador + cesantia_empleador) > 0 and not cuenta_cesantia:
+        puede_balancear = False
+    if cesantia_empleador > 0 and not cuenta_gasto_cesantia:
         puede_balancear = False
     if impuesto_unico > 0 and not config.cuenta_impuestos_sii:
         puede_balancear = False
@@ -900,6 +944,15 @@ def generar_asiento_pago_remuneracion(remuneracion, movimiento, usuario=None):
                orden=orden)
     orden += 1
 
+    if cesantia_empleador > 0:
+        _add_linea(
+            asiento, cuenta_gasto_cesantia,
+            debe=cesantia_empleador,
+            descripcion='Seguro de Cesantía de cargo del empleador',
+            orden=orden,
+        )
+        orden += 1
+
     _add_linea(asiento, cuenta_banco, haber=remuneracion.liquido_pagar,
                descripcion='Pago banco (líquido)', orden=orden)
     orden += 1
@@ -912,6 +965,16 @@ def generar_asiento_pago_remuneracion(remuneracion, movimiento, usuario=None):
     if descuento_salud > 0 and config.cuenta_salud_por_pagar:
         _add_linea(asiento, config.cuenta_salud_por_pagar, haber=descuento_salud,
                    descripcion='Salud por Pagar (Isapre/FONASA)', orden=orden)
+        orden += 1
+
+    total_cesantia = cesantia_trabajador + cesantia_empleador
+    if total_cesantia > 0:
+        _add_linea(
+            asiento, cuenta_cesantia,
+            haber=total_cesantia,
+            descripcion='Seguro de Cesantía por Pagar',
+            orden=orden,
+        )
         orden += 1
 
     if impuesto_unico > 0 and config.cuenta_impuestos_sii:
@@ -932,4 +995,62 @@ def generar_asiento_pago_remuneracion(remuneracion, movimiento, usuario=None):
         _add_linea(asiento, config.cuenta_sueldos_por_pagar, haber=otros_descuentos,
                    descripcion='Otros descuentos por pagar', orden=orden)
 
+    return asiento
+
+
+def generar_asiento_pago_previsional(declaracion, movimiento, usuario=None):
+    """Liquida las obligaciones AFP, salud y cesantía contra el banco."""
+    config = get_config()
+    cuenta_banco = movimiento.cuenta.cuenta_contable
+    if not config or not cuenta_banco:
+        return None
+
+    cuenta_cesantia = (
+        config.cuenta_seguro_cesantia_por_pagar
+        or config.cuenta_afp_por_pagar
+    )
+    componentes = [
+        (config.cuenta_afp_por_pagar, declaracion.total_afp),
+        (config.cuenta_salud_por_pagar, declaracion.total_salud),
+        (
+            cuenta_cesantia,
+            declaracion.total_cesantia_trabajador + declaracion.total_cesantia_empleador,
+        ),
+    ]
+    if any(monto > 0 and cuenta is None for cuenta, monto in componentes):
+        return None
+
+    # AFP, salud y cesantía pueden usar una misma cuenta Previred. Se agrupan
+    # para no crear líneas repetidas y mantener una lectura contable clara.
+    debitos = {}
+    for cuenta, monto in componentes:
+        if cuenta and monto > 0:
+            debitos[cuenta.pk] = {
+                'cuenta': cuenta,
+                'monto': debitos.get(cuenta.pk, {}).get('monto', Decimal('0')) + monto,
+            }
+
+    if not debitos or sum(item['monto'] for item in debitos.values()) != declaracion.total_pagar:
+        return None
+
+    asiento = AsientoContable.objects.create(
+        fecha=movimiento.fecha,
+        descripcion=f'Pago Previred {declaracion.periodo_mes:02d}/{declaracion.periodo_anio}',
+        tipo='pago_previsional',
+        estado='borrador',
+        movimiento_bancario=movimiento,
+        declaracion_previsional=declaracion,
+        creado_por=usuario,
+    )
+    orden = 1
+    for item in debitos.values():
+        _add_linea(
+            asiento, item['cuenta'], debe=item['monto'],
+            descripcion='Obligaciones previsionales pagadas', orden=orden,
+        )
+        orden += 1
+    _add_linea(
+        asiento, cuenta_banco, haber=declaracion.total_pagar,
+        descripcion='Pago Previred desde banco', orden=orden,
+    )
     return asiento

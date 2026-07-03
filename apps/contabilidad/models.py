@@ -144,6 +144,16 @@ class ConfiguracionContable(models.Model):
         related_name='+', verbose_name='Salud por Pagar (Isapre/FONASA)',
         help_text='Cuenta pasivo para el descuento de salud retenido al trabajador pendiente de enterar.'
     )
+    cuenta_seguro_cesantia_por_pagar = models.ForeignKey(
+        PlanCuentas, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='+', verbose_name='Seguro de Cesantía por Pagar',
+        help_text='Cuenta pasivo para las cotizaciones de cesantía del trabajador y empleador.'
+    )
+    cuenta_gasto_seguro_cesantia = models.ForeignKey(
+        PlanCuentas, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='+', verbose_name='Gasto Seguro de Cesantía Empleador',
+        help_text='Cuenta de gasto o costo para la cotización de cesantía de cargo del empleador.'
+    )
     cuenta_sueldos_por_pagar = models.ForeignKey(
         PlanCuentas, null=True, blank=True, on_delete=models.SET_NULL,
         related_name='+', verbose_name='Sueldos por Pagar (otros descuentos)',
@@ -225,6 +235,7 @@ class AsientoContable(TimeStampedModel):
         ('movimiento_banco', 'Movimiento Bancario'),
         ('devengamiento_remuneracion', 'Devengamiento de Remuneración'),
         ('pago_remuneracion', 'Pago de Remuneración'),
+        ('pago_previsional', 'Pago de Obligaciones Previsionales'),
         ('pago_anticipo', 'Pago de Anticipo Laboral'),
         ('pago_anticipo_proveedor', 'Pago de Anticipo a Proveedor'),
         ('centralizacion_iva', 'Centralización de IVA'),
@@ -273,6 +284,11 @@ class AsientoContable(TimeStampedModel):
     remuneracion = models.ForeignKey(
         'rrhh.Remuneracion', null=True, blank=True, on_delete=models.SET_NULL,
         related_name='asientos', verbose_name='Remuneración'
+    )
+    declaracion_previsional = models.ForeignKey(
+        'rrhh.DeclaracionPrevisional', null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='asientos',
+        verbose_name='Declaración Previsional'
     )
     declaracion_iva = models.ForeignKey(
         'tributario.DeclaracionIVA', null=True, blank=True, on_delete=models.SET_NULL,

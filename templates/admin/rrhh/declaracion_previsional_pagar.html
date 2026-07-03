@@ -1,0 +1,14 @@
+{% extends 'base_admin.html' %}
+{% load custom_tags %}
+{% block title %}Pagar declaración previsional{% endblock %}
+{% block content %}
+<div class="page-header"><h4 class="page-title">Pagar Previred {{ declaracion.periodo_mes|stringformat:"02d" }}/{{ declaracion.periodo_anio }}</h4><a href="{% url 'rrhh:declaracion_previsional_detail' declaracion.pk %}" class="btn btn-outline-secondary rounded-pill">Volver</a></div>
+<div class="row justify-content-center"><div class="col-lg-7">
+  <div class="card-sta p-4 mb-3"><span class="text-muted">Monto exacto a pagar</span><div class="fs-2 fw-700 text-danger">{{ declaracion.total_pagar|moneda_chilena }}</div></div>
+  <div class="card-sta p-4"><form method="post" novalidate>{% csrf_token %}
+    <div class="row g-3">{% for field in form %}<div class="col-12"><label class="form-label fw-600">{{ field.label }}</label>{{ field }}{% for error in field.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}</div>{% endfor %}
+    <div class="col-12 border-top pt-3"><button type="submit" class="btn btn-success rounded-pill px-5">Confirmar pago</button></div></div>
+  </form></div>
+  <div class="alert alert-info mt-3 small">Se creará el egreso bancario y un asiento en borrador que cancela AFP, salud y cesantía contra banco.</div>
+</div></div>
+{% endblock %}

@@ -74,6 +74,8 @@
       <h6 class="fw-700 text-sta mb-3">Descuentos</h6>
       <div class="d-flex justify-content-between small mb-2"><span>AFP</span><strong>{{ remuneracion.descuento_afp|moneda_chilena }}</strong></div>
       <div class="d-flex justify-content-between small mb-2"><span>Salud</span><strong>{{ remuneracion.descuento_salud|moneda_chilena }}</strong></div>
+      <div class="d-flex justify-content-between small mb-2"><span>Cesantía trabajador</span><strong>{{ remuneracion.seguro_cesantia_trabajador|moneda_chilena }}</strong></div>
+      <div class="d-flex justify-content-between small mb-2"><span>Cesantía empleador (costo empresa)</span><strong>{{ remuneracion.seguro_cesantia_empleador|moneda_chilena }}</strong></div>
       <div class="d-flex justify-content-between small mb-2"><span>Impuesto único</span><strong>{{ remuneracion.impuesto_unico|moneda_chilena }}</strong></div>
       <div class="d-flex justify-content-between small mb-2"><span>Otros descuentos</span><strong>{{ remuneracion.otros_descuentos|moneda_chilena }}</strong></div>
       <div class="d-flex justify-content-between small mb-3"><span>Anticipos</span><strong class="text-warning">{{ remuneracion.anticipo_descontado|moneda_chilena }}</strong></div>
