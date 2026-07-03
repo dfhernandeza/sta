@@ -71,6 +71,9 @@
           <td class="text-center"><span class="badge-{{ rem.estado }}">{{ rem.get_estado_display }}</span></td>
           <td class="text-center small">{{ rem.fecha_pago|default:"—" }}</td>
           <td class="text-center">
+            <a href="{% url 'rrhh:remuneracion_detail' rem.pk %}" class="btn btn-outline-primary btn-sm rounded-pill px-2" title="Ver detalle">
+              <i class="bi bi-eye"></i>
+            </a>
             {% if rem.estado != 'pagado' %}
             <a href="{% url 'rrhh:remuneracion_update' rem.pk %}" class="btn btn-outline-secondary btn-sm rounded-pill px-2" title="Editar">
               <i class="bi bi-pencil"></i>

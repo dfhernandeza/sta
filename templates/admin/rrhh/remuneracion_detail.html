@@ -1,0 +1,166 @@
+{% extends 'base_admin.html' %}
+{% load custom_tags %}
+
+{% block title %}Detalle Remuneración — {{ remuneracion.trabajador.nombre_completo }}{% endblock %}
+
+{% block breadcrumb %}
+  <li class="breadcrumb-item"><a href="{% url 'rrhh:trabajador_list' %}">RRHH</a></li>
+  <li class="breadcrumb-item"><a href="{% url 'rrhh:remuneracion_list' %}">Remuneraciones</a></li>
+  <li class="breadcrumb-item active">{{ remuneracion.periodo_mes|stringformat:"02d" }}/{{ remuneracion.periodo_anio }}</li>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h4 class="page-title mb-1">Detalle de remuneración</h4>
+    <div class="text-muted">
+      {{ remuneracion.trabajador.nombre_completo }} ·
+      {{ remuneracion.periodo_mes|stringformat:"02d" }}/{{ remuneracion.periodo_anio }}
+    </div>
+  </div>
+  <div class="d-flex gap-2">
+    {% if remuneracion.estado != 'pagado' %}
+    <a href="{% url 'rrhh:remuneracion_update' remuneracion.pk %}" class="btn btn-outline-secondary rounded-pill px-3">
+      <i class="bi bi-pencil me-1"></i>Editar
+    </a>
+    {% endif %}
+    <a href="{% url 'rrhh:remuneracion_list' %}" class="btn btn-outline-secondary rounded-pill px-3">
+      <i class="bi bi-arrow-left me-1"></i>Volver
+    </a>
+  </div>
+</div>
+
+<div class="row g-4">
+  <div class="col-lg-4">
+    <div class="card-sta p-4 h-100">
+      <h6 class="fw-700 text-sta mb-3">Liquidación</h6>
+      <dl class="row small mb-0">
+        <dt class="col-6 text-muted">Trabajador</dt>
+        <dd class="col-6 text-end fw-600">{{ remuneracion.trabajador.nombre_completo }}</dd>
+        <dt class="col-6 text-muted">RUT</dt>
+        <dd class="col-6 text-end">{{ remuneracion.trabajador.rut }}</dd>
+        <dt class="col-6 text-muted">Cargo</dt>
+        <dd class="col-6 text-end">{{ remuneracion.trabajador.cargo|default:"—" }}</dd>
+        <dt class="col-6 text-muted">Centro de costo</dt>
+        <dd class="col-6 text-end">{{ remuneracion.trabajador.centro_costo|default:"—" }}</dd>
+        <dt class="col-6 text-muted">Devengamiento</dt>
+        <dd class="col-6 text-end">{{ remuneracion.fecha_devengamiento|date:"d/m/Y" }}</dd>
+        <dt class="col-6 text-muted">Estado</dt>
+        <dd class="col-6 text-end"><span class="badge-{{ remuneracion.estado }}">{{ remuneracion.get_estado_display }}</span></dd>
+        <dt class="col-6 text-muted">Fecha de pago</dt>
+        <dd class="col-6 text-end">{{ remuneracion.fecha_pago|date:"d/m/Y"|default:"—" }}</dd>
+      </dl>
+    </div>
+  </div>
+
+  <div class="col-lg-4">
+    <div class="card-sta p-4 h-100">
+      <h6 class="fw-700 text-sta mb-3">Haberes</h6>
+      <div class="d-flex justify-content-between small mb-2"><span>Sueldo base</span><strong>{{ remuneracion.sueldo_base|moneda_chilena }}</strong></div>
+      <div class="d-flex justify-content-between small mb-2"><span>Horas extra</span><strong>{{ remuneracion.horas_extra|moneda_chilena }}</strong></div>
+      <div class="d-flex justify-content-between small mb-3"><span>Bonos</span><strong>{{ remuneracion.bono|moneda_chilena }}</strong></div>
+      <div class="d-flex justify-content-between border-top pt-3">
+        <span class="fw-700">Sueldo bruto</span>
+        <strong class="text-success">{{ remuneracion.sueldo_bruto|moneda_chilena }}</strong>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-4">
+    <div class="card-sta p-4 h-100">
+      <h6 class="fw-700 text-sta mb-3">Descuentos</h6>
+      <div class="d-flex justify-content-between small mb-2"><span>AFP</span><strong>{{ remuneracion.descuento_afp|moneda_chilena }}</strong></div>
+      <div class="d-flex justify-content-between small mb-2"><span>Salud</span><strong>{{ remuneracion.descuento_salud|moneda_chilena }}</strong></div>
+      <div class="d-flex justify-content-between small mb-2"><span>Impuesto único</span><strong>{{ remuneracion.impuesto_unico|moneda_chilena }}</strong></div>
+      <div class="d-flex justify-content-between small mb-2"><span>Otros descuentos</span><strong>{{ remuneracion.otros_descuentos|moneda_chilena }}</strong></div>
+      <div class="d-flex justify-content-between small mb-3"><span>Anticipos</span><strong class="text-warning">{{ remuneracion.anticipo_descontado|moneda_chilena }}</strong></div>
+      <div class="d-flex justify-content-between border-top pt-3">
+        <span class="fw-700">Total descuentos</span>
+        <strong class="text-danger">{{ total_descuentos|moneda_chilena }}</strong>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card-sta p-4 mt-4">
+  <div class="d-flex justify-content-between align-items-center">
+    <span class="fs-5 fw-700">Líquido a pagar</span>
+    <span class="fs-3 fw-700 text-sta">{{ remuneracion.liquido_pagar|moneda_chilena }}</span>
+  </div>
+  {% if diferencia_calculo %}
+  <div class="alert alert-warning mt-3 mb-0 small">
+    <i class="bi bi-exclamation-triangle me-1"></i>
+    Existe una diferencia de {{ diferencia_calculo|moneda_chilena }} entre bruto,
+    descuentos y líquido registrado.
+  </div>
+  {% endif %}
+</div>
+
+<div class="card-sta p-0 mt-4">
+  <div class="p-4 pb-2">
+    <h6 class="fw-700 text-sta mb-1">Anticipos relacionados</h6>
+    <p class="text-muted small mb-0">Asignación reconstruida por antigüedad a partir de los anticipos pagados del trabajador.</p>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sta mb-0">
+      <thead>
+        <tr>
+          <th>Fecha</th><th>Descripción</th><th class="text-end">Monto original</th>
+          <th class="text-end">Aplicado en liquidación</th><th>Movimiento</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for asignacion in asignaciones_anticipos %}
+        <tr>
+          <td>{{ asignacion.anticipo.fecha|date:"d/m/Y" }}</td>
+          <td>
+            {{ asignacion.anticipo.descripcion|default:"Anticipo laboral" }}
+            {% if asignacion.aplicacion_parcial %}<span class="badge bg-info-subtle text-info ms-1">Aplicación parcial</span>{% endif %}
+          </td>
+          <td class="text-end">{{ asignacion.anticipo.monto|moneda_chilena }}</td>
+          <td class="text-end fw-700">{{ asignacion.monto_aplicado|moneda_chilena }}</td>
+          <td>
+            {% if asignacion.anticipo.movimiento_pago %}
+              {{ asignacion.anticipo.movimiento_pago.fecha|date:"d/m/Y" }}
+            {% else %}
+              <span class="badge bg-warning-subtle text-warning">Sin movimiento</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="5" class="text-center text-muted py-4">Esta remuneración no registra anticipos aplicados.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if monto_anticipo_sin_respaldo %}
+  <div class="alert alert-danger m-3">
+    <i class="bi bi-exclamation-octagon me-1"></i>
+    Hay {{ monto_anticipo_sin_respaldo|moneda_chilena }} de anticipo descontado sin un anticipo histórico suficiente que lo respalde.
+  </div>
+  {% endif %}
+</div>
+
+<div class="card-sta p-0 mt-4">
+  <div class="p-4 pb-2"><h6 class="fw-700 text-sta mb-1">Asientos contables</h6></div>
+  <div class="table-responsive">
+    <table class="table table-sta mb-0">
+      <thead><tr><th>Número</th><th>Fecha</th><th>Tipo</th><th>Estado</th><th class="text-end">Debe</th><th class="text-end">Haber</th></tr></thead>
+      <tbody>
+        {% for asiento in asientos %}
+        <tr>
+          <td><a href="{% url 'contabilidad:asiento_detail' asiento.pk %}" class="fw-600">{{ asiento.numero }}</a></td>
+          <td>{{ asiento.fecha|date:"d/m/Y" }}</td>
+          <td>{{ asiento.get_tipo_display }}</td>
+          <td><span class="badge-{{ asiento.estado }}">{{ asiento.get_estado_display }}</span></td>
+          <td class="text-end">{{ asiento.total_debe|moneda_chilena }}</td>
+          <td class="text-end">{{ asiento.total_haber|moneda_chilena }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6" class="text-center text-muted py-4">No hay asientos asociados.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

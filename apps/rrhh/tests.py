@@ -524,6 +524,96 @@ class RemuneracionUpdateAnticipoTest(TestCase):
 
 
 @override_settings(SECURE_SSL_REDIRECT=False)
+class RemuneracionDetailViewTest(TestCase):
+    def setUp(self):
+        self.user = CustomUser.objects.create_user(
+            'detalle_remuneracion',
+            password='pass',
+            app_permisos=['rrhh'],
+        )
+        self.client_http = Client()
+        self.client_http.force_login(self.user)
+        self.trabajador = _make_trabajador()
+        self.anticipo_antiguo = AnticipoLaboral.objects.create(
+            trabajador=self.trabajador,
+            fecha=date(2026, 4, 15),
+            monto=Decimal('100000'),
+            descripcion='Primer anticipo',
+            estado='descontado',
+        )
+        self.anticipo_nuevo = AnticipoLaboral.objects.create(
+            trabajador=self.trabajador,
+            fecha=date(2026, 6, 10),
+            monto=Decimal('150000'),
+            descripcion='Segundo anticipo',
+            estado='descontado',
+        )
+        Remuneracion.objects.create(
+            trabajador=self.trabajador,
+            periodo_mes=5,
+            periodo_anio=2026,
+            sueldo_base=Decimal('1000000'),
+            sueldo_bruto=Decimal('1000000'),
+            anticipo_descontado=Decimal('50000'),
+            liquido_pagar=Decimal('950000'),
+            estado='pagado',
+        )
+        self.remuneracion = Remuneracion.objects.create(
+            trabajador=self.trabajador,
+            periodo_mes=6,
+            periodo_anio=2026,
+            sueldo_base=Decimal('1000000'),
+            sueldo_bruto=Decimal('1000000'),
+            anticipo_descontado=Decimal('150000'),
+            liquido_pagar=Decimal('850000'),
+            estado='pagado',
+        )
+        self.url = reverse(
+            'rrhh:remuneracion_detail',
+            args=[self.remuneracion.pk],
+        )
+
+    def test_detalle_es_accesible_para_remuneracion_pagada(self):
+        response = self.client_http.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, self.trabajador.nombre_completo)
+        self.assertContains(response, 'Anticipos relacionados')
+
+    def test_asigna_anticipos_por_antiguedad_incluyendo_parciales(self):
+        response = self.client_http.get(self.url)
+
+        asignaciones = response.context['asignaciones_anticipos']
+        self.assertEqual(len(asignaciones), 2)
+        self.assertEqual(
+            asignaciones[0]['anticipo'],
+            self.anticipo_antiguo,
+        )
+        self.assertEqual(
+            asignaciones[0]['monto_aplicado'],
+            Decimal('50000'),
+        )
+        self.assertEqual(
+            asignaciones[1]['anticipo'],
+            self.anticipo_nuevo,
+        )
+        self.assertEqual(
+            asignaciones[1]['monto_aplicado'],
+            Decimal('100000'),
+        )
+        self.assertEqual(
+            response.context['monto_anticipo_sin_respaldo'],
+            Decimal('0'),
+        )
+
+    def test_listado_siempre_muestra_enlace_al_detalle(self):
+        response = self.client_http.get(reverse('rrhh:remuneracion_list'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, self.url)
+
+
+@override_settings(SECURE_SSL_REDIRECT=False)
 class RemuneracionDeleteViewTest(TestCase):
     def setUp(self):
         self.user = CustomUser.objects.create_user(

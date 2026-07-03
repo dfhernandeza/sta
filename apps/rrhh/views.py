@@ -110,6 +110,74 @@ def _anticipo_laboral_requiere_reconstruccion(anticipo):
     )
 
 
+def _asignaciones_anticipos_remuneracion(remuneracion):
+    """
+    Reconstruye la aplicación histórica por antigüedad. El modelo actual guarda
+    el total descontado en la remuneración, pero no una relación por anticipo.
+    """
+    remuneraciones = list(
+        Remuneracion.objects.filter(
+            trabajador_id=remuneracion.trabajador_id,
+        ).filter(
+            Q(periodo_anio__lt=remuneracion.periodo_anio)
+            | Q(
+                periodo_anio=remuneracion.periodo_anio,
+                periodo_mes__lte=remuneracion.periodo_mes,
+            )
+        ).order_by('periodo_anio', 'periodo_mes', 'pk')
+    )
+    anticipos = list(
+        AnticipoLaboral.objects.filter(
+            trabajador_id=remuneracion.trabajador_id,
+            estado='descontado',
+        ).order_by('fecha', 'pk')
+    )
+
+    saldos = {anticipo.pk: anticipo.monto or Decimal('0') for anticipo in anticipos}
+    disponibles = []
+    indice_anticipo = 0
+
+    for liquidacion in remuneraciones:
+        ultimo_dia = monthrange(
+            liquidacion.periodo_anio,
+            liquidacion.periodo_mes,
+        )[1]
+        cierre_periodo = date(
+            liquidacion.periodo_anio,
+            liquidacion.periodo_mes,
+            ultimo_dia,
+        )
+        while (
+            indice_anticipo < len(anticipos)
+            and anticipos[indice_anticipo].fecha <= cierre_periodo
+        ):
+            disponibles.append(anticipos[indice_anticipo])
+            indice_anticipo += 1
+
+        pendiente = liquidacion.anticipo_descontado or Decimal('0')
+        asignaciones_actuales = []
+        for anticipo in disponibles:
+            saldo = saldos[anticipo.pk]
+            if pendiente <= 0:
+                break
+            if saldo <= 0:
+                continue
+            aplicado = min(saldo, pendiente)
+            saldos[anticipo.pk] -= aplicado
+            pendiente -= aplicado
+            if liquidacion.pk == remuneracion.pk:
+                asignaciones_actuales.append({
+                    'anticipo': anticipo,
+                    'monto_aplicado': aplicado,
+                    'aplicacion_parcial': aplicado < anticipo.monto,
+                })
+
+        if liquidacion.pk == remuneracion.pk:
+            return asignaciones_actuales, pendiente
+
+    return [], remuneracion.anticipo_descontado or Decimal('0')
+
+
 class CargoTrabajadorListView(RrhhMixin, ListView):
     model = CargoTrabajador
     template_name = 'admin/rrhh/cargo_list.html'
@@ -253,6 +321,47 @@ class RemuneracionListView(RrhhMixin, ListView):
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         ctx['titulo'] = 'Remuneraciones'
+        return ctx
+
+
+class RemuneracionDetailView(RrhhMixin, DetailView):
+    model = Remuneracion
+    template_name = 'admin/rrhh/remuneracion_detail.html'
+    context_object_name = 'remuneracion'
+
+    def get_queryset(self):
+        return Remuneracion.objects.select_related(
+            'trabajador',
+            'trabajador__cargo',
+            'trabajador__centro_costo',
+        ).prefetch_related('asientos__lineas')
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        asignaciones, monto_sin_respaldo = _asignaciones_anticipos_remuneracion(
+            self.object
+        )
+        descuentos_previsionales = self.object.descuentos
+        total_descuentos = (
+            descuentos_previsionales
+            + (self.object.anticipo_descontado or Decimal('0'))
+        )
+        ctx.update({
+            'titulo': (
+                f'Remuneración {self.object.periodo_mes:02d}/'
+                f'{self.object.periodo_anio}'
+            ),
+            'asignaciones_anticipos': asignaciones,
+            'monto_anticipo_sin_respaldo': monto_sin_respaldo,
+            'descuentos_previsionales': descuentos_previsionales,
+            'total_descuentos': total_descuentos,
+            'diferencia_calculo': (
+                (self.object.sueldo_bruto or Decimal('0'))
+                - total_descuentos
+                - (self.object.liquido_pagar or Decimal('0'))
+            ),
+            'asientos': self.object.asientos.order_by('fecha', 'numero'),
+        })
         return ctx
 
 

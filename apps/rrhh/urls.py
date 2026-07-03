@@ -12,6 +12,7 @@ urlpatterns = [
     path('remuneraciones/procesar/', views.RemuneracionPeriodoView.as_view(), name='remuneracion_procesar'),
     path('remuneraciones/procesar/<int:mes>/<int:anio>/', views.RemuneracionPeriodoDetalleView.as_view(), name='remuneracion_procesar_detalle'),
     path('remuneraciones/crear/', views.RemuneracionCreateView.as_view(), name='remuneracion_create'),
+    path('remuneraciones/<int:pk>/', views.RemuneracionDetailView.as_view(), name='remuneracion_detail'),
     path('remuneraciones/<int:pk>/editar/', views.RemuneracionUpdateView.as_view(), name='remuneracion_update'),
     path('remuneraciones/<int:pk>/eliminar/', views.RemuneracionDeleteView.as_view(), name='remuneracion_delete'),
     path('remuneraciones/<int:pk>/pagar/', views.RemuneracionPagarView.as_view(), name='remuneracion_pagar'),
