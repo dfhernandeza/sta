@@ -102,6 +102,14 @@ def _anticipo_laboral_respalda_descuentos(anticipo):
     return total_descontado > anticipos_restantes
 
 
+def _anticipo_laboral_requiere_reconstruccion(anticipo):
+    return (
+        anticipo.estado == 'descontado'
+        and not anticipo.movimiento_pago_id
+        and _anticipo_laboral_respalda_descuentos(anticipo)
+    )
+
+
 class CargoTrabajadorListView(RrhhMixin, ListView):
     model = CargoTrabajador
     template_name = 'admin/rrhh/cargo_list.html'
@@ -637,6 +645,10 @@ class AnticipoLaboralListView(RrhhMixin, ListView):
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         ctx['titulo'] = 'Anticipos Laborales'
+        for anticipo in ctx['anticipos']:
+            anticipo.requiere_reconstruccion = (
+                _anticipo_laboral_requiere_reconstruccion(anticipo)
+            )
         return ctx
 
 
@@ -770,6 +782,8 @@ class AnticipoLaboralDeleteView(RrhhMixin, DeleteView):
             movimiento = anticipo.movimiento_pago
             if movimiento:
                 movimiento.asientos.filter(estado='borrador').delete()
+                anticipo.movimiento_pago = None
+                anticipo.save(update_fields=['movimiento_pago'])
                 movimiento.delete()
             anticipo.delete()
 
@@ -809,74 +823,116 @@ class AnticipoLaboralPagarView(RrhhMixin, View):
 
         return PagoAnticipoForm(data=data, initial=initial)
 
+    @staticmethod
+    def _es_pago_nuevo(anticipo):
+        return anticipo.estado == 'pendiente' and not anticipo.movimiento_pago_id
+
+    def _contexto(self, anticipo, form, reconstruccion=False):
+        return {
+            'anticipo': anticipo,
+            'form': form,
+            'reconstruccion': reconstruccion,
+        }
+
     def get(self, request, pk):
         anticipo = get_object_or_404(AnticipoLaboral, pk=pk)
-        if anticipo.estado != 'pendiente' or anticipo.movimiento_pago_id:
+        reconstruccion = _anticipo_laboral_requiere_reconstruccion(anticipo)
+        if not self._es_pago_nuevo(anticipo) and not reconstruccion:
             messages.info(request, 'Este anticipo ya fue descontado/pagado.')
             return redirect('rrhh:anticipo_list')
         form = self._build_form(initial={'fecha_pago': timezone.now().date()})
-        return render(request, self.template_name, {'anticipo': anticipo, 'form': form})
+        return render(
+            request,
+            self.template_name,
+            self._contexto(anticipo, form, reconstruccion),
+        )
 
     def post(self, request, pk):
         from apps.tesoreria.models import MovimientoBancario
+        from apps.contabilidad.models import ConfiguracionContable
         from apps.contabilidad.utils import generar_asiento_pago_anticipo
 
         anticipo = get_object_or_404(AnticipoLaboral, pk=pk)
-        if anticipo.estado != 'pendiente' or anticipo.movimiento_pago_id:
+        reconstruccion = _anticipo_laboral_requiere_reconstruccion(anticipo)
+        if not self._es_pago_nuevo(anticipo) and not reconstruccion:
             messages.error(request, 'Este anticipo ya tiene un pago registrado.')
             return redirect('rrhh:anticipo_list')
         form = self._build_form(data=request.POST)
 
         if not form.is_valid():
-            return render(request, self.template_name, {'anticipo': anticipo, 'form': form})
+            return render(
+                request,
+                self.template_name,
+                self._contexto(anticipo, form, reconstruccion),
+            )
 
         d = form.cleaned_data
         cuenta_bancaria = d['cuenta_bancaria']
+        config = ConfiguracionContable.get()
+        if not cuenta_bancaria.cuenta_contable_id:
+            messages.error(
+                request,
+                'La cuenta bancaria no tiene una cuenta contable asociada.',
+            )
+            return render(
+                request,
+                self.template_name,
+                self._contexto(anticipo, form, reconstruccion),
+            )
+        if not config.cuenta_anticipos_trabajadores_id:
+            messages.error(
+                request,
+                'Configure la cuenta Anticipos a Trabajadores antes de registrar '
+                'o reconstruir el pago.',
+            )
+            return render(
+                request,
+                self.template_name,
+                self._contexto(anticipo, form, reconstruccion),
+            )
 
         with transaction.atomic():
             anticipo = AnticipoLaboral.objects.select_for_update().select_related(
                 'trabajador',
             ).get(pk=pk)
-            if anticipo.estado != 'pendiente' or anticipo.movimiento_pago_id:
+            reconstruccion = _anticipo_laboral_requiere_reconstruccion(anticipo)
+            if not self._es_pago_nuevo(anticipo) and not reconstruccion:
                 messages.error(request, 'Este anticipo ya tiene un pago registrado.')
                 return redirect('rrhh:anticipo_list')
 
-            descripcion_mov = f'Anticipo {anticipo.trabajador.nombre_completo} - {anticipo.fecha}'
+            prefijo = 'Reconstrucción pago anticipo' if reconstruccion else 'Anticipo'
+            descripcion_mov = (
+                f'{prefijo} {anticipo.trabajador.nombre_completo} - {anticipo.fecha}'
+            )
+            if d['notas']:
+                descripcion_mov = f'{descripcion_mov} - {d["notas"]}'
             movimiento = MovimientoBancario.objects.create(
                 cuenta=cuenta_bancaria,
                 fecha=d['fecha_pago'],
                 tipo='egreso',
                 monto=anticipo.monto,
-                descripcion=descripcion_mov,
-                cuenta_contable=None,
+                descripcion=descripcion_mov[:300],
+                cuenta_contable=config.cuenta_anticipos_trabajadores,
             )
-
-            try:
-                from apps.contabilidad.models import ConfiguracionContable
-                config = ConfiguracionContable.get()
-                if anticipo.trabajador.tipo_costo == 'operacional':
-                    cuenta_sueldos = config.cuenta_sueldos_operacional if config else None
-                else:
-                    cuenta_sueldos = config.cuenta_sueldos_administrativo if config else None
-                if cuenta_sueldos:
-                    movimiento.cuenta_contable = cuenta_sueldos
-                    movimiento.save(update_fields=['cuenta_contable'])
-            except Exception:
-                pass
 
             asiento = generar_asiento_pago_anticipo(
                 anticipo,
                 movimiento,
                 usuario=request.user,
             )
+            if reconstruccion and asiento:
+                asiento.descripcion = f'Reconstrucción - {asiento.descripcion}'[:300]
+                asiento.save(update_fields=['descripcion'])
             anticipo.estado = 'descontado'
             anticipo.movimiento_pago = movimiento
             anticipo.save(update_fields=['estado', 'movimiento_pago'])
 
         if asiento:
+            accion = 'reconstruido' if reconstruccion else 'registrado'
             messages.success(
                 request,
-                f'Anticipo registrado. Movimiento bancario creado y asiento {asiento.numero} generado en borrador.'
+                f'Pago de anticipo {accion}. Movimiento bancario creado y asiento '
+                f'{asiento.numero} generado en borrador.'
             )
         else:
             messages.success(request, 'Anticipo registrado y movimiento bancario creado.')

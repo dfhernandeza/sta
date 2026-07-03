@@ -1,17 +1,17 @@
 {% extends 'base_admin.html' %}
 {% load custom_tags %}
 
-{% block title %}Registrar Pago Anticipo — {{ anticipo.trabajador.nombre_completo }}{% endblock %}
+{% block title %}{% if reconstruccion %}Reconstruir{% else %}Registrar{% endif %} Pago Anticipo — {{ anticipo.trabajador.nombre_completo }}{% endblock %}
 
 {% block breadcrumb %}
   <li class="breadcrumb-item"><a href="{% url 'rrhh:trabajador_list' %}">RRHH</a></li>
   <li class="breadcrumb-item"><a href="{% url 'rrhh:anticipo_list' %}">Anticipos</a></li>
-  <li class="breadcrumb-item active">Registrar Pago</li>
+  <li class="breadcrumb-item active">{% if reconstruccion %}Reconstruir{% else %}Registrar{% endif %} Pago</li>
 {% endblock %}
 
 {% block content %}
 <div class="page-header">
-  <h4 class="page-title">Registrar Pago de Anticipo Laboral</h4>
+  <h4 class="page-title">{% if reconstruccion %}Reconstruir{% else %}Registrar{% endif %} Pago de Anticipo Laboral</h4>
   <a href="{% url 'rrhh:anticipo_list' %}" class="btn btn-outline-secondary rounded-pill px-4">
     <i class="bi bi-arrow-left me-1"></i>Volver
   </a>
@@ -22,7 +22,7 @@
 
     <!-- Resumen del anticipo -->
     <div class="card-sta p-4 mb-4">
-      <h6 class="fw-700 text-sta mb-3"><i class="bi bi-person-badge me-2"></i>Anticipo a pagar</h6>
+      <h6 class="fw-700 text-sta mb-3"><i class="bi bi-person-badge me-2"></i>Anticipo</h6>
       <div class="row g-2 small">
         <div class="col-sm-5">
           <span class="text-muted">Trabajador</span>
@@ -45,6 +45,14 @@
 
     <!-- Formulario de pago -->
     <div class="card-sta p-4">
+      {% if reconstruccion %}
+      <div class="alert alert-warning">
+        <i class="bi bi-exclamation-triangle me-1"></i>
+        Este anticipo respalda liquidaciones procesadas, pero perdió su movimiento
+        bancario. Seleccione la cuenta y la fecha originales para reconstruir el
+        movimiento y su asiento sin modificar las remuneraciones.
+      </div>
+      {% endif %}
       <h6 class="fw-700 text-sta mb-3"><i class="bi bi-cash-coin me-2"></i>Datos del pago</h6>
       <form method="post" novalidate autocomplete="off">
         {% csrf_token %}
@@ -77,7 +85,7 @@
 
           <div class="col-12 pt-2 border-top d-flex gap-2">
             <button type="submit" class="btn btn-success px-5 rounded-pill">
-              <i class="bi bi-check2-circle me-1"></i>Confirmar pago
+              <i class="bi bi-check2-circle me-1"></i>{% if reconstruccion %}Reconstruir pago{% else %}Confirmar pago{% endif %}
             </button>
             <a href="{% url 'rrhh:anticipo_list' %}" class="btn btn-outline-secondary rounded-pill px-4">
               Cancelar
@@ -93,8 +101,12 @@
       <i class="bi bi-info-circle me-1"></i>
       Al confirmar se creará un <strong>movimiento bancario de egreso</strong> y se generará
       automáticamente un <strong>asiento contable en borrador</strong>
-      (Debe: Sueldos y Remuneraciones / Haber: Banco).
+      (Debe: Anticipos a Trabajadores / Haber: Banco).
+      {% if reconstruccion %}
+      Las remuneraciones y sus asientos no serán modificados.
+      {% else %}
       El estado del anticipo cambiará a <strong>Descontado</strong>.
+      {% endif %}
     </div>
 
   </div>

@@ -57,7 +57,12 @@
               <i class="bi bi-cash-coin"></i>
             </a>
             {% endif %}
-            {% if not a.movimiento_pago_id %}
+            {% if a.requiere_reconstruccion %}
+            <a href="{% url 'rrhh:anticipo_pagar' a.pk %}" class="btn btn-warning btn-sm rounded-pill px-3" title="Reconstruir movimiento y asiento">
+              <i class="bi bi-arrow-counterclockwise"></i> Reconstruir pago
+            </a>
+            {% endif %}
+            {% if not a.movimiento_pago_id and not a.requiere_reconstruccion %}
             <a href="{% url 'rrhh:anticipo_update' a.pk %}" class="btn btn-outline-secondary btn-sm" title="Editar anticipo">
               <i class="bi bi-pencil"></i>
             </a>

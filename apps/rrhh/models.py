@@ -176,7 +176,7 @@ class AnticipoLaboral(TimeStampedModel):
     estado = models.CharField(max_length=15, choices=ESTADO_CHOICES, default='pendiente', verbose_name='Estado')
     movimiento_pago = models.OneToOneField(
         'tesoreria.MovimientoBancario', null=True, blank=True,
-        on_delete=models.SET_NULL, related_name='anticipo_laboral',
+        on_delete=models.PROTECT, related_name='anticipo_laboral',
         verbose_name='Movimiento de pago',
     )
 

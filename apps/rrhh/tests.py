@@ -1,5 +1,6 @@
 from datetime import date
 from decimal import Decimal
+from django.db.models.deletion import ProtectedError
 from django.test import TestCase, Client, override_settings
 from django.urls import reverse
 from django.utils import timezone
@@ -13,9 +14,16 @@ from .models import CargoTrabajador, Trabajador, Remuneracion, AnticipoLaboral
 def _setup_contabilidad():
     cta_banco = PlanCuentas.objects.create(codigo='TEST.RRHH.BANCO', nombre='Banco', tipo='activo', nivel=1)
     cta_sueldos = PlanCuentas.objects.create(codigo='TEST.RRHH.SUELDOS', nombre='Sueldos', tipo='gasto', nivel=1)
+    cta_anticipos = PlanCuentas.objects.create(
+        codigo='TEST.RRHH.ANTICIPOS',
+        nombre='Anticipos a Trabajadores',
+        tipo='activo',
+        nivel=1,
+    )
     config = ConfiguracionContable.get()
     config.cuenta_sueldos_administrativo = cta_sueldos
     config.cuenta_sueldos_operacional = cta_sueldos
+    config.cuenta_anticipos_trabajadores = cta_anticipos
     config.save()
     return cta_banco, cta_sueldos
 
@@ -111,7 +119,7 @@ class RemuneracionPagarViewTest(TestCase):
             'notas': '',
         }
         self.client_http.post(self.url, data)
-        self.assertTrue(AsientoContable.objects.filter(tipo='movimiento_banco').exists())
+        self.assertTrue(AsientoContable.objects.filter(tipo='pago_remuneracion').exists())
 
 
 @override_settings(SECURE_SSL_REDIRECT=False)
@@ -194,6 +202,72 @@ class AnticipoLaboralPagarViewTest(TestCase):
         self.assertIsNotNone(self.anticipo.movimiento_pago_id)
         self.assertEqual(MovimientoBancario.objects.count(), 1)
 
+    def test_reconstruye_pago_huerfano_que_respalda_remuneracion(self):
+        Remuneracion.objects.create(
+            trabajador=self.trabajador,
+            periodo_mes=7,
+            periodo_anio=2026,
+            sueldo_base=Decimal('900000'),
+            sueldo_bruto=Decimal('900000'),
+            anticipo_descontado=self.anticipo.monto,
+            liquido_pagar=Decimal('700000'),
+            estado='pagado',
+        )
+        self.anticipo.estado = 'descontado'
+        self.anticipo.save(update_fields=['estado'])
+
+        response = self.client_http.post(
+            self.url,
+            {
+                'fecha_pago': '2026-07-01',
+                'cuenta_bancaria': self.cuenta_bancaria.pk,
+                'notas': 'Recuperación por eliminación accidental',
+            },
+        )
+
+        self.assertRedirects(response, reverse('rrhh:anticipo_list'))
+        self.anticipo.refresh_from_db()
+        self.assertIsNotNone(self.anticipo.movimiento_pago_id)
+        movimiento = self.anticipo.movimiento_pago
+        self.assertIn('Reconstrucción pago anticipo', movimiento.descripcion)
+        asiento = movimiento.asientos.get(tipo='pago_anticipo')
+        config = ConfiguracionContable.get()
+        self.assertEqual(asiento.estado, 'borrador')
+        self.assertIn('Reconstrucción', asiento.descripcion)
+        self.assertEqual(
+            asiento.lineas.get(
+                cuenta=config.cuenta_anticipos_trabajadores,
+            ).debe,
+            self.anticipo.monto,
+        )
+        self.assertEqual(
+            asiento.lineas.get(
+                cuenta=self.cuenta_bancaria.cuenta_contable,
+            ).haber,
+            self.anticipo.monto,
+        )
+
+    def test_no_reconstruye_descontado_sin_descuento_en_remuneracion(self):
+        self.anticipo.estado = 'descontado'
+        self.anticipo.save(update_fields=['estado'])
+
+        response = self.client_http.post(
+            self.url,
+            {
+                'fecha_pago': '2026-07-01',
+                'cuenta_bancaria': self.cuenta_bancaria.pk,
+                'notas': '',
+            },
+        )
+
+        self.assertRedirects(
+            response,
+            reverse('rrhh:anticipo_list'),
+            fetch_redirect_response=False,
+        )
+        self.anticipo.refresh_from_db()
+        self.assertIsNone(self.anticipo.movimiento_pago_id)
+
 
 @override_settings(SECURE_SSL_REDIRECT=False)
 class AnticipoLaboralUpdateDeleteViewTest(TestCase):
@@ -264,6 +338,13 @@ class AnticipoLaboralUpdateDeleteViewTest(TestCase):
         self.assertRedirects(response, reverse('rrhh:anticipo_list'))
         self.assertFalse(AnticipoLaboral.objects.filter(pk=self.anticipo.pk).exists())
         self.assertFalse(MovimientoBancario.objects.filter(pk=movimiento_id).exists())
+
+    def test_movimiento_vinculado_no_puede_eliminarse_directamente(self):
+        self.pagar_anticipo()
+        self.anticipo.refresh_from_db()
+
+        with self.assertRaises(ProtectedError):
+            self.anticipo.movimiento_pago.delete()
 
     def test_bloquea_eliminar_si_respalda_descuento_en_remuneracion(self):
         self.pagar_anticipo()
