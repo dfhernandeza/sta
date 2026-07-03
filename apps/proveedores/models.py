@@ -1,7 +1,8 @@
 from decimal import Decimal
 from django.db import models
-from django.db.models import Max, Sum
-from django.utils import timezone
+from django.db.models import Sum
+from django.db.models.signals import post_delete
+from django.dispatch import receiver
 from apps.tesoreria.models import Banco, TIPO_CHOICES
 from apps.core.models import TimeStampedModel
 from apps.core.validators import validar_rut
@@ -115,31 +116,65 @@ class FacturaRecibida(TimeStampedModel):
 
     @property
     def indice_libro_compras(self):
-        if not self.correlativo_libro_compras or not self.periodo_libro_compras_mes:
+        if not self.correlativo_libro_compras or not self.fecha_emision:
             return '—'
-        return f'{self.correlativo_libro_compras}/{self.periodo_libro_compras_mes}'
+        return f'{self.correlativo_libro_compras}/{self.fecha_emision.month}'
 
     def _asignar_correlativo_libro_compras(self):
-        if self.correlativo_libro_compras:
+        if not self.pk or not self.fecha_emision:
             return
 
-        fecha_ingreso = timezone.localdate()
-        self.periodo_libro_compras_mes = fecha_ingreso.month
-        self.periodo_libro_compras_anio = fecha_ingreso.year
+        self.correlativo_libro_compras = FacturaRecibida.objects.filter(
+            pk__lte=self.pk,
+        ).count()
+        self.periodo_libro_compras_mes = self.fecha_emision.month
+        self.periodo_libro_compras_anio = self.fecha_emision.year
 
-        ultimo = FacturaRecibida.objects.filter(
-            periodo_libro_compras_anio=self.periodo_libro_compras_anio,
-            periodo_libro_compras_mes=self.periodo_libro_compras_mes,
-        ).aggregate(maximo=Max('correlativo_libro_compras'))['maximo'] or 0
-        self.correlativo_libro_compras = ultimo + 1
+    @classmethod
+    def reindexar_libro_compras(cls):
+        cls.objects.update(
+            correlativo_libro_compras=None,
+            periodo_libro_compras_mes=None,
+            periodo_libro_compras_anio=None,
+        )
+        for indice, factura in enumerate(
+            cls.objects.order_by('pk').only('pk', 'fecha_emision').iterator(),
+            start=1,
+        ):
+            cls.objects.filter(pk=factura.pk).update(
+                correlativo_libro_compras=indice,
+                periodo_libro_compras_mes=factura.fecha_emision.month,
+                periodo_libro_compras_anio=factura.fecha_emision.year,
+            )
 
     def save(self, *args, **kwargs):
-        self._asignar_correlativo_libro_compras()
         if not self.iva:
             self.iva = round(self.neto * Decimal('0.19'), 2)
         if not self.total:
             self.total = self.neto + self.iva + (self.exento or Decimal('0'))
         super().save(*args, **kwargs)
+        valores_anteriores = (
+            self.correlativo_libro_compras,
+            self.periodo_libro_compras_mes,
+            self.periodo_libro_compras_anio,
+        )
+        self._asignar_correlativo_libro_compras()
+        valores_nuevos = (
+            self.correlativo_libro_compras,
+            self.periodo_libro_compras_mes,
+            self.periodo_libro_compras_anio,
+        )
+        if valores_nuevos != valores_anteriores:
+            FacturaRecibida.objects.filter(pk=self.pk).update(
+                correlativo_libro_compras=self.correlativo_libro_compras,
+                periodo_libro_compras_mes=self.periodo_libro_compras_mes,
+                periodo_libro_compras_anio=self.periodo_libro_compras_anio,
+            )
+
+
+@receiver(post_delete, sender=FacturaRecibida)
+def reindexar_facturas_recibidas_despues_de_eliminar(**kwargs):
+    FacturaRecibida.reindexar_libro_compras()
 
 
 class DetalleFacturaRecibida(models.Model):

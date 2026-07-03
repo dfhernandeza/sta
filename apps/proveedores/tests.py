@@ -20,6 +20,66 @@ from .models import (
 )
 
 
+class FacturaRecibidaIndiceTests(TestCase):
+    def setUp(self):
+        self.proveedor = Proveedor.objects.create(
+            rut='33.333.333-3',
+            razon_social='Proveedor Índices',
+        )
+
+    def crear_factura(self, numero, fecha_emision):
+        return FacturaRecibida.objects.create(
+            numero=numero,
+            fecha_emision=fecha_emision,
+            proveedor=self.proveedor,
+            neto=Decimal('100000'),
+            exento=Decimal('0'),
+            iva=Decimal('19000'),
+            total=Decimal('119000'),
+        )
+
+    def test_indice_usa_orden_id_y_mes_de_fecha_emision(self):
+        factura = self.crear_factura('F-IND-1', date(2026, 6, 15))
+
+        self.assertEqual(factura.indice_libro_compras, '1/6')
+        self.assertEqual(factura.correlativo_libro_compras, 1)
+        self.assertEqual(factura.periodo_libro_compras_mes, 6)
+        self.assertEqual(factura.periodo_libro_compras_anio, 2026)
+
+    def test_indice_no_se_reinicia_al_cambiar_de_mes(self):
+        junio = self.crear_factura('F-IND-2', date(2026, 6, 30))
+        julio = self.crear_factura('F-IND-3', date(2026, 7, 1))
+
+        self.assertEqual(junio.indice_libro_compras, '1/6')
+        self.assertEqual(julio.indice_libro_compras, '2/7')
+        self.assertGreater(julio.pk, junio.pk)
+
+    def test_cambiar_fecha_actualiza_mes_pero_conserva_orden(self):
+        factura = self.crear_factura('F-IND-4', date(2026, 7, 1))
+
+        factura.fecha_emision = date(2026, 6, 25)
+        factura.save(update_fields=['fecha_emision'])
+        factura.refresh_from_db()
+
+        self.assertEqual(factura.indice_libro_compras, '1/6')
+        self.assertEqual(factura.correlativo_libro_compras, 1)
+        self.assertEqual(factura.periodo_libro_compras_mes, 6)
+
+    def test_ids_con_espacios_generan_indices_consecutivos(self):
+        primera = self.crear_factura('F-IND-5', date(2026, 6, 1))
+        eliminada = self.crear_factura('F-IND-6', date(2026, 6, 2))
+        tercera = self.crear_factura('F-IND-7', date(2026, 6, 3))
+        self.assertEqual(tercera.indice_libro_compras, '3/6')
+
+        eliminada.delete()
+        primera.refresh_from_db()
+        tercera.refresh_from_db()
+
+        self.assertGreater(tercera.pk, primera.pk + 1)
+        self.assertEqual(primera.indice_libro_compras, '1/6')
+        self.assertEqual(tercera.indice_libro_compras, '2/6')
+
+
 @override_settings(SECURE_SSL_REDIRECT=False)
 class AnticipoProveedorViewsTest(TestCase):
     def setUp(self):

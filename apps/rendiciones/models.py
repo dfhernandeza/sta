@@ -1,6 +1,6 @@
 from django.db import models
-from django.db.models import Max
-from django.utils import timezone
+from django.db.models.signals import post_delete
+from django.dispatch import receiver
 from apps.core.models import TimeStampedModel
 from apps.contabilidad.models import PlanCuentas, CentroCosto
 
@@ -65,22 +65,56 @@ class RendicionGastos(TimeStampedModel):
         return f'{self.correlativo_rendicion}/{self.periodo_rendicion_mes}'
 
     def _asignar_correlativo_rendicion(self):
-        if self.correlativo_rendicion:
+        if not self.pk or not self.fecha:
             return
 
-        fecha_ingreso = timezone.localdate()
-        self.periodo_rendicion_mes = fecha_ingreso.month
-        self.periodo_rendicion_anio = fecha_ingreso.year
+        self.correlativo_rendicion = RendicionGastos.objects.filter(
+            pk__lte=self.pk,
+        ).count()
+        self.periodo_rendicion_mes = self.fecha.month
+        self.periodo_rendicion_anio = self.fecha.year
 
-        ultimo = RendicionGastos.objects.filter(
-            periodo_rendicion_anio=self.periodo_rendicion_anio,
-            periodo_rendicion_mes=self.periodo_rendicion_mes,
-        ).aggregate(maximo=Max('correlativo_rendicion'))['maximo'] or 0
-        self.correlativo_rendicion = ultimo + 1
+    @classmethod
+    def reindexar_indices(cls):
+        cls.objects.update(
+            correlativo_rendicion=None,
+            periodo_rendicion_mes=None,
+            periodo_rendicion_anio=None,
+        )
+        for indice, rendicion in enumerate(
+            cls.objects.order_by('pk').only('pk', 'fecha').iterator(),
+            start=1,
+        ):
+            cls.objects.filter(pk=rendicion.pk).update(
+                correlativo_rendicion=indice,
+                periodo_rendicion_mes=rendicion.fecha.month,
+                periodo_rendicion_anio=rendicion.fecha.year,
+            )
 
     def save(self, *args, **kwargs):
-        self._asignar_correlativo_rendicion()
         super().save(*args, **kwargs)
+        valores_anteriores = (
+            self.correlativo_rendicion,
+            self.periodo_rendicion_mes,
+            self.periodo_rendicion_anio,
+        )
+        self._asignar_correlativo_rendicion()
+        valores_nuevos = (
+            self.correlativo_rendicion,
+            self.periodo_rendicion_mes,
+            self.periodo_rendicion_anio,
+        )
+        if valores_nuevos != valores_anteriores:
+            RendicionGastos.objects.filter(pk=self.pk).update(
+                correlativo_rendicion=self.correlativo_rendicion,
+                periodo_rendicion_mes=self.periodo_rendicion_mes,
+                periodo_rendicion_anio=self.periodo_rendicion_anio,
+            )
+
+
+@receiver(post_delete, sender=RendicionGastos)
+def reindexar_rendiciones_despues_de_eliminar(**kwargs):
+    RendicionGastos.reindexar_indices()
 
 
 class DetalleRendicion(models.Model):

@@ -14,6 +14,68 @@ from apps.tesoreria.models import Banco, CuentaBancaria
 from .models import DetalleRendicion, RendicionGastos
 
 
+class RendicionGastosIndiceTests(TestCase):
+    def setUp(self):
+        self.trabajador = Trabajador.objects.create(
+            rut='22.222.222-2',
+            nombres='Índice',
+            apellidos='Rendición',
+            fecha_ingreso=date(2025, 1, 1),
+            sueldo_base=Decimal('500000.00'),
+        )
+
+    def crear_rendicion(self, fecha):
+        return RendicionGastos.objects.create(
+            trabajador=self.trabajador,
+            fecha=fecha,
+            motivo_del_gasto='Prueba de índice',
+        )
+
+    def test_indice_usa_mes_y_anio_de_fecha_rendicion(self):
+        rendicion = self.crear_rendicion(date(2024, 3, 15))
+
+        self.assertEqual(rendicion.periodo_rendicion_mes, 3)
+        self.assertEqual(rendicion.periodo_rendicion_anio, 2024)
+        self.assertEqual(rendicion.correlativo_rendicion, 1)
+        self.assertEqual(rendicion.indice_rendicion, '1/3')
+
+    def test_correlativo_no_se_reinicia_en_cada_periodo(self):
+        primera_marzo = self.crear_rendicion(date(2024, 3, 10))
+        segunda_marzo = self.crear_rendicion(date(2024, 3, 20))
+        primera_abril = self.crear_rendicion(date(2024, 4, 1))
+
+        self.assertEqual(primera_marzo.correlativo_rendicion, 1)
+        self.assertEqual(segunda_marzo.correlativo_rendicion, 2)
+        self.assertEqual(primera_abril.correlativo_rendicion, 3)
+        self.assertEqual(primera_abril.indice_rendicion, '3/4')
+
+    def test_cambiar_fecha_actualiza_mes_y_conserva_orden(self):
+        rendicion = self.crear_rendicion(date(2024, 3, 15))
+        self.crear_rendicion(date(2024, 4, 5))
+
+        rendicion.fecha = date(2024, 4, 10)
+        rendicion.save()
+
+        self.assertEqual(rendicion.periodo_rendicion_mes, 4)
+        self.assertEqual(rendicion.periodo_rendicion_anio, 2024)
+        self.assertEqual(rendicion.correlativo_rendicion, 1)
+        self.assertEqual(rendicion.indice_rendicion, '1/4')
+
+    def test_ids_con_espacios_generan_indices_consecutivos(self):
+        primera = self.crear_rendicion(date(2024, 3, 1))
+        eliminada = self.crear_rendicion(date(2024, 3, 2))
+        tercera = self.crear_rendicion(date(2024, 4, 3))
+        self.assertEqual(tercera.indice_rendicion, '3/4')
+
+        eliminada.delete()
+        primera.refresh_from_db()
+        tercera.refresh_from_db()
+
+        self.assertGreater(tercera.pk, primera.pk + 1)
+        self.assertEqual(primera.indice_rendicion, '1/3')
+        self.assertEqual(tercera.indice_rendicion, '2/4')
+
+
 class RendicionGastosDeleteViewTests(TestCase):
     def setUp(self):
         self.user = CustomUser.objects.create_superuser(
