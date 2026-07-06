@@ -70,6 +70,8 @@ class RendicionGastos(TimeStampedModel):
 
         self.correlativo_rendicion = RendicionGastos.objects.filter(
             pk__lte=self.pk,
+            fecha__year=self.fecha.year,
+            fecha__month=self.fecha.month,
         ).count()
         self.periodo_rendicion_mes = self.fecha.month
         self.periodo_rendicion_anio = self.fecha.year
@@ -81,18 +83,35 @@ class RendicionGastos(TimeStampedModel):
             periodo_rendicion_mes=None,
             periodo_rendicion_anio=None,
         )
-        for indice, rendicion in enumerate(
-            cls.objects.order_by('pk').only('pk', 'fecha').iterator(),
-            start=1,
-        ):
+        correlativos_por_periodo = {}
+        for rendicion in cls.objects.order_by('pk').only('pk', 'fecha').iterator():
+            periodo = (rendicion.fecha.year, rendicion.fecha.month)
+            indice = correlativos_por_periodo.get(periodo, 0) + 1
+            correlativos_por_periodo[periodo] = indice
             cls.objects.filter(pk=rendicion.pk).update(
                 correlativo_rendicion=indice,
-                periodo_rendicion_mes=rendicion.fecha.month,
-                periodo_rendicion_anio=rendicion.fecha.year,
+                periodo_rendicion_mes=periodo[1],
+                periodo_rendicion_anio=periodo[0],
             )
 
     def save(self, *args, **kwargs):
+        fecha_anterior = None
+        if self.pk:
+            fecha_anterior = RendicionGastos.objects.filter(
+                pk=self.pk,
+            ).values_list('fecha', flat=True).first()
+
         super().save(*args, **kwargs)
+
+        if fecha_anterior and fecha_anterior != self.fecha:
+            RendicionGastos.reindexar_indices()
+            self.refresh_from_db(fields=[
+                'correlativo_rendicion',
+                'periodo_rendicion_mes',
+                'periodo_rendicion_anio',
+            ])
+            return
+
         valores_anteriores = (
             self.correlativo_rendicion,
             self.periodo_rendicion_mes,

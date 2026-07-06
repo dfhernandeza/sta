@@ -39,33 +39,35 @@ class RendicionGastosIndiceTests(TestCase):
         self.assertEqual(rendicion.correlativo_rendicion, 1)
         self.assertEqual(rendicion.indice_rendicion, '1/3')
 
-    def test_correlativo_no_se_reinicia_en_cada_periodo(self):
+    def test_correlativo_se_reinicia_en_cada_periodo(self):
         primera_marzo = self.crear_rendicion(date(2024, 3, 10))
         segunda_marzo = self.crear_rendicion(date(2024, 3, 20))
         primera_abril = self.crear_rendicion(date(2024, 4, 1))
 
         self.assertEqual(primera_marzo.correlativo_rendicion, 1)
         self.assertEqual(segunda_marzo.correlativo_rendicion, 2)
-        self.assertEqual(primera_abril.correlativo_rendicion, 3)
-        self.assertEqual(primera_abril.indice_rendicion, '3/4')
+        self.assertEqual(primera_abril.correlativo_rendicion, 1)
+        self.assertEqual(primera_abril.indice_rendicion, '1/4')
 
     def test_cambiar_fecha_actualiza_mes_y_conserva_orden(self):
         rendicion = self.crear_rendicion(date(2024, 3, 15))
-        self.crear_rendicion(date(2024, 4, 5))
+        segunda_abril = self.crear_rendicion(date(2024, 4, 5))
 
         rendicion.fecha = date(2024, 4, 10)
         rendicion.save()
+        segunda_abril.refresh_from_db()
 
         self.assertEqual(rendicion.periodo_rendicion_mes, 4)
         self.assertEqual(rendicion.periodo_rendicion_anio, 2024)
         self.assertEqual(rendicion.correlativo_rendicion, 1)
         self.assertEqual(rendicion.indice_rendicion, '1/4')
+        self.assertEqual(segunda_abril.indice_rendicion, '2/4')
 
     def test_ids_con_espacios_generan_indices_consecutivos(self):
         primera = self.crear_rendicion(date(2024, 3, 1))
         eliminada = self.crear_rendicion(date(2024, 3, 2))
         tercera = self.crear_rendicion(date(2024, 4, 3))
-        self.assertEqual(tercera.indice_rendicion, '3/4')
+        self.assertEqual(tercera.indice_rendicion, '1/4')
 
         eliminada.delete()
         primera.refresh_from_db()
@@ -73,7 +75,14 @@ class RendicionGastosIndiceTests(TestCase):
 
         self.assertGreater(tercera.pk, primera.pk + 1)
         self.assertEqual(primera.indice_rendicion, '1/3')
-        self.assertEqual(tercera.indice_rendicion, '2/4')
+        self.assertEqual(tercera.indice_rendicion, '1/4')
+
+    def test_correlativo_se_reinicia_en_el_mismo_mes_de_otro_anio(self):
+        anterior = self.crear_rendicion(date(2023, 3, 1))
+        actual = self.crear_rendicion(date(2024, 3, 1))
+
+        self.assertEqual(anterior.correlativo_rendicion, 1)
+        self.assertEqual(actual.correlativo_rendicion, 1)
 
 
 class RendicionGastosDeleteViewTests(TestCase):
