@@ -46,12 +46,12 @@ class FacturaRecibidaIndiceTests(TestCase):
         self.assertEqual(factura.periodo_libro_compras_mes, 6)
         self.assertEqual(factura.periodo_libro_compras_anio, 2026)
 
-    def test_indice_no_se_reinicia_al_cambiar_de_mes(self):
+    def test_indice_se_reinicia_al_cambiar_de_mes(self):
         junio = self.crear_factura('F-IND-2', date(2026, 6, 30))
         julio = self.crear_factura('F-IND-3', date(2026, 7, 1))
 
         self.assertEqual(junio.indice_libro_compras, '1/6')
-        self.assertEqual(julio.indice_libro_compras, '2/7')
+        self.assertEqual(julio.indice_libro_compras, '1/7')
         self.assertGreater(julio.pk, junio.pk)
 
     def test_cambiar_fecha_actualiza_mes_pero_conserva_orden(self):
@@ -78,6 +78,27 @@ class FacturaRecibidaIndiceTests(TestCase):
         self.assertGreater(tercera.pk, primera.pk + 1)
         self.assertEqual(primera.indice_libro_compras, '1/6')
         self.assertEqual(tercera.indice_libro_compras, '2/6')
+
+    def test_correlativo_se_reinicia_en_el_mismo_mes_de_otro_anio(self):
+        anterior = self.crear_factura('F-IND-8', date(2025, 6, 1))
+        actual = self.crear_factura('F-IND-9', date(2026, 6, 1))
+
+        self.assertEqual(anterior.correlativo_libro_compras, 1)
+        self.assertEqual(actual.correlativo_libro_compras, 1)
+
+    def test_cambiar_fecha_reindexa_periodos_origen_y_destino(self):
+        junio_primera = self.crear_factura('F-IND-10', date(2026, 6, 1))
+        junio_segunda = self.crear_factura('F-IND-11', date(2026, 6, 2))
+        julio = self.crear_factura('F-IND-12', date(2026, 7, 1))
+
+        junio_primera.fecha_emision = date(2026, 7, 2)
+        junio_primera.save(update_fields=['fecha_emision'])
+        junio_segunda.refresh_from_db()
+        julio.refresh_from_db()
+
+        self.assertEqual(junio_segunda.indice_libro_compras, '1/6')
+        self.assertEqual(junio_primera.indice_libro_compras, '1/7')
+        self.assertEqual(julio.indice_libro_compras, '2/7')
 
 
 @override_settings(SECURE_SSL_REDIRECT=False)

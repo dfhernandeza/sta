@@ -126,6 +126,8 @@ class FacturaRecibida(TimeStampedModel):
 
         self.correlativo_libro_compras = FacturaRecibida.objects.filter(
             pk__lte=self.pk,
+            fecha_emision__year=self.fecha_emision.year,
+            fecha_emision__month=self.fecha_emision.month,
         ).count()
         self.periodo_libro_compras_mes = self.fecha_emision.month
         self.periodo_libro_compras_anio = self.fecha_emision.year
@@ -137,22 +139,39 @@ class FacturaRecibida(TimeStampedModel):
             periodo_libro_compras_mes=None,
             periodo_libro_compras_anio=None,
         )
-        for indice, factura in enumerate(
-            cls.objects.order_by('pk').only('pk', 'fecha_emision').iterator(),
-            start=1,
-        ):
+        correlativos_por_periodo = {}
+        for factura in cls.objects.order_by('pk').only('pk', 'fecha_emision').iterator():
+            periodo = (factura.fecha_emision.year, factura.fecha_emision.month)
+            indice = correlativos_por_periodo.get(periodo, 0) + 1
+            correlativos_por_periodo[periodo] = indice
             cls.objects.filter(pk=factura.pk).update(
                 correlativo_libro_compras=indice,
-                periodo_libro_compras_mes=factura.fecha_emision.month,
-                periodo_libro_compras_anio=factura.fecha_emision.year,
+                periodo_libro_compras_mes=periodo[1],
+                periodo_libro_compras_anio=periodo[0],
             )
 
     def save(self, *args, **kwargs):
+        fecha_emision_anterior = None
+        if self.pk:
+            fecha_emision_anterior = FacturaRecibida.objects.filter(
+                pk=self.pk,
+            ).values_list('fecha_emision', flat=True).first()
+
         if not self.iva:
             self.iva = round(self.neto * Decimal('0.19'), 2)
         if not self.total:
             self.total = self.neto + self.iva + (self.exento or Decimal('0'))
         super().save(*args, **kwargs)
+
+        if fecha_emision_anterior and fecha_emision_anterior != self.fecha_emision:
+            FacturaRecibida.reindexar_libro_compras()
+            self.refresh_from_db(fields=[
+                'correlativo_libro_compras',
+                'periodo_libro_compras_mes',
+                'periodo_libro_compras_anio',
+            ])
+            return
+
         valores_anteriores = (
             self.correlativo_libro_compras,
             self.periodo_libro_compras_mes,
