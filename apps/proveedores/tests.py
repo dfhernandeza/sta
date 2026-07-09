@@ -8,6 +8,7 @@ from django.urls import reverse
 from apps.accounts.models import CustomUser
 from apps.contabilidad.models import AsientoContable, ConfiguracionContable, PlanCuentas
 from apps.tesoreria.models import Banco, CuentaBancaria, MovimientoBancario
+from apps.tributario.models import RegistroCompra
 
 from .models import (
     Anticipo,
@@ -27,10 +28,12 @@ class FacturaRecibidaIndiceTests(TestCase):
             razon_social='Proveedor Índices',
         )
 
-    def crear_factura(self, numero, fecha_emision):
+    def crear_factura(self, numero, fecha_emision, periodo_mes=None, periodo_anio=None):
         return FacturaRecibida.objects.create(
             numero=numero,
             fecha_emision=fecha_emision,
+            periodo_libro_compras_mes=periodo_mes,
+            periodo_libro_compras_anio=periodo_anio,
             proveedor=self.proveedor,
             neto=Decimal('100000'),
             exento=Decimal('0'),
@@ -38,12 +41,24 @@ class FacturaRecibidaIndiceTests(TestCase):
             total=Decimal('119000'),
         )
 
-    def test_indice_usa_orden_id_y_mes_de_fecha_emision(self):
+    def test_indice_usa_orden_id_y_periodo_libro(self):
         factura = self.crear_factura('F-IND-1', date(2026, 6, 15))
 
         self.assertEqual(factura.indice_libro_compras, '1/6')
         self.assertEqual(factura.correlativo_libro_compras, 1)
         self.assertEqual(factura.periodo_libro_compras_mes, 6)
+        self.assertEqual(factura.periodo_libro_compras_anio, 2026)
+
+    def test_factura_puede_pertenecer_a_libro_de_otro_mes(self):
+        factura = self.crear_factura(
+            'F-IND-13',
+            date(2026, 6, 30),
+            periodo_mes=7,
+            periodo_anio=2026,
+        )
+
+        self.assertEqual(factura.indice_libro_compras, '1/7')
+        self.assertEqual(factura.periodo_libro_compras_mes, 7)
         self.assertEqual(factura.periodo_libro_compras_anio, 2026)
 
     def test_indice_se_reinicia_al_cambiar_de_mes(self):
@@ -54,16 +69,16 @@ class FacturaRecibidaIndiceTests(TestCase):
         self.assertEqual(julio.indice_libro_compras, '1/7')
         self.assertGreater(julio.pk, junio.pk)
 
-    def test_cambiar_fecha_actualiza_mes_pero_conserva_orden(self):
+    def test_cambiar_fecha_conserva_periodo_libro(self):
         factura = self.crear_factura('F-IND-4', date(2026, 7, 1))
 
         factura.fecha_emision = date(2026, 6, 25)
         factura.save(update_fields=['fecha_emision'])
         factura.refresh_from_db()
 
-        self.assertEqual(factura.indice_libro_compras, '1/6')
+        self.assertEqual(factura.indice_libro_compras, '1/7')
         self.assertEqual(factura.correlativo_libro_compras, 1)
-        self.assertEqual(factura.periodo_libro_compras_mes, 6)
+        self.assertEqual(factura.periodo_libro_compras_mes, 7)
 
     def test_ids_con_espacios_generan_indices_consecutivos(self):
         primera = self.crear_factura('F-IND-5', date(2026, 6, 1))
@@ -86,19 +101,39 @@ class FacturaRecibidaIndiceTests(TestCase):
         self.assertEqual(anterior.correlativo_libro_compras, 1)
         self.assertEqual(actual.correlativo_libro_compras, 1)
 
-    def test_cambiar_fecha_reindexa_periodos_origen_y_destino(self):
+    def test_cambiar_periodo_libro_reindexa_periodos_origen_y_destino(self):
         junio_primera = self.crear_factura('F-IND-10', date(2026, 6, 1))
         junio_segunda = self.crear_factura('F-IND-11', date(2026, 6, 2))
         julio = self.crear_factura('F-IND-12', date(2026, 7, 1))
 
-        junio_primera.fecha_emision = date(2026, 7, 2)
-        junio_primera.save(update_fields=['fecha_emision'])
+        junio_primera.periodo_libro_compras_mes = 7
+        junio_primera.periodo_libro_compras_anio = 2026
+        junio_primera.save(update_fields=[
+            'periodo_libro_compras_mes',
+            'periodo_libro_compras_anio',
+        ])
         junio_segunda.refresh_from_db()
         julio.refresh_from_db()
 
         self.assertEqual(junio_segunda.indice_libro_compras, '1/6')
         self.assertEqual(junio_primera.indice_libro_compras, '1/7')
         self.assertEqual(julio.indice_libro_compras, '2/7')
+
+    def test_registro_compra_usa_periodo_libro_compras(self):
+        from apps.proveedores.views import _sincronizar_registro_compra_factura
+
+        factura = self.crear_factura(
+            'F-IND-14',
+            date(2026, 6, 30),
+            periodo_mes=7,
+            periodo_anio=2026,
+        )
+
+        _sincronizar_registro_compra_factura(factura)
+
+        registro = RegistroCompra.objects.get(factura=factura)
+        self.assertEqual(registro.periodo_mes, 7)
+        self.assertEqual(registro.periodo_anio, 2026)
 
 
 @override_settings(SECURE_SSL_REDIRECT=False)

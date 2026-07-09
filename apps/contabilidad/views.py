@@ -893,6 +893,218 @@ class CentroCostoListView(ContabilidadMixin, ListView):
         return ctx
 
 
+class CentroCostoMovimientosExcelView(ContabilidadMixin, View):
+    """Exporta movimientos contables confirmados agrupados por centro de costo."""
+
+    def get(self, request):
+        import openpyxl
+        from openpyxl.styles import Alignment, Font, PatternFill
+        from openpyxl.utils import get_column_letter
+        from django.http import HttpResponse
+        from django.utils import timezone
+
+        centros = CentroCosto.objects.order_by('codigo')
+        resumen = {
+            centro.pk: {
+                'centro': centro,
+                'movimientos': 0,
+                'ingresos': Decimal('0.00'),
+                'egresos': Decimal('0.00'),
+            }
+            for centro in centros
+        }
+
+        lineas = (
+            LineaAsiento.objects
+            .filter(
+                centro_costo__isnull=False,
+                asiento__estado='confirmado',
+            )
+            .select_related('centro_costo', 'asiento', 'cuenta')
+            .order_by(
+                'centro_costo__codigo',
+                'asiento__fecha',
+                'asiento__numero',
+                'orden',
+                'pk',
+            )
+        )
+
+        tipos_egreso = {'costo', 'gasto', 'socio'}
+        movimientos = []
+        total_ingresos = Decimal('0.00')
+        total_egresos = Decimal('0.00')
+
+        for linea in lineas:
+            ingreso = Decimal('0.00')
+            egreso = Decimal('0.00')
+            if linea.cuenta.tipo == 'ingreso':
+                ingreso = linea.haber - linea.debe
+            elif linea.cuenta.tipo in tipos_egreso:
+                egreso = linea.debe - linea.haber
+
+            centro_resumen = resumen.setdefault(
+                linea.centro_costo_id,
+                {
+                    'centro': linea.centro_costo,
+                    'movimientos': 0,
+                    'ingresos': Decimal('0.00'),
+                    'egresos': Decimal('0.00'),
+                },
+            )
+            centro_resumen['movimientos'] += 1
+            centro_resumen['ingresos'] += ingreso
+            centro_resumen['egresos'] += egreso
+            total_ingresos += ingreso
+            total_egresos += egreso
+            movimientos.append((linea, ingreso, egreso))
+
+        wb = openpyxl.Workbook()
+        font_header = Font(bold=True, color='FFFFFF')
+        fill_header = PatternFill('solid', fgColor='1F3864')
+        fill_total = PatternFill('solid', fgColor='EBF3E8')
+        align_center = Alignment(horizontal='center', vertical='center')
+        align_right = Alignment(horizontal='right')
+        fmt_num = '$#,##0.00'
+        fmt_date = 'DD/MM/YYYY'
+
+        # Hoja 1: resumen por centro de costo.
+        ws_resumen = wb.active
+        ws_resumen.title = 'Resumen'
+        headers_resumen = [
+            'Codigo',
+            'Centro de costo',
+            'Presupuesto mensual',
+            'Movimientos',
+            'Ingresos',
+            'Egresos',
+            'Resultado',
+        ]
+        for col, header in enumerate(headers_resumen, start=1):
+            cell = ws_resumen.cell(row=1, column=col, value=header)
+            cell.font = font_header
+            cell.fill = fill_header
+            cell.alignment = align_center
+
+        row = 2
+        for item in sorted(resumen.values(), key=lambda r: r['centro'].codigo):
+            centro = item['centro']
+            resultado = item['ingresos'] - item['egresos']
+            values = [
+                centro.codigo,
+                centro.nombre,
+                float(centro.presupuesto_mensual or Decimal('0.00')),
+                item['movimientos'],
+                float(item['ingresos']),
+                float(item['egresos']),
+                float(resultado),
+            ]
+            for col, value in enumerate(values, start=1):
+                cell = ws_resumen.cell(row=row, column=col, value=value)
+                if col in (3, 5, 6, 7):
+                    cell.number_format = fmt_num
+                    cell.alignment = align_right
+                elif col == 4:
+                    cell.alignment = align_center
+            row += 1
+
+        for col, value in [
+            (4, sum(item['movimientos'] for item in resumen.values())),
+            (5, float(total_ingresos)),
+            (6, float(total_egresos)),
+            (7, float(total_ingresos - total_egresos)),
+        ]:
+            cell = ws_resumen.cell(row=row, column=col, value=value)
+            cell.font = Font(bold=True)
+            cell.fill = fill_total
+            if col != 4:
+                cell.number_format = fmt_num
+                cell.alignment = align_right
+            else:
+                cell.alignment = align_center
+        label = ws_resumen.cell(row=row, column=1, value='Totales')
+        label.font = Font(bold=True)
+        label.fill = fill_total
+        for col in (2, 3):
+            ws_resumen.cell(row=row, column=col).fill = fill_total
+
+        for col, width in enumerate([14, 34, 20, 14, 18, 18, 18], start=1):
+            ws_resumen.column_dimensions[get_column_letter(col)].width = width
+        ws_resumen.freeze_panes = 'A2'
+        ws_resumen.auto_filter.ref = f'A1:{get_column_letter(len(headers_resumen))}1'
+
+        # Hoja 2: detalle de movimientos.
+        ws_movimientos = wb.create_sheet('Movimientos')
+        headers_movimientos = [
+            'Fecha',
+            'Codigo centro',
+            'Centro de costo',
+            'N Asiento',
+            'Tipo asiento',
+            'Descripcion asiento',
+            'Codigo cuenta',
+            'Cuenta',
+            'Tipo cuenta',
+            'Descripcion linea',
+            'Debe',
+            'Haber',
+            'Ingreso',
+            'Egreso',
+        ]
+        for col, header in enumerate(headers_movimientos, start=1):
+            cell = ws_movimientos.cell(row=1, column=col, value=header)
+            cell.font = font_header
+            cell.fill = fill_header
+            cell.alignment = align_center
+
+        for row, (linea, ingreso, egreso) in enumerate(movimientos, start=2):
+            asiento = linea.asiento
+            centro = linea.centro_costo
+            values = [
+                asiento.fecha,
+                centro.codigo,
+                centro.nombre,
+                asiento.numero,
+                asiento.get_tipo_display(),
+                asiento.descripcion,
+                linea.cuenta.codigo,
+                linea.cuenta.nombre,
+                linea.cuenta.get_tipo_display(),
+                linea.descripcion,
+                float(linea.debe),
+                float(linea.haber),
+                float(ingreso),
+                float(egreso),
+            ]
+            for col, value in enumerate(values, start=1):
+                cell = ws_movimientos.cell(row=row, column=col, value=value)
+                if col == 1:
+                    cell.number_format = fmt_date
+                elif col in (11, 12, 13, 14):
+                    cell.number_format = fmt_num
+                    cell.alignment = align_right
+
+        for col, width in enumerate(
+            [13, 15, 32, 16, 24, 44, 15, 34, 18, 44, 16, 16, 16, 16],
+            start=1,
+        ):
+            ws_movimientos.column_dimensions[get_column_letter(col)].width = width
+        ws_movimientos.freeze_panes = 'A2'
+        ws_movimientos.auto_filter.ref = (
+            f'A1:{get_column_letter(len(headers_movimientos))}'
+            f'{max(len(movimientos) + 1, 1)}'
+        )
+
+        fecha = timezone.localdate().strftime('%Y%m%d')
+        filename = f'movimientos_centros_costo_{fecha}.xlsx'
+        response = HttpResponse(
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        wb.save(response)
+        return response
+
+
 class CentroCostoCreateView(ContabilidadMixin, CreateView):
     model = CentroCosto
     template_name = 'admin/contabilidad/centro_costo_form.html'

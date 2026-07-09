@@ -1,4 +1,7 @@
+from io import BytesIO
 from decimal import Decimal
+
+import openpyxl
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -212,6 +215,90 @@ class InformeCentroCostoTest(TestCase):
         )
 
         self.assertEqual(response.context['total_egresos'], Decimal('250.00'))
+
+
+class CentroCostoMovimientosExcelViewTest(TestCase):
+    def setUp(self):
+        self.user = CustomUser.objects.create_superuser(
+            'centro-costo-excel',
+            password='x',
+        )
+        self.client.force_login(self.user)
+        self.centro = CentroCosto.objects.create(
+            codigo='ADM',
+            nombre='Administracion',
+            presupuesto_mensual=Decimal('1000.00'),
+        )
+        self.otro_centro = CentroCosto.objects.create(
+            codigo='OPE',
+            nombre='Operaciones',
+        )
+        self.cuenta_gasto = make_cuenta('4.1.88', 'Gasto centro', 'gasto')
+        self.cuenta_ingreso = make_cuenta('3.1.88', 'Ingreso centro', 'ingreso')
+
+    def _linea(self, centro, cuenta, debe='0', haber='0', estado='confirmado'):
+        asiento = AsientoContable.objects.create(
+            fecha='2026-07-03',
+            descripcion='Movimiento centro',
+            tipo='otro',
+            estado=estado,
+        )
+        return LineaAsiento.objects.create(
+            asiento=asiento,
+            cuenta=cuenta,
+            centro_costo=centro,
+            debe=Decimal(debe),
+            haber=Decimal(haber),
+        )
+
+    def _libro(self, response):
+        return openpyxl.load_workbook(BytesIO(response.content))
+
+    def test_descarga_excel_con_resumen_y_movimientos(self):
+        gasto = self._linea(self.centro, self.cuenta_gasto, debe='400.00')
+        ingreso = self._linea(self.centro, self.cuenta_ingreso, haber='900.00')
+        self._linea(self.otro_centro, self.cuenta_gasto, debe='125.00')
+        self._linea(self.centro, self.cuenta_gasto, debe='999.00', estado='borrador')
+
+        response = self.client.get(reverse('contabilidad:centro_movimientos_excel'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response['Content-Type'],
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+        self.assertIn(
+            'attachment; filename="movimientos_centros_costo_',
+            response['Content-Disposition'],
+        )
+
+        libro = self._libro(response)
+        self.assertEqual(libro.sheetnames, ['Resumen', 'Movimientos'])
+        resumen = libro['Resumen']
+        movimientos = libro['Movimientos']
+
+        self.assertEqual(resumen['A1'].value, 'Codigo')
+        self.assertEqual(resumen['A2'].value, 'ADM')
+        self.assertEqual(resumen['D2'].value, 2)
+        self.assertEqual(resumen['E2'].value, 900)
+        self.assertEqual(resumen['F2'].value, 400)
+        self.assertEqual(resumen['G2'].value, 500)
+
+        asientos_exportados = {
+            movimientos['D2'].value,
+            movimientos['D3'].value,
+            movimientos['D4'].value,
+        }
+        self.assertIn(gasto.asiento.numero, asientos_exportados)
+        self.assertIn(ingreso.asiento.numero, asientos_exportados)
+        self.assertIsNone(movimientos['D5'].value)
+
+    def test_listado_muestra_acceso_a_excel(self):
+        response = self.client.get(reverse('contabilidad:centro_list'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Descargar Excel')
+        self.assertContains(response, reverse('contabilidad:centro_movimientos_excel'))
 
 
 class AsientoDetailViewTest(TestCase):

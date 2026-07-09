@@ -46,6 +46,7 @@
           <th>N° Nota</th>
           <th>Factura</th>
           <th>Fecha Emisión</th>
+          <th>Libro</th>
           <th>Proveedor</th>
           <th class="text-end">Neto</th>
           <th class="text-end">IVA</th>
@@ -64,6 +65,7 @@
             </a>
           </td>
           <td>{{ nc.fecha_emision }}</td>
+          <td class="font-monospace">{{ nc.periodo_libro_compras_mes|stringformat:"02d" }}/{{ nc.periodo_libro_compras_anio }}</td>
           <td>{{ nc.proveedor.razon_social|truncatechars:30 }}</td>
           <td class="text-end small">{{ nc.neto|moneda_chilena }}</td>
           <td class="text-end small">{{ nc.iva|moneda_chilena }}</td>
@@ -84,7 +86,7 @@
           </td>
         </tr>
         {% empty %}
-        <tr><td colspan="9" class="text-center text-muted py-4">No hay notas de crédito recibidas.</td></tr>
+        <tr><td colspan="10" class="text-center text-muted py-4">No hay notas de crédito recibidas.</td></tr>
         {% endfor %}
       </tbody>
     </table>

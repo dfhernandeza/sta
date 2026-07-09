@@ -29,7 +29,14 @@ from .models import (
     NotaCreditoRecibida, DetalleNotaCreditoRecibida,
     CuentaPorPagar, Anticipo, AplicacionAnticipoProveedor,
 )
-from apps.tributario.models import RegistroCompra
+from apps.tributario.models import DeclaracionIVA, FormularioF29, RegistroCompra
+
+
+MESES_LIBRO_COMPRAS = [
+    (1, 'Enero'), (2, 'Febrero'), (3, 'Marzo'), (4, 'Abril'),
+    (5, 'Mayo'), (6, 'Junio'), (7, 'Julio'), (8, 'Agosto'),
+    (9, 'Septiembre'), (10, 'Octubre'), (11, 'Noviembre'), (12, 'Diciembre'),
+]
 
 
 def _viernes_proxima_semana(fecha):
@@ -76,20 +83,60 @@ def _sincronizar_registro_compra_factura(factura):
         factura.asientos.filter(tipo='factura_compra', estado='borrador').delete()
         return None
 
+    periodo_mes, periodo_anio = _periodo_libro_compras(factura)
+
     registro, _ = RegistroCompra.objects.update_or_create(
         factura=factura,
         tipo_documento='factura',
         defaults={
             'proveedor': factura.proveedor,
             'nota_credito': None,
-            'periodo_mes': factura.fecha_emision.month,
-            'periodo_anio': factura.fecha_emision.year,
+            'periodo_mes': periodo_mes,
+            'periodo_anio': periodo_anio,
             'neto': factura.neto,
             'iva_credito': factura.iva,
             'total': factura.total,
         }
     )
     return registro
+
+
+def _periodo_libro_compras(documento):
+    return (
+        documento.periodo_libro_compras_mes or documento.fecha_emision.month,
+        documento.periodo_libro_compras_anio or documento.fecha_emision.year,
+    )
+
+
+def _periodo_tributario_cerrado(mes, anio):
+    if not mes or not anio:
+        return None
+    filtros = {'periodo_mes': mes, 'periodo_anio': anio}
+    declaracion = DeclaracionIVA.objects.filter(
+        **filtros,
+        estado__in=['presentado', 'pagado'],
+    ).first()
+    if declaracion:
+        return f'IVA {mes:02d}/{anio} {declaracion.get_estado_display().lower()}'
+    f29 = FormularioF29.objects.filter(
+        **filtros,
+        estado__in=['presentado', 'pagado'],
+    ).first()
+    if f29:
+        return f'F29 {mes:02d}/{anio} {f29.get_estado_display().lower()}'
+    return None
+
+
+def _validar_periodo_libro_abierto(form, periodos):
+    for mes, anio in {periodo for periodo in periodos if periodo[0] and periodo[1]}:
+        cierre = _periodo_tributario_cerrado(mes, anio)
+        if cierre:
+            form.add_error(
+                'periodo_libro_compras_mes',
+                f'No se puede modificar el período del libro porque existe {cierre}.',
+            )
+            return False
+    return True
 
 
 def _generar_asiento_automatico_nota_credito(request, nota_credito, reemplazar_borrador=False):
@@ -481,7 +528,12 @@ class FacturaRecibidaListView(ProveedoresMixin, ListView):
 class FacturaRecibidaCreateView(ProveedoresMixin, CreateView):
     model = FacturaRecibida
     template_name = 'admin/proveedores/factura_form.html'
-    fields = ['numero', 'fecha_emision', 'fecha_vencimiento', 'proveedor', 'proyecto', 'pago_por_trabajador', 'neto', 'exento', 'iva', 'total', 'estado', 'origen', 'observaciones']
+    fields = [
+        'numero', 'fecha_emision', 'fecha_vencimiento',
+        'periodo_libro_compras_mes', 'periodo_libro_compras_anio',
+        'proveedor', 'proyecto', 'pago_por_trabajador',
+        'neto', 'exento', 'iva', 'total', 'estado', 'origen', 'observaciones',
+    ]
     success_url = reverse_lazy('proveedores:factura_list')
 
     def get_form(self, form_class=None):
@@ -492,6 +544,15 @@ class FacturaRecibidaCreateView(ProveedoresMixin, CreateView):
                 form.fields[fname].widget = DateInput(attrs={'class': 'form-control'}, format='%Y-%m-%d')
         if 'origen' in form.fields:
             form.fields['origen'].widget.attrs.update({'class': 'form-select'})
+        if 'periodo_libro_compras_mes' in form.fields:
+            form.fields['periodo_libro_compras_mes'].widget = Select(
+                choices=[('', 'Segun fecha de emision')] + MESES_LIBRO_COMPRAS,
+                attrs={'class': 'form-select'},
+            )
+            form.fields['periodo_libro_compras_mes'].required = False
+        if 'periodo_libro_compras_anio' in form.fields:
+            form.fields['periodo_libro_compras_anio'].widget.attrs.update({'class': 'form-control'})
+            form.fields['periodo_libro_compras_anio'].required = False
         for fname in ['neto', 'exento', 'iva', 'total']:
             if fname in form.fields:
                 form.fields[fname].required = False
@@ -514,6 +575,12 @@ class FacturaRecibidaCreateView(ProveedoresMixin, CreateView):
 
         for campo, valor in totales.items():
             setattr(form.instance, campo, valor)
+
+        periodo = _periodo_libro_compras(form.instance)
+        if form.instance.origen != 'apertura' and not _validar_periodo_libro_abierto(form, [periodo]):
+            return self.render_to_response(
+                self.get_context_data(form=form, detalle_formset=formset)
+            )
 
         self.object = form.save()
         formset.instance = self.object
@@ -539,7 +606,12 @@ class FacturaRecibidaCreateView(ProveedoresMixin, CreateView):
 class FacturaRecibidaUpdateView(ProveedoresMixin, UpdateView):
     model = FacturaRecibida
     template_name = 'admin/proveedores/factura_form.html'
-    fields = ['numero', 'fecha_emision', 'fecha_vencimiento', 'proveedor', 'proyecto', 'pago_por_trabajador', 'neto', 'exento', 'iva', 'total', 'estado', 'origen', 'observaciones']
+    fields = [
+        'numero', 'fecha_emision', 'fecha_vencimiento',
+        'periodo_libro_compras_mes', 'periodo_libro_compras_anio',
+        'proveedor', 'proyecto', 'pago_por_trabajador',
+        'neto', 'exento', 'iva', 'total', 'estado', 'origen', 'observaciones',
+    ]
     success_url = reverse_lazy('proveedores:factura_list')
 
     def dispatch(self, request, *args, **kwargs):
@@ -566,6 +638,15 @@ class FacturaRecibidaUpdateView(ProveedoresMixin, UpdateView):
                 form.fields[fname].widget = DateInput(attrs={'class': 'form-control'}, format='%Y-%m-%d')
         if 'origen' in form.fields:
             form.fields['origen'].widget.attrs.update({'class': 'form-select'})
+        if 'periodo_libro_compras_mes' in form.fields:
+            form.fields['periodo_libro_compras_mes'].widget = Select(
+                choices=[('', 'Segun fecha de emision')] + MESES_LIBRO_COMPRAS,
+                attrs={'class': 'form-select'},
+            )
+            form.fields['periodo_libro_compras_mes'].required = False
+        if 'periodo_libro_compras_anio' in form.fields:
+            form.fields['periodo_libro_compras_anio'].widget.attrs.update({'class': 'form-control'})
+            form.fields['periodo_libro_compras_anio'].required = False
         for fname in ['neto', 'exento', 'iva', 'total']:
             if fname in form.fields:
                 form.fields[fname].required = False
@@ -590,6 +671,17 @@ class FacturaRecibidaUpdateView(ProveedoresMixin, UpdateView):
 
             for campo, valor in totales.items():
                 setattr(form.instance, campo, valor)
+
+            factura_actual = FacturaRecibida.objects.select_for_update().get(pk=self.object.pk)
+            periodo_anterior = _periodo_libro_compras(factura_actual)
+            periodo_nuevo = _periodo_libro_compras(form.instance)
+            if form.instance.origen != 'apertura' and not _validar_periodo_libro_abierto(
+                form,
+                [periodo_anterior, periodo_nuevo],
+            ):
+                return self.render_to_response(
+                    self.get_context_data(form=form, detalle_formset=formset)
+                )
 
             self.object = form.save()
             formset.save()
@@ -645,7 +737,11 @@ class FacturaRecibidaDetailView(ProveedoresMixin, DetailView):
 class NotaCreditoRecibidaCreateView(ProveedoresMixin, CreateView):
     model = NotaCreditoRecibida
     template_name = 'admin/proveedores/nota_credito_form.html'
-    fields = ['numero', 'fecha_emision', 'neto', 'exento', 'iva', 'total', 'estado', 'observaciones']
+    fields = [
+        'numero', 'fecha_emision',
+        'periodo_libro_compras_mes', 'periodo_libro_compras_anio',
+        'neto', 'exento', 'iva', 'total', 'estado', 'observaciones',
+    ]
 
     def dispatch(self, request, *args, **kwargs):
         self.factura = get_object_or_404(FacturaRecibida, pk=kwargs['pk'])
@@ -670,6 +766,15 @@ class NotaCreditoRecibidaCreateView(ProveedoresMixin, CreateView):
         form = super().get_form(form_class)
         if 'fecha_emision' in form.fields:
             form.fields['fecha_emision'].widget = DateInput(attrs={'class': 'form-control'}, format='%Y-%m-%d')
+        if 'periodo_libro_compras_mes' in form.fields:
+            form.fields['periodo_libro_compras_mes'].widget = Select(
+                choices=[('', 'Segun fecha de emision')] + MESES_LIBRO_COMPRAS,
+                attrs={'class': 'form-select'},
+            )
+            form.fields['periodo_libro_compras_mes'].required = False
+        if 'periodo_libro_compras_anio' in form.fields:
+            form.fields['periodo_libro_compras_anio'].widget.attrs.update({'class': 'form-control'})
+            form.fields['periodo_libro_compras_anio'].required = False
         for fname in ['neto', 'exento', 'iva', 'total']:
             if fname in form.fields:
                 form.fields[fname].required = False
@@ -717,20 +822,27 @@ class NotaCreditoRecibidaCreateView(ProveedoresMixin, CreateView):
         for campo, valor in totales.items():
             setattr(form.instance, campo, valor)
 
+        periodo = _periodo_libro_compras(form.instance)
+        if not _validar_periodo_libro_abierto(form, [periodo]):
+            return self.render_to_response(
+                self.get_context_data(form=form, detalle_formset=formset)
+            )
+
         with transaction.atomic():
             self.object = form.save()
             formset.instance = self.object
             formset.save()
 
             if self.object.estado != 'anulada':
+                periodo_mes, periodo_anio = _periodo_libro_compras(self.object)
                 RegistroCompra.objects.update_or_create(
                     nota_credito=self.object,
                     tipo_documento='nota_credito',
                     defaults={
                         'proveedor': self.object.proveedor,
                         'factura': None,
-                        'periodo_mes': self.object.fecha_emision.month,
-                        'periodo_anio': self.object.fecha_emision.year,
+                        'periodo_mes': periodo_mes,
+                        'periodo_anio': periodo_anio,
                         'neto': -self.object.neto,
                         'iva_credito': -self.object.iva,
                         'total': -self.object.total,
@@ -772,7 +884,11 @@ class NotaCreditoRecibidaCreateView(ProveedoresMixin, CreateView):
 class NotaCreditoRecibidaUpdateView(ProveedoresMixin, UpdateView):
     model = NotaCreditoRecibida
     template_name = 'admin/proveedores/nota_credito_form.html'
-    fields = ['numero', 'fecha_emision', 'neto', 'exento', 'iva', 'total', 'estado', 'observaciones']
+    fields = [
+        'numero', 'fecha_emision',
+        'periodo_libro_compras_mes', 'periodo_libro_compras_anio',
+        'neto', 'exento', 'iva', 'total', 'estado', 'observaciones',
+    ]
 
     def dispatch(self, request, *args, **kwargs):
         self.object = self.get_object()
@@ -809,6 +925,15 @@ class NotaCreditoRecibidaUpdateView(ProveedoresMixin, UpdateView):
                 attrs={'class': 'form-control'},
                 format='%Y-%m-%d',
             )
+        if 'periodo_libro_compras_mes' in form.fields:
+            form.fields['periodo_libro_compras_mes'].widget = Select(
+                choices=[('', 'Segun fecha de emision')] + MESES_LIBRO_COMPRAS,
+                attrs={'class': 'form-select'},
+            )
+            form.fields['periodo_libro_compras_mes'].required = False
+        if 'periodo_libro_compras_anio' in form.fields:
+            form.fields['periodo_libro_compras_anio'].widget.attrs.update({'class': 'form-control'})
+            form.fields['periodo_libro_compras_anio'].required = False
         for fname in ['neto', 'exento', 'iva', 'total']:
             if fname in form.fields:
                 form.fields[fname].required = False
@@ -885,6 +1010,16 @@ class NotaCreditoRecibidaUpdateView(ProveedoresMixin, UpdateView):
                 )
                 return redirect('proveedores:nota_credito_detail', pk=nota_credito.pk)
 
+            periodo_anterior = _periodo_libro_compras(nota_credito)
+            periodo_nuevo = _periodo_libro_compras(form.instance)
+            if not _validar_periodo_libro_abierto(
+                form,
+                [periodo_anterior, periodo_nuevo],
+            ):
+                return self.render_to_response(
+                    self.get_context_data(form=form, detalle_formset=formset)
+                )
+
             nota_credito.asientos.filter(estado='borrador').delete()
             RegistroCompra.objects.filter(nota_credito=nota_credito).delete()
 
@@ -893,13 +1028,14 @@ class NotaCreditoRecibidaUpdateView(ProveedoresMixin, UpdateView):
             formset.save()
 
             if self.object.estado != 'anulada':
+                periodo_mes, periodo_anio = _periodo_libro_compras(self.object)
                 RegistroCompra.objects.create(
                     nota_credito=self.object,
                     tipo_documento='nota_credito',
                     proveedor=self.object.proveedor,
                     factura=None,
-                    periodo_mes=self.object.fecha_emision.month,
-                    periodo_anio=self.object.fecha_emision.year,
+                    periodo_mes=periodo_mes,
+                    periodo_anio=periodo_anio,
                     neto=-self.object.neto,
                     iva_credito=-self.object.iva,
                     total=-self.object.total,

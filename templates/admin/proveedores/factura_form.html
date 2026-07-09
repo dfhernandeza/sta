@@ -53,6 +53,16 @@
             <label class="form-label fw-600">Fecha Vencimiento</label>
             {{ form.fecha_vencimiento }}
           </div>
+          <div class="col-sm-2">
+            <label class="form-label fw-600">Mes Libro</label>
+            {{ form.periodo_libro_compras_mes }}
+            {% if form.periodo_libro_compras_mes.errors %}<div class="invalid-feedback d-block">{{ form.periodo_libro_compras_mes.errors.0 }}</div>{% endif %}
+          </div>
+          <div class="col-sm-2">
+            <label class="form-label fw-600">Año Libro</label>
+            {{ form.periodo_libro_compras_anio }}
+            {% if form.periodo_libro_compras_anio.errors %}<div class="invalid-feedback d-block">{{ form.periodo_libro_compras_anio.errors.0 }}</div>{% endif %}
+          </div>
           <div class="col-sm-3">
             <label class="form-label fw-600">Estado</label>
             {{ form.estado }}

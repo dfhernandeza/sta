@@ -46,17 +46,27 @@
         {% csrf_token %}
         <div class="row g-3">
 
-          <div class="col-sm-4">
+          <div class="col-sm-3">
             <label class="form-label fw-600">N° Nota de Crédito <span class="text-danger">*</span></label>
             {{ form.numero }}
             {% if form.numero.errors %}<div class="invalid-feedback d-block">{{ form.numero.errors.0 }}</div>{% endif %}
           </div>
-          <div class="col-sm-4">
+          <div class="col-sm-3">
             <label class="form-label fw-600">Fecha Emisión <span class="text-danger">*</span></label>
             {{ form.fecha_emision }}
             {% if form.fecha_emision.errors %}<div class="invalid-feedback d-block">{{ form.fecha_emision.errors.0 }}</div>{% endif %}
           </div>
-          <div class="col-sm-4">
+          <div class="col-sm-2">
+            <label class="form-label fw-600">Mes Libro</label>
+            {{ form.periodo_libro_compras_mes }}
+            {% if form.periodo_libro_compras_mes.errors %}<div class="invalid-feedback d-block">{{ form.periodo_libro_compras_mes.errors.0 }}</div>{% endif %}
+          </div>
+          <div class="col-sm-2">
+            <label class="form-label fw-600">Año Libro</label>
+            {{ form.periodo_libro_compras_anio }}
+            {% if form.periodo_libro_compras_anio.errors %}<div class="invalid-feedback d-block">{{ form.periodo_libro_compras_anio.errors.0 }}</div>{% endif %}
+          </div>
+          <div class="col-sm-2">
             <label class="form-label fw-600">Estado</label>
             {{ form.estado }}
           </div>

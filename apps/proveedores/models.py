@@ -85,11 +85,11 @@ class FacturaRecibida(TimeStampedModel):
         verbose_name='Correlativo Libro de Compras'
     )
     periodo_libro_compras_mes = models.PositiveSmallIntegerField(
-        null=True, blank=True, editable=False,
+        null=True, blank=True,
         verbose_name='Mes Libro de Compras'
     )
     periodo_libro_compras_anio = models.PositiveSmallIntegerField(
-        null=True, blank=True, editable=False,
+        null=True, blank=True,
         verbose_name='Año Libro de Compras'
     )
 
@@ -116,54 +116,79 @@ class FacturaRecibida(TimeStampedModel):
 
     @property
     def indice_libro_compras(self):
-        if not self.correlativo_libro_compras or not self.fecha_emision:
+        if not self.correlativo_libro_compras or not self.periodo_libro_compras_mes:
             return '—'
-        return f'{self.correlativo_libro_compras}/{self.fecha_emision.month}'
+        return f'{self.correlativo_libro_compras}/{self.periodo_libro_compras_mes}'
 
     def _asignar_correlativo_libro_compras(self):
         if not self.pk or not self.fecha_emision:
             return
+        if not self.periodo_libro_compras_mes:
+            self.periodo_libro_compras_mes = self.fecha_emision.month
+        if not self.periodo_libro_compras_anio:
+            self.periodo_libro_compras_anio = self.fecha_emision.year
 
         self.correlativo_libro_compras = FacturaRecibida.objects.filter(
             pk__lte=self.pk,
-            fecha_emision__year=self.fecha_emision.year,
-            fecha_emision__month=self.fecha_emision.month,
+            periodo_libro_compras_anio=self.periodo_libro_compras_anio,
+            periodo_libro_compras_mes=self.periodo_libro_compras_mes,
         ).count()
-        self.periodo_libro_compras_mes = self.fecha_emision.month
-        self.periodo_libro_compras_anio = self.fecha_emision.year
 
     @classmethod
     def reindexar_libro_compras(cls):
         cls.objects.update(
             correlativo_libro_compras=None,
-            periodo_libro_compras_mes=None,
-            periodo_libro_compras_anio=None,
         )
         correlativos_por_periodo = {}
-        for factura in cls.objects.order_by('pk').only('pk', 'fecha_emision').iterator():
-            periodo = (factura.fecha_emision.year, factura.fecha_emision.month)
+        for factura in cls.objects.order_by('pk').only(
+            'pk',
+            'fecha_emision',
+            'periodo_libro_compras_mes',
+            'periodo_libro_compras_anio',
+        ).iterator():
+            periodo_mes = factura.periodo_libro_compras_mes or factura.fecha_emision.month
+            periodo_anio = factura.periodo_libro_compras_anio or factura.fecha_emision.year
+            periodo = (periodo_anio, periodo_mes)
             indice = correlativos_por_periodo.get(periodo, 0) + 1
             correlativos_por_periodo[periodo] = indice
             cls.objects.filter(pk=factura.pk).update(
                 correlativo_libro_compras=indice,
-                periodo_libro_compras_mes=periodo[1],
-                periodo_libro_compras_anio=periodo[0],
+                periodo_libro_compras_mes=periodo_mes,
+                periodo_libro_compras_anio=periodo_anio,
             )
 
     def save(self, *args, **kwargs):
-        fecha_emision_anterior = None
+        periodo_anterior = None
         if self.pk:
-            fecha_emision_anterior = FacturaRecibida.objects.filter(
+            periodo_anterior = FacturaRecibida.objects.filter(
                 pk=self.pk,
-            ).values_list('fecha_emision', flat=True).first()
+            ).values_list(
+                'periodo_libro_compras_anio',
+                'periodo_libro_compras_mes',
+            ).first()
 
         if not self.iva:
             self.iva = round(self.neto * Decimal('0.19'), 2)
         if not self.total:
             self.total = self.neto + self.iva + (self.exento or Decimal('0'))
+        if self.fecha_emision:
+            if not self.periodo_libro_compras_mes:
+                self.periodo_libro_compras_mes = self.fecha_emision.month
+            if not self.periodo_libro_compras_anio:
+                self.periodo_libro_compras_anio = self.fecha_emision.year
+        periodo_actual = (
+            self.periodo_libro_compras_anio,
+            self.periodo_libro_compras_mes,
+        )
+        if periodo_anterior and periodo_anterior != periodo_actual:
+            self.correlativo_libro_compras = None
+            update_fields = kwargs.get('update_fields')
+            if update_fields:
+                kwargs['update_fields'] = set(update_fields) | {'correlativo_libro_compras'}
+
         super().save(*args, **kwargs)
 
-        if fecha_emision_anterior and fecha_emision_anterior != self.fecha_emision:
+        if periodo_anterior and periodo_anterior != periodo_actual:
             FacturaRecibida.reindexar_libro_compras()
             self.refresh_from_db(fields=[
                 'correlativo_libro_compras',
@@ -249,6 +274,14 @@ class NotaCreditoRecibida(TimeStampedModel):
     total = models.DecimalField(max_digits=15, decimal_places=2, verbose_name='Total')
     estado = models.CharField(max_length=15, choices=ESTADO_CHOICES, default='aplicada', verbose_name='Estado')
     observaciones = models.TextField(blank=True, verbose_name='Observaciones')
+    periodo_libro_compras_mes = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        verbose_name='Mes Libro de Compras'
+    )
+    periodo_libro_compras_anio = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        verbose_name='Año Libro de Compras'
+    )
 
     class Meta:
         verbose_name = 'Nota de Crédito Recibida'
@@ -264,6 +297,11 @@ class NotaCreditoRecibida(TimeStampedModel):
             self.iva = round(self.neto * Decimal('0.19'), 2)
         if not self.total:
             self.total = self.neto + self.iva + (self.exento or Decimal('0'))
+        if self.fecha_emision:
+            if not self.periodo_libro_compras_mes:
+                self.periodo_libro_compras_mes = self.fecha_emision.month
+            if not self.periodo_libro_compras_anio:
+                self.periodo_libro_compras_anio = self.fecha_emision.year
         super().save(*args, **kwargs)
 
 

@@ -58,6 +58,8 @@
         <dd class="col-sm-7 small">{{ nota_credito.proveedor.razon_social }}</dd>
         <dt class="col-sm-5 text-muted small">Fecha emisión</dt>
         <dd class="col-sm-7 small">{{ nota_credito.fecha_emision }}</dd>
+        <dt class="col-sm-5 text-muted small">Libro compras</dt>
+        <dd class="col-sm-7 small">{{ nota_credito.periodo_libro_compras_mes|stringformat:"02d" }}/{{ nota_credito.periodo_libro_compras_anio }}</dd>
         <dt class="col-sm-5 text-muted small">Neto</dt>
         <dd class="col-sm-7 small">{{ nota_credito.neto|moneda_chilena }}</dd>
         <dt class="col-sm-5 text-muted small">Exento</dt>

@@ -33,6 +33,7 @@ urlpatterns = [
     path('centros/', views.CentroCostoListView.as_view(), name='centro_list'),
     path('centros/crear/', views.CentroCostoCreateView.as_view(), name='centro_create'),
     path('centros/<int:pk>/editar/', views.CentroCostoUpdateView.as_view(), name='centro_update'),
+    path('centros/exportar-movimientos/', views.CentroCostoMovimientosExcelView.as_view(), name='centro_movimientos_excel'),
     path('centros/reporte/', views.InformeCentroCostoView.as_view(), name='centro_reporte'),
     path('centros/<int:pk>/detalle/', views.CentroCostoDetalleView.as_view(), name='centro_detalle'),
 
