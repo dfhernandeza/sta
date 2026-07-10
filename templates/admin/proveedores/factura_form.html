@@ -32,6 +32,38 @@
     <div class="card-sta p-4">
       <form method="post" autoComplete="off" novalidate>
         {% csrf_token %}
+        {% if form.errors or form.non_field_errors or detalle_formset.non_form_errors or detalle_formset.total_error_count %}
+        <div class="alert alert-danger py-2 mb-3" role="alert">
+          <div class="fw-700 mb-1">
+            <i class="bi bi-exclamation-triangle-fill me-1"></i>No se pudo guardar la factura.
+          </div>
+          <ul class="mb-0 ps-3 small">
+            {% for error in form.non_field_errors %}
+            <li>{{ error }}</li>
+            {% endfor %}
+            {% for field in form %}
+              {% for error in field.errors %}
+              <li>{{ field.label }}: {{ error }}</li>
+              {% endfor %}
+            {% endfor %}
+            {% for error in detalle_formset.non_form_errors %}
+            <li>Lineas de detalle: {{ error }}</li>
+            {% endfor %}
+            {% for df in detalle_formset %}
+              {% if df.errors or df.non_field_errors %}
+                {% for error in df.non_field_errors %}
+                <li>Linea {{ forloop.parentloop.counter }}: {{ error }}</li>
+                {% endfor %}
+                {% for field in df %}
+                  {% for error in field.errors %}
+                  <li>Linea {{ forloop.parentloop.parentloop.counter }} - {{ field.label }}: {{ error }}</li>
+                  {% endfor %}
+                {% endfor %}
+              {% endif %}
+            {% endfor %}
+          </ul>
+        </div>
+        {% endif %}
         <div class="row g-3">
 
           <div class="col-sm-4">
@@ -52,6 +84,7 @@
           <div class="col-sm-2">
             <label class="form-label fw-600">Fecha Vencimiento</label>
             {{ form.fecha_vencimiento }}
+            {% if form.fecha_vencimiento.errors %}<div class="invalid-feedback d-block">{{ form.fecha_vencimiento.errors.0 }}</div>{% endif %}
           </div>
           <div class="col-sm-2">
             <label class="form-label fw-600">Mes Libro</label>
@@ -66,24 +99,29 @@
           <div class="col-sm-3">
             <label class="form-label fw-600">Estado</label>
             {{ form.estado }}
+            {% if form.estado.errors %}<div class="invalid-feedback d-block">{{ form.estado.errors.0 }}</div>{% endif %}
           </div>
           <div class="col-sm-5">
             <label class="form-label fw-600">Origen</label>
             {{ form.origen }}
             <div class="form-text">Use “Saldo de apertura” para facturas heredadas: crea CxP, pero no libro de compras ni asiento de compra.</div>
+            {% if form.origen.errors %}<div class="invalid-feedback d-block">{{ form.origen.errors.0 }}</div>{% endif %}
           </div>
           <div class="col-sm-6">
             <label class="form-label fw-600">Proyecto</label>
             {{ form.proyecto }}
+            {% if form.proyecto.errors %}<div class="invalid-feedback d-block">{{ form.proyecto.errors.0 }}</div>{% endif %}
           </div>
           <div class="col-sm-6">
             <label class="form-label fw-600">Pagada por trabajador</label>
             {{ form.pago_por_trabajador }}
             <div class="form-text">Si se selecciona, la CxP se tratará como reembolso al trabajador.</div>
+            {% if form.pago_por_trabajador.errors %}<div class="invalid-feedback d-block">{{ form.pago_por_trabajador.errors.0 }}</div>{% endif %}
           </div>
           <div class="col-sm-12">
             <label class="form-label fw-600">Observaciones</label>
             {{ form.observaciones }}
+            {% if form.observaciones.errors %}<div class="invalid-feedback d-block">{{ form.observaciones.errors.0 }}</div>{% endif %}
           </div>
           <div class="col-12">
             {{ form.neto }}{{ form.exento }}{{ form.iva }}{{ form.total }}
@@ -100,12 +138,14 @@
                   <div class="text-muted small">Exento</div>
                   <div class="fw-700" id="display-exento">$ 0</div>
                 </div>
+                {% if form.exento.errors %}<div class="invalid-feedback d-block">{{ form.exento.errors.0 }}</div>{% endif %}
               </div>
               <div class="col-sm-3">
                 <div class="border rounded bg-light p-2">
                   <div class="text-muted small">IVA</div>
                   <div class="fw-700" id="display-iva">$ 0</div>
                 </div>
+                {% if form.iva.errors %}<div class="invalid-feedback d-block">{{ form.iva.errors.0 }}</div>{% endif %}
               </div>
               <div class="col-sm-3">
                 <div class="border rounded bg-light p-2">
@@ -164,8 +204,27 @@
               <i class="bi bi-inbox me-1"></i>Sin líneas. Use el botón para agregar.
             </div>
 
-            {% if detalle_formset.non_form_errors %}
-            <div class="alert alert-danger py-2 small mt-2">{{ detalle_formset.non_form_errors }}</div>
+            {% if detalle_formset.non_form_errors or detalle_formset.total_error_count %}
+            <div class="alert alert-danger py-2 small mt-2">
+              <div class="fw-700 mb-1">Revise las lineas de detalle:</div>
+              <ul class="mb-0 ps-3">
+                {% for error in detalle_formset.non_form_errors %}
+                <li>{{ error }}</li>
+                {% endfor %}
+                {% for df in detalle_formset %}
+                  {% if df.errors or df.non_field_errors %}
+                    {% for error in df.non_field_errors %}
+                    <li>Linea {{ forloop.parentloop.counter }}: {{ error }}</li>
+                    {% endfor %}
+                    {% for field in df %}
+                      {% for error in field.errors %}
+                      <li>Linea {{ forloop.parentloop.parentloop.counter }} - {{ field.label }}: {{ error }}</li>
+                      {% endfor %}
+                    {% endfor %}
+                  {% endif %}
+                {% endfor %}
+              </ul>
+            </div>
             {% endif %}
           </div>
 
