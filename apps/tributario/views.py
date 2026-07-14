@@ -244,19 +244,24 @@ class RegistroCompraListView(TributarioMixin, ListView):
 
     def get_queryset(self):
         qs = RegistroCompra.objects.select_related('proveedor', 'factura', 'nota_credito')
-        mes = self.request.GET.get('mes')
-        anio = self.request.GET.get('anio')
-        if mes:
-            qs = qs.filter(periodo_mes=mes)
-        if anio:
-            qs = qs.filter(periodo_anio=anio)
+        periodo = self.request.GET.get('periodo', '')
+        try:
+            anio, mes = map(int, periodo.split('-'))
+            if not 1 <= mes <= 12:
+                raise ValueError
+        except (TypeError, ValueError):
+            pass
+        else:
+            qs = qs.filter(periodo_mes=mes, periodo_anio=anio)
         return qs.order_by('-periodo_anio', '-periodo_mes')
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         ctx['titulo'] = 'Registro de Compras'
         totales = self.get_queryset().aggregate(
-            total_neto=Sum('neto'), total_iva=Sum('iva_credito'), total=Sum('total')
+            total_neto=Sum('neto'),
+            total_iva_credito=Sum('iva_credito'),
+            total_total=Sum('total'),
         )
         ctx.update(totales)
         return ctx
