@@ -14,9 +14,16 @@
   <h4 class="page-title">
     <i class="bi bi-people me-2"></i>Remuneraciones — {{ mes_nombre }} {{ anio }}
   </h4>
-  <a href="{% url 'rrhh:remuneracion_procesar' %}" class="btn btn-outline-secondary rounded-pill px-4">
-    <i class="bi bi-arrow-left me-1"></i>Cambiar período
-  </a>
+  <div class="d-flex gap-2">
+    {% if cantidad_liquidaciones %}
+    <a href="{% url 'rrhh:remuneraciones_periodo_pdf' mes=mes anio=anio %}" class="btn btn-outline-primary rounded-pill px-4">
+      <i class="bi bi-file-earmark-pdf me-1"></i>Descargar todas
+    </a>
+    {% endif %}
+    <a href="{% url 'rrhh:remuneracion_procesar' %}" class="btn btn-outline-secondary rounded-pill px-4">
+      <i class="bi bi-arrow-left me-1"></i>Cambiar período
+    </a>
+  </div>
 </div>
 
 {# Resumen #}
@@ -104,6 +111,12 @@
               <a href="{% url 'rrhh:remuneracion_delete' pk=item.remuneracion.pk %}"
                  class="btn btn-sm btn-outline-danger rounded-pill px-2 ms-1">
                 <i class="bi bi-trash me-1"></i>Eliminar
+              </a>
+            {% endif %}
+            {% if item.remuneracion %}
+              <a href="{% url 'rrhh:remuneracion_pdf' pk=item.remuneracion.pk %}"
+                 class="btn btn-sm btn-outline-primary rounded-pill px-2 ms-1" title="Descargar liquidación PDF">
+                <i class="bi bi-file-earmark-pdf"></i>
               </a>
             {% endif %}
           </td>

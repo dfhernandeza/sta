@@ -5,7 +5,7 @@ from django.urls import reverse, reverse_lazy
 from django.contrib import messages
 from django.db import transaction
 from django.db.models import Count, Q, Sum
-from django.http import JsonResponse
+from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from calendar import monthrange
@@ -482,6 +482,48 @@ class RemuneracionDetailView(RrhhMixin, DetailView):
         return ctx
 
 
+class RemuneracionPDFView(RrhhMixin, View):
+    def get(self, request, pk):
+        from .pdf import generar_liquidaciones_pdf
+
+        remuneracion = get_object_or_404(
+            Remuneracion.objects.select_related(
+                'trabajador', 'trabajador__cargo', 'trabajador__centro_costo'
+            ),
+            pk=pk,
+        )
+        contenido = generar_liquidaciones_pdf([remuneracion])
+        nombre = (
+            f'liquidacion_{remuneracion.trabajador.rut}_'
+            f'{remuneracion.periodo_anio}_{remuneracion.periodo_mes:02d}.pdf'
+        ).replace('.', '').replace(' ', '_')
+        response = HttpResponse(contenido, content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="{nombre}"'
+        return response
+
+
+class RemuneracionesPeriodoPDFView(RrhhMixin, View):
+    def get(self, request, mes, anio):
+        from .pdf import generar_liquidaciones_pdf
+
+        if not 1 <= mes <= 12:
+            raise Http404('Período inválido.')
+        remuneraciones = Remuneracion.objects.filter(
+            periodo_mes=mes,
+            periodo_anio=anio,
+        ).select_related(
+            'trabajador', 'trabajador__cargo', 'trabajador__centro_costo'
+        ).order_by('trabajador__apellidos', 'trabajador__nombres')
+        if not remuneraciones.exists():
+            raise Http404('No existen liquidaciones para el período.')
+        contenido = generar_liquidaciones_pdf(remuneraciones)
+        response = HttpResponse(contenido, content_type='application/pdf')
+        response['Content-Disposition'] = (
+            f'attachment; filename="liquidaciones_{anio}_{mes:02d}.pdf"'
+        )
+        return response
+
+
 class RemuneracionCreateView(RrhhMixin, CreateView):
     model = Remuneracion
     template_name = 'admin/rrhh/remuneracion_form.html'
@@ -900,6 +942,7 @@ class RemuneracionPeriodoDetalleView(RrhhMixin, View):
             'total': total,
             'pagados': pagados,
             'pendientes': total - pagados,
+            'cantidad_liquidaciones': len(rems),
         })
 
 

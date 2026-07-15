@@ -52,6 +52,55 @@ def _make_trabajador():
 
 
 @override_settings(SECURE_SSL_REDIRECT=False)
+class RemuneracionPDFViewTest(TestCase):
+    def setUp(self):
+        self.user = CustomUser.objects.create_user(
+            'pdf_rrhh', password='pass', app_permisos=['rrhh']
+        )
+        self.client_http = Client()
+        self.client_http.force_login(self.user)
+        self.trabajador = _make_trabajador()
+        self.remuneracion = Remuneracion.objects.create(
+            trabajador=self.trabajador,
+            periodo_mes=6,
+            periodo_anio=2026,
+            sueldo_base=Decimal('1000000'),
+            sueldo_bruto=Decimal('1000000'),
+            descuento_afp=Decimal('110000'),
+            descuento_salud=Decimal('70000'),
+            impuesto_unico=Decimal('10000'),
+            liquido_pagar=Decimal('810000'),
+            estado='aprobado',
+        )
+
+    def test_descarga_individual_entrega_pdf(self):
+        response = self.client_http.get(
+            reverse('rrhh:remuneracion_pdf', args=[self.remuneracion.pk])
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'application/pdf')
+        self.assertIn('attachment;', response['Content-Disposition'])
+        self.assertTrue(response.content.startswith(b'%PDF'))
+
+    def test_descarga_periodo_entrega_pdf(self):
+        response = self.client_http.get(
+            reverse('rrhh:remuneraciones_periodo_pdf', args=[6, 2026])
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'application/pdf')
+        self.assertTrue(response.content.startswith(b'%PDF'))
+
+    def test_descarga_periodo_sin_liquidaciones_retorna_404(self):
+        response = self.client_http.get(
+            reverse('rrhh:remuneraciones_periodo_pdf', args=[5, 2026])
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+
+@override_settings(SECURE_SSL_REDIRECT=False)
 class RemuneracionPagarViewTest(TestCase):
     def setUp(self):
         self.user = CustomUser.objects.create_user(
