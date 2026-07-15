@@ -130,6 +130,12 @@ class FormularioF29(TimeStampedModel):
     iva_pagar = models.DecimalField(max_digits=15, decimal_places=2, default=0, verbose_name='IVA a Pagar')
     ppm_pagar = models.DecimalField(max_digits=15, decimal_places=2, default=0, verbose_name='PPM a Pagar')
     retenciones = models.DecimalField(max_digits=15, decimal_places=2, default=0, verbose_name='Retenciones')
+    impuesto_unico = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        default=0,
+        verbose_name='Impuesto Único de Segunda Categoría',
+    )
     total_pagar = models.DecimalField(max_digits=15, decimal_places=2, default=0, verbose_name='Total a Pagar')
     estado = models.CharField(max_length=15, choices=ESTADO_CHOICES, default='pendiente', verbose_name='Estado')
     fecha_presentacion = models.DateField(null=True, blank=True, verbose_name='Fecha de Presentación')
@@ -145,5 +151,10 @@ class FormularioF29(TimeStampedModel):
         return f'F29 {self.periodo_mes:02d}/{self.periodo_anio}'
 
     def save(self, *args, **kwargs):
-        self.total_pagar = self.iva_pagar + self.ppm_pagar + self.retenciones
+        self.total_pagar = (
+            self.iva_pagar
+            + self.ppm_pagar
+            + self.retenciones
+            + self.impuesto_unico
+        )
         super().save(*args, **kwargs)

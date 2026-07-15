@@ -62,8 +62,8 @@
         {% if not calculado.tiene_iva %}<span class="text-warning">(sin declaración IVA)</span>{% endif %} |
         PPM: <strong>{{ calculado.ppm_pagar|moneda_chilena }}</strong>
         {% if not calculado.tiene_ppm %}<span class="text-warning">(sin PPM)</span>{% endif %} |
-        Retenciones: <strong>{{ calculado.retenciones|moneda_chilena }}</strong> |
-        Impuesto Único incluido: <strong>{{ calculado.impuesto_unico|moneda_chilena }}</strong> |
+        Retenciones honorarios: <strong>{{ calculado.retenciones|moneda_chilena }}</strong> |
+        Impuesto Único: <strong>{{ calculado.impuesto_unico|moneda_chilena }}</strong> |
         Total estimado: <strong>{{ calculado.total|moneda_chilena }}</strong>
         — Valores pre-cargados en el formulario.
       </div>
@@ -103,9 +103,13 @@
             <label class="form-label fw-600">PPM a Pagar</label>
             {{ form.ppm_pagar }}
           </div>
-          <div class="col-sm-4">
-            <label class="form-label fw-600">Retenciones <span class="text-muted small">(incluye Impuesto Único)</span></label>
+          <div class="col-sm-3">
+            <label class="form-label fw-600">Retenciones Honorarios</label>
             {{ form.retenciones }}
+          </div>
+          <div class="col-sm-3">
+            <label class="form-label fw-600">Impuesto Único</label>
+            {{ form.impuesto_unico }}
           </div>
           <div class="col-sm-4">
             <label class="form-label fw-600">Fecha presentación</label>

@@ -23,7 +23,7 @@
           <th>Período</th><th>Folio</th>
           <th class="text-end">IVA a Pagar</th>
           <th class="text-end">PPM</th>
-          <th class="text-end">Otras Retenciones</th>
+          <th class="text-end">Retenciones Honorarios</th>
           <th class="text-end">Impuesto Único</th>
           <th class="text-end">Total</th>
           <th class="text-center">Estado</th>
@@ -38,8 +38,8 @@
           <td class="font-monospace small">{{ f.folio|default:"—" }}</td>
           <td class="text-end small">{{ f.iva_pagar|moneda_chilena }}</td>
           <td class="text-end small">{{ f.ppm_pagar|moneda_chilena }}</td>
-          <td class="text-end small">{{ f.otras_retenciones|moneda_chilena }}</td>
-          <td class="text-end small">{{ f.impuesto_unico_remuneraciones|moneda_chilena }}</td>
+          <td class="text-end small">{{ f.retenciones|moneda_chilena }}</td>
+          <td class="text-end small">{{ f.impuesto_unico|moneda_chilena }}</td>
           <td class="text-end fw-700">{{ f.total_pagar|moneda_chilena }}</td>
           <td class="text-center"><span class="badge-{{ f.estado }}">{{ f.get_estado_display }}</span></td>
           <td class="small">{{ f.fecha_presentacion|default:"—" }}</td>

@@ -156,11 +156,15 @@ class F29Form(forms.ModelForm):
 
     class Meta:
         model = FormularioF29
-        fields = ['periodo_mes', 'periodo_anio', 'iva_pagar', 'ppm_pagar', 'retenciones', 'estado', 'fecha_presentacion', 'folio']
+        fields = [
+            'periodo_mes', 'periodo_anio', 'iva_pagar', 'ppm_pagar',
+            'retenciones', 'impuesto_unico', 'estado', 'fecha_presentacion', 'folio',
+        ]
         widgets = {
             'iva_pagar':          forms.NumberInput(attrs={'class': 'form-control'}),
             'ppm_pagar':          forms.NumberInput(attrs={'class': 'form-control'}),
             'retenciones':        forms.NumberInput(attrs={'class': 'form-control'}),
+            'impuesto_unico':     forms.NumberInput(attrs={'class': 'form-control'}),
             'estado':             forms.Select(attrs={'class': 'form-select'}),
             'fecha_presentacion': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
             'folio':              forms.TextInput(attrs={'class': 'form-control'}),
@@ -920,37 +924,6 @@ class F29ListView(TributarioMixin, ListView):
     template_name = 'admin/tributario/f29_list.html'
     context_object_name = 'f29s'
 
-    def get_queryset(self):
-        from django.db.models import DecimalField, F, OuterRef, Subquery, Value
-        from django.db.models.functions import Coalesce, Greatest
-        from apps.rrhh.models import Remuneracion
-
-        impuestos_periodo = (
-            Remuneracion.objects.filter(
-                periodo_mes=OuterRef('periodo_mes'),
-                periodo_anio=OuterRef('periodo_anio'),
-                estado__in=['aprobado', 'pagado'],
-            )
-            .values('periodo_mes', 'periodo_anio')
-            .annotate(total=Sum('impuesto_unico'))
-            .values('total')
-        )
-        campo_monto = DecimalField(max_digits=15, decimal_places=2)
-        queryset = super().get_queryset().annotate(
-            impuesto_unico_remuneraciones=Coalesce(
-                Subquery(impuestos_periodo, output_field=campo_monto),
-                Value(Decimal('0')),
-                output_field=campo_monto,
-            )
-        )
-        return queryset.annotate(
-            otras_retenciones=Greatest(
-                F('retenciones') - F('impuesto_unico_remuneraciones'),
-                Value(Decimal('0')),
-                output_field=campo_monto,
-            )
-        )
-
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         ctx['titulo'] = 'Formularios F29'
@@ -1000,7 +973,6 @@ class F29CreateView(TributarioMixin, CreateView):
                 periodo_anio=anio,
                 estado__in=['aprobado', 'pagado'],
             ).aggregate(s=Sum('impuesto_unico'))['s'] or 0
-            retenciones += impuesto_remuneraciones
         except Exception:
             pass
         return iva_pagar, ppm_pagar, retenciones, impuesto_remuneraciones
@@ -1012,15 +984,19 @@ class F29CreateView(TributarioMixin, CreateView):
         if mes and anio:
             try:
                 mes_int, anio_int = int(mes), int(anio)
-                iva_pagar, ppm_pagar, retenciones, _ = self._calcular_periodo(
-                    mes_int, anio_int
-                )
+                (
+                    iva_pagar,
+                    ppm_pagar,
+                    retenciones,
+                    impuesto_remuneraciones,
+                ) = self._calcular_periodo(mes_int, anio_int)
                 initial.update({
                     'periodo_mes': mes_int,
                     'periodo_anio': anio_int,
                     'iva_pagar': iva_pagar,
                     'ppm_pagar': ppm_pagar,
                     'retenciones': retenciones,
+                    'impuesto_unico': impuesto_remuneraciones,
                 })
             except (ValueError, TypeError):
                 pass
@@ -1052,7 +1028,12 @@ class F29CreateView(TributarioMixin, CreateView):
                     'ppm_pagar': ppm_pagar,
                     'retenciones': retenciones,
                     'impuesto_unico': impuesto_remuneraciones,
-                    'total': float(iva_pagar) + float(ppm_pagar) + float(retenciones),
+                    'total': (
+                        float(iva_pagar)
+                        + float(ppm_pagar)
+                        + float(retenciones)
+                        + float(impuesto_remuneraciones)
+                    ),
                     'tiene_iva': DeclaracionIVA.objects.filter(periodo_mes=mes_int, periodo_anio=anio_int).exists(),
                     'tiene_ppm': PPM.objects.filter(periodo_mes=mes_int, periodo_anio=anio_int).exists(),
                 }
