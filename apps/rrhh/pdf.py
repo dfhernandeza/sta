@@ -145,7 +145,34 @@ def _dibujar_liquidacion(c, remuneracion, config):
     _fila(c, y, 'TOTAL DESCUENTOS', total_descuentos,
           x_d, x_d + col_w, col_w, gris, True)
 
-    y -= 58
+    descuentos_legales = remuneracion.descuentos
+    liquido_mes = (remuneracion.sueldo_bruto or 0) - descuentos_legales
+    anticipo = remuneracion.anticipo_descontado or 0
+
+    y -= 34
+    resumen_x = margen + 58
+    resumen_w = width - 2 * margen - 116
+    resumen_top = y + 14
+    resumen_filas = [
+        ('Total Haberes', remuneracion.sueldo_bruto, False),
+        ('(-) Descuentos Legales', descuentos_legales, False),
+        ('Líquido del Mes', liquido_mes, True),
+        ('(-) Anticipo recibido', anticipo, False),
+        ('Líquido a pagar', remuneracion.liquido_pagar, True),
+    ]
+    c.setStrokeColor(colors.HexColor('#AEB5BC'))
+    c.roundRect(resumen_x, resumen_top - 102, resumen_w, 102, 4, fill=0, stroke=1)
+    for indice, (concepto, monto, destacado) in enumerate(resumen_filas):
+        fila_y = resumen_top - 17 - indice * 19
+        if destacado:
+            c.setFillColor(gris)
+            c.rect(resumen_x + 1, fila_y - 5, resumen_w - 2, 19, fill=1, stroke=0)
+            c.setFillColor(colors.black)
+        _texto(c, concepto, resumen_x + 9, fila_y, 8.5, destacado)
+        _texto(c, _pesos(monto), resumen_x + resumen_w - 9, fila_y,
+               8.5, destacado, 'right')
+
+    y = resumen_top - 140
     c.setFillColor(azul)
     c.roundRect(margen, y, width - 2 * margen, 42, 6, fill=1, stroke=0)
     c.setFillColor(colors.white)
