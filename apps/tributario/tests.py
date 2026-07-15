@@ -6,7 +6,42 @@ from django.utils import timezone
 from apps.accounts.models import CustomUser
 from apps.contabilidad.models import AsientoContable, PlanCuentas, ConfiguracionContable
 from apps.tesoreria.models import Banco, CuentaBancaria
+from apps.rrhh.models import CargoTrabajador, Remuneracion, Trabajador
 from .models import FormularioF29, PPM, DeclaracionIVA
+
+
+@override_settings(SECURE_SSL_REDIRECT=False)
+class F29ListImpuestoUnicoTest(TestCase):
+    def setUp(self):
+        self.user = CustomUser.objects.create_user(
+            'f29_lista', password='pass', app_permisos=['tributario']
+        )
+        self.client_http = Client()
+        self.client_http.force_login(self.user)
+        cargo = CargoTrabajador.objects.create(nombre='Administrativo')
+        trabajador = Trabajador.objects.create(
+            rut='10.006.776-5', nombres='Ana', apellidos='Pérez', cargo=cargo,
+            fecha_ingreso=timezone.now().date(), sueldo_base=Decimal('1500000'),
+        )
+        Remuneracion.objects.create(
+            trabajador=trabajador, periodo_mes=6, periodo_anio=2026,
+            sueldo_base=Decimal('1500000'), sueldo_bruto=Decimal('1500000'),
+            impuesto_unico=Decimal('50000'), liquido_pagar=Decimal('1450000'),
+            estado='aprobado',
+        )
+        self.f29 = FormularioF29.objects.create(
+            periodo_mes=6, periodo_anio=2026, retenciones=Decimal('50000'),
+        )
+
+    def test_listado_muestra_impuesto_unico_del_periodo(self):
+        response = self.client_http.get(reverse('tributario:f29_list'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Impuesto Único')
+        self.assertEqual(
+            response.context['f29s'][0].impuesto_unico_remuneraciones,
+            Decimal('50000'),
+        )
 
 
 def _setup_contabilidad():
