@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 from django.shortcuts import get_object_or_404, redirect
 from django.utils import timezone
 from datetime import timedelta
-from django.db.models import Sum
+from django.db.models import Q, Sum
 from django.forms import CheckboxInput, inlineformset_factory, ModelForm, TextInput, Select, NumberInput
 from apps.contabilidad.utils import generar_asiento_factura_recibida, generar_asiento_nota_credito_recibida
 from apps.core.mixins import GestionMixin, AppPermisoMixin
@@ -1239,10 +1239,9 @@ class CuentaPorPagarListView(ProveedoresMixin, ListView):
     paginate_by = 25
 
     def get_queryset(self):
-
-        # Filtramos por estado si se pasa en GET
         estado = self.request.GET.get('estado')
         proveedor = self.request.GET.get('proveedor')
+        busqueda = self.request.GET.get('q', '').strip()
 
         cuentas = CuentaPorPagar.objects.select_related(
             'factura__proveedor', 'factura__pago_por_trabajador',
@@ -1254,6 +1253,14 @@ class CuentaPorPagarListView(ProveedoresMixin, ListView):
         
         if proveedor:
             cuentas = cuentas.filter(factura__proveedor_id=proveedor)
+
+        if busqueda:
+            filtro_busqueda = Q(factura__numero__icontains=busqueda)
+            if busqueda.isdigit():
+                filtro_busqueda |= Q(
+                    factura__correlativo_libro_compras=int(busqueda)
+                )
+            cuentas = cuentas.filter(filtro_busqueda)
         
         return cuentas
 
@@ -1261,6 +1268,10 @@ class CuentaPorPagarListView(ProveedoresMixin, ListView):
         ctx = super().get_context_data(**kwargs)
         ctx['titulo'] = 'Cuentas por Pagar'
         ctx['proveedores'] = Proveedor.objects.filter(facturas__cuenta_pagar__isnull=False).distinct()
+
+        filtros = self.request.GET.copy()
+        filtros.pop('page', None)
+        ctx['filtros_query'] = filtros.urlencode()
 
         total_pendiente = self.get_queryset().filter(estado='pendiente').aggregate(total=Sum('monto'))['total'] or 0
         ctx['total_pendiente'] = total_pendiente

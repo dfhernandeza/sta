@@ -70,7 +70,13 @@
 <div class="card-sta p-3 mb-4">
   <form method="get" class="row g-2 align-items-end">
     <div class="col-sm-3">
-      <select name="estado" class="form-select form-select-sm">
+      <label for="id_q" class="form-label fw-600 small">Factura o correlativo</label>
+      <input type="search" name="q" id="id_q" class="form-control form-control-sm"
+             value="{{ request.GET.q }}" placeholder="N° factura o correlativo">
+    </div>
+    <div class="col-sm-3">
+      <label for="id_estado" class="form-label fw-600 small">Estado</label>
+      <select name="estado" id="id_estado" class="form-select form-select-sm">
         <option value="">Todos los estados</option>
         <option value="pendiente" {% if request.GET.estado == "pendiente" %}selected{% endif %}>Pendiente</option>
         <option value="pagada" {% if request.GET.estado == "pagada" %}selected{% endif %}>Pagada</option>
@@ -78,6 +84,7 @@
       </select>
     </div>
     <div class="col-sm-3">
+      <label for="id_proveedor" class="form-label fw-600 small">Proveedor</label>
       <select name="proveedor" class="form-select form-select-sm" id="id_proveedor">
         <option value="">Todos los proveedores</option>
         {% for proveedor in proveedores %}
@@ -175,6 +182,27 @@
       </tbody>
     </table>
   </div>
+  {% if is_paginated %}
+  <div class="d-flex justify-content-center py-3">
+    <nav aria-label="Paginación de cuentas por pagar">
+      <ul class="pagination pagination-sm mb-0">
+        {% if page_obj.has_previous %}
+        <li class="page-item">
+          <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if filtros_query %}&amp;{{ filtros_query }}{% endif %}">‹</a>
+        </li>
+        {% endif %}
+        <li class="page-item disabled">
+          <span class="page-link">{{ page_obj.number }}/{{ page_obj.paginator.num_pages }}</span>
+        </li>
+        {% if page_obj.has_next %}
+        <li class="page-item">
+          <a class="page-link" href="?page={{ page_obj.next_page_number }}{% if filtros_query %}&amp;{{ filtros_query }}{% endif %}">›</a>
+        </li>
+        {% endif %}
+      </ul>
+    </nav>
+  </div>
+  {% endif %}
 </div>
 {% endblock %}
 
