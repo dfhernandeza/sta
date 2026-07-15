@@ -42,6 +42,11 @@ class F29ListImpuestoUnicoTest(TestCase):
             response.context['f29s'][0].impuesto_unico_remuneraciones,
             Decimal('50000'),
         )
+        self.assertEqual(
+            response.context['f29s'][0].otras_retenciones,
+            Decimal('0'),
+        )
+        self.assertContains(response, 'Otras Retenciones')
 
     def test_calculo_f29_incluye_y_desglosa_impuesto_unico(self):
         response = self.client_http.get(

@@ -921,8 +921,8 @@ class F29ListView(TributarioMixin, ListView):
     context_object_name = 'f29s'
 
     def get_queryset(self):
-        from django.db.models import DecimalField, OuterRef, Subquery, Value
-        from django.db.models.functions import Coalesce
+        from django.db.models import DecimalField, F, OuterRef, Subquery, Value
+        from django.db.models.functions import Coalesce, Greatest
         from apps.rrhh.models import Remuneracion
 
         impuestos_periodo = (
@@ -936,9 +936,16 @@ class F29ListView(TributarioMixin, ListView):
             .values('total')
         )
         campo_monto = DecimalField(max_digits=15, decimal_places=2)
-        return super().get_queryset().annotate(
+        queryset = super().get_queryset().annotate(
             impuesto_unico_remuneraciones=Coalesce(
                 Subquery(impuestos_periodo, output_field=campo_monto),
+                Value(Decimal('0')),
+                output_field=campo_monto,
+            )
+        )
+        return queryset.annotate(
+            otras_retenciones=Greatest(
+                F('retenciones') - F('impuesto_unico_remuneraciones'),
                 Value(Decimal('0')),
                 output_field=campo_monto,
             )
