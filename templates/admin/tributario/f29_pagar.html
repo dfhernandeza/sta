@@ -27,19 +27,23 @@
         {{ f29.periodo_mes|stringformat:"02d" }}/{{ f29.periodo_anio }}
       </h6>
       <div class="row g-3 small">
-        <div class="col-sm-3">
+        <div class="col">
           <span class="text-muted">IVA a Pagar</span>
           <div class="fw-600">{{ f29.iva_pagar|moneda_chilena }}</div>
         </div>
-        <div class="col-sm-3">
+        <div class="col">
           <span class="text-muted">PPM</span>
           <div class="fw-600">{{ f29.ppm_pagar|moneda_chilena }}</div>
         </div>
-        <div class="col-sm-3">
-          <span class="text-muted">Retenciones</span>
+        <div class="col">
+          <span class="text-muted">Retenciones Honorarios</span>
           <div class="fw-600 text-success">{{ f29.retenciones|moneda_chilena }}</div>
         </div>
-        <div class="col-sm-3 text-sm-end">
+        <div class="col">
+          <span class="text-muted">Impuesto Único</span>
+          <div class="fw-600 text-success">{{ f29.impuesto_unico|moneda_chilena }}</div>
+        </div>
+        <div class="col text-sm-end">
           <span class="text-muted">Total a Pagar</span>
           <div class="fw-700 fs-5 text-danger">{{ f29.total_pagar|moneda_chilena }}</div>
         </div>

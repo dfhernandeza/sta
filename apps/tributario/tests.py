@@ -30,7 +30,9 @@ class F29ListImpuestoUnicoTest(TestCase):
             estado='aprobado',
         )
         self.f29 = FormularioF29.objects.create(
-            periodo_mes=6, periodo_anio=2026, retenciones=Decimal('50000'),
+            periodo_mes=6, periodo_anio=2026,
+            retenciones=Decimal('30000'),
+            impuesto_unico=Decimal('50000'),
         )
 
     def test_listado_muestra_impuesto_unico_del_periodo(self):
@@ -39,14 +41,14 @@ class F29ListImpuestoUnicoTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Impuesto Único')
         self.assertEqual(
-            response.context['f29s'][0].impuesto_unico_remuneraciones,
+            response.context['f29s'][0].impuesto_unico,
             Decimal('50000'),
         )
         self.assertEqual(
-            response.context['f29s'][0].otras_retenciones,
-            Decimal('0'),
+            response.context['f29s'][0].retenciones,
+            Decimal('30000'),
         )
-        self.assertContains(response, 'Otras Retenciones')
+        self.assertContains(response, 'Retenciones Honorarios')
 
     def test_calculo_f29_incluye_y_desglosa_impuesto_unico(self):
         response = self.client_http.get(
@@ -56,9 +58,10 @@ class F29ListImpuestoUnicoTest(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context['calculado']['impuesto_unico'], Decimal('50000'))
-        self.assertEqual(response.context['calculado']['retenciones'], Decimal('50000'))
-        self.assertEqual(response.context['form'].initial['retenciones'], Decimal('50000'))
-        self.assertContains(response, 'Impuesto Único incluido')
+        self.assertEqual(response.context['calculado']['retenciones'], Decimal('0'))
+        self.assertEqual(response.context['form'].initial['retenciones'], Decimal('0'))
+        self.assertEqual(response.context['form'].initial['impuesto_unico'], Decimal('50000'))
+        self.assertContains(response, 'Impuesto Único')
 
 
 def _setup_contabilidad():
