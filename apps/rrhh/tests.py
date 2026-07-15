@@ -81,6 +81,7 @@ class RemuneracionPDFViewTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response['Content-Type'], 'application/pdf')
         self.assertIn('attachment;', response['Content-Disposition'])
+        self.assertIn('.pdf"', response['Content-Disposition'])
         self.assertTrue(response.content.startswith(b'%PDF'))
 
     def test_descarga_periodo_entrega_pdf(self):

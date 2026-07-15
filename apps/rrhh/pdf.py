@@ -62,7 +62,7 @@ def _dibujar_liquidacion(c, remuneracion, config):
     azul = colors.HexColor('#163B5C')
     gris = colors.HexColor('#F0F2F4')
     trabajador = remuneracion.trabajador
-    empresa = config.nombre_sitio if config else 'Soluciones Termo Acústicas'
+    empresa = 'SOLUCIONES TERMO ACUSTICAS SPA'
 
     logo = _logo_path(config)
     if logo:
@@ -76,10 +76,10 @@ def _dibujar_liquidacion(c, remuneracion, config):
         except Exception:
             pass
 
-    _texto(c, empresa.upper(), width - margen, height - 45, 12, True, 'right')
-    if config:
-        contacto = ' · '.join(filter(None, [config.ubicacion, config.telefono, config.email]))
-        _texto(c, contacto, width - margen, height - 61, 7, False, 'right')
+    _texto(c, empresa, width - margen, height - 39, 11, True, 'right')
+    _texto(c, '76.471.912-3', width - margen, height - 53, 8, False, 'right')
+    _texto(c, 'SIMPSON 46', width - margen, height - 67, 8, False, 'right')
+    _texto(c, 'Chillán', width - margen, height - 81, 8, False, 'right')
 
     c.setFillColor(azul)
     c.roundRect(margen, height - 124, width - 2 * margen, 28, 5, fill=1, stroke=0)
@@ -153,7 +153,7 @@ def _dibujar_liquidacion(c, remuneracion, config):
     _texto(c, _pesos(remuneracion.liquido_pagar), width - margen - 14, y + 14, 15, True, 'right')
     c.setFillColor(colors.black)
 
-    y -= 80
+    y = 86
     _texto(c, 'Declaro haber recibido conforme el alcance líquido indicado en esta liquidación.',
            width / 2, y + 26, 8, False, 'center')
     c.line(margen + 30, y, margen + 200, y)

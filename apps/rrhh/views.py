@@ -493,10 +493,11 @@ class RemuneracionPDFView(RrhhMixin, View):
             pk=pk,
         )
         contenido = generar_liquidaciones_pdf([remuneracion])
+        rut_archivo = remuneracion.trabajador.rut.replace('.', '').replace(' ', '_')
         nombre = (
-            f'liquidacion_{remuneracion.trabajador.rut}_'
+            f'liquidacion_{rut_archivo}_'
             f'{remuneracion.periodo_anio}_{remuneracion.periodo_mes:02d}.pdf'
-        ).replace('.', '').replace(' ', '_')
+        )
         response = HttpResponse(contenido, content_type='application/pdf')
         response['Content-Disposition'] = f'attachment; filename="{nombre}"'
         return response
