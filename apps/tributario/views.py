@@ -985,6 +985,7 @@ class F29CreateView(TributarioMixin, CreateView):
             ).exclude(estado='anulada').aggregate(s=Sum('retencion'))['s'] or 0
         except Exception:
             retenciones = 0
+        impuesto_remuneraciones = Decimal('0')
         try:
             from apps.rrhh.models import Remuneracion
             impuesto_remuneraciones = Remuneracion.objects.filter(
@@ -995,7 +996,7 @@ class F29CreateView(TributarioMixin, CreateView):
             retenciones += impuesto_remuneraciones
         except Exception:
             pass
-        return iva_pagar, ppm_pagar, retenciones
+        return iva_pagar, ppm_pagar, retenciones, impuesto_remuneraciones
 
     def get_initial(self):
         initial = super().get_initial()
@@ -1004,7 +1005,9 @@ class F29CreateView(TributarioMixin, CreateView):
         if mes and anio:
             try:
                 mes_int, anio_int = int(mes), int(anio)
-                iva_pagar, ppm_pagar, retenciones = self._calcular_periodo(mes_int, anio_int)
+                iva_pagar, ppm_pagar, retenciones, _ = self._calcular_periodo(
+                    mes_int, anio_int
+                )
                 initial.update({
                     'periodo_mes': mes_int,
                     'periodo_anio': anio_int,
@@ -1030,12 +1033,18 @@ class F29CreateView(TributarioMixin, CreateView):
         if mes and anio:
             try:
                 mes_int, anio_int = int(mes), int(anio)
-                iva_pagar, ppm_pagar, retenciones = self._calcular_periodo(mes_int, anio_int)
+                (
+                    iva_pagar,
+                    ppm_pagar,
+                    retenciones,
+                    impuesto_remuneraciones,
+                ) = self._calcular_periodo(mes_int, anio_int)
                 ctx['calculado'] = {
                     'mes': mes_int, 'anio': anio_int,
                     'iva_pagar': iva_pagar,
                     'ppm_pagar': ppm_pagar,
                     'retenciones': retenciones,
+                    'impuesto_unico': impuesto_remuneraciones,
                     'total': float(iva_pagar) + float(ppm_pagar) + float(retenciones),
                     'tiene_iva': DeclaracionIVA.objects.filter(periodo_mes=mes_int, periodo_anio=anio_int).exists(),
                     'tiene_ppm': PPM.objects.filter(periodo_mes=mes_int, periodo_anio=anio_int).exists(),

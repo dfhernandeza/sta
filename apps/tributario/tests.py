@@ -43,6 +43,18 @@ class F29ListImpuestoUnicoTest(TestCase):
             Decimal('50000'),
         )
 
+    def test_calculo_f29_incluye_y_desglosa_impuesto_unico(self):
+        response = self.client_http.get(
+            reverse('tributario:f29_create'),
+            {'mes': '6', 'anio': '2026'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['calculado']['impuesto_unico'], Decimal('50000'))
+        self.assertEqual(response.context['calculado']['retenciones'], Decimal('50000'))
+        self.assertEqual(response.context['form'].initial['retenciones'], Decimal('50000'))
+        self.assertContains(response, 'Impuesto Único incluido')
+
 
 def _setup_contabilidad():
     cta_banco = PlanCuentas.objects.create(codigo='1.1.01', nombre='Banco', tipo='activo', nivel=1)
