@@ -1626,7 +1626,11 @@ class CxPPagarView(ProveedoresMixin, View):
                 label='Medio de pago',
             )
             numero_documento = forms.CharField(
-                required=False, max_length=100,
+                required=False,
+                max_length=50,
+                error_messages={
+                    'max_length': 'El N° de documento o referencia no puede superar los 50 caracteres.',
+                },
                 widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'N° cheque, folio transferencia…'}),
                 label='N° Documento / Referencia',
             )

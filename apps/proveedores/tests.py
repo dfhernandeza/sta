@@ -343,6 +343,32 @@ class AnticipoProveedorViewsTest(TestCase):
         self.assertEqual(anticipo_nuevo.saldo_disponible, Decimal('30000.00'))
         self.assertEqual(cxp.monto_pagado, Decimal('120000.00'))
 
+    def test_pago_informa_si_referencia_supera_limite_movimiento_bancario(self):
+        _, cxp = self.crear_factura_cxp()
+
+        response = self.client_http.post(
+            reverse('proveedores:cxp_pagar', args=[cxp.pk]),
+            {
+                'fecha_pago': '2026-07-02',
+                'anticipos': [],
+                'monto_anticipo': '0',
+                'monto_pagado': '200000',
+                'cuenta_bancaria': self.cuenta_bancaria.pk,
+                'medio_pago': 'transferencia',
+                'numero_documento': 'X' * 51,
+                'notas': '',
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            'El N° de documento o referencia no puede superar los 50 caracteres.',
+        )
+        self.assertFalse(MovimientoBancario.objects.exists())
+        cxp.refresh_from_db()
+        self.assertEqual(cxp.estado, 'pendiente')
+
     def test_bloquea_eliminar_nota_con_anticipo_parcialmente_aplicado(self):
         factura, cxp = self.crear_factura_cxp()
         nota = NotaCreditoRecibida.objects.create(
