@@ -9,6 +9,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
+from reportlab.pdfgen import canvas as pdfcanvas
 
 from apps.web.models import ConfiguracionSitio
 
@@ -21,6 +22,11 @@ EMPRESA_GIRO = 'Soluciones termoacústicas, muebles y terminaciones'
 
 def _pesos(valor):
     return f'$ {round(valor or 0):,}'.replace(',', '.')
+
+
+def _truncar(valor, largo):
+    texto = str(valor or '—')
+    return texto if len(texto) <= largo else texto[:largo - 1].rstrip() + '…'
 
 
 def _imagen(path, ancho, alto, recortar=False):
@@ -93,8 +99,8 @@ def generar_orden_compra_pdf(orden):
     story = [Table([[logo, empresa_datos, Paragraph(f'<b>ORDEN DE COMPRA</b><br/>{orden.numero}', title)]],
                    colWidths=[40*mm, 65*mm, 75*mm], style=TableStyle([('VALIGN',(0,0),(-1,-1),'MIDDLE')])), Spacer(1, 5*mm)]
     datos = [
-        ['Fecha', orden.fecha.strftime('%d/%m/%Y'), 'Proyecto', str(orden.proyecto or '—')],
-        ['Centro de Costo', str(orden.centro_costo or '—'), 'Solicitante', razon_social],
+        ['Fecha', orden.fecha.strftime('%d/%m/%Y'), 'Proyecto', _truncar(orden.proyecto, 42)],
+        ['Centro de Costo', _truncar(orden.centro_costo, 38), 'Solicitante', razon_social],
         ['Aprobado por', orden.aprobado_por.nombre_display if orden.aprobado_por else '—', 'Estado', orden.get_estado_display()],
     ]
     info = Table(datos, colWidths=[28*mm, 62*mm, 28*mm, 62*mm])
@@ -153,9 +159,27 @@ def generar_orden_compra_pdf(orden):
         canvas.setFillColor(colors.HexColor('#6C757D'))
         canvas.drawCentredString(
             A4[0] / 2, 2.5*mm,
-            f'{razon_social} · {orden.numero} · Página {documento.page}',
+            f'{razon_social} · {orden.numero} · Página {canvas.getPageNumber()}',
         )
         canvas.restoreState()
 
-    doc.build(story, onFirstPage=dibujar_pie_firmas, onLaterPages=dibujar_pie_firmas)
+    class CanvasFirmaUltimaPagina(pdfcanvas.Canvas):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self._paginas_guardadas = []
+
+        def showPage(self):
+            self._paginas_guardadas.append(dict(self.__dict__))
+            self._startPage()
+
+        def save(self):
+            total_paginas = len(self._paginas_guardadas)
+            for estado in self._paginas_guardadas:
+                self.__dict__.update(estado)
+                if self.getPageNumber() == total_paginas:
+                    dibujar_pie_firmas(self, doc)
+                pdfcanvas.Canvas.showPage(self)
+            pdfcanvas.Canvas.save(self)
+
+    doc.build(story, canvasmaker=CanvasFirmaUltimaPagina)
     return buffer.getvalue()
