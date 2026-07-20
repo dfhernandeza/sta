@@ -99,8 +99,8 @@ def generar_orden_compra_pdf(orden):
     story = [Table([[logo, empresa_datos, Paragraph(f'<b>ORDEN DE COMPRA</b><br/>{orden.numero}', title)]],
                    colWidths=[40*mm, 65*mm, 75*mm], style=TableStyle([('VALIGN',(0,0),(-1,-1),'MIDDLE')])), Spacer(1, 5*mm)]
     datos = [
-        ['Fecha', orden.fecha.strftime('%d/%m/%Y'), 'Proyecto', _truncar(orden.proyecto, 42)],
-        ['Centro de Costo', _truncar(orden.centro_costo, 38), 'Solicitante', razon_social],
+        ['Fecha', orden.fecha.strftime('%d/%m/%Y'), 'Proyecto', _truncar(orden.proyecto, 28)],
+        ['Centro de Costo', _truncar(orden.centro_costo, 24), 'Solicitante', razon_social],
         ['Aprobado por', orden.aprobado_por.nombre_display if orden.aprobado_por else '—', 'Estado', orden.get_estado_display()],
     ]
     info = Table(datos, colWidths=[28*mm, 62*mm, 28*mm, 62*mm])
