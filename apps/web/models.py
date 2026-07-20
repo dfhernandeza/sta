@@ -20,6 +20,14 @@ class ConfiguracionSitio(TimeStampedModel):
         max_length=300, default='SIMPSON 46, CHILLÁN',
         verbose_name='Dirección empresa',
     )
+    representante_legal = models.CharField(
+        max_length=200, blank=True, verbose_name='Representante legal',
+    )
+    firma_representante_legal = models.ImageField(
+        upload_to='web/empresa/firmas/', null=True, blank=True,
+        verbose_name='Firma del representante legal',
+        help_text='Se recomienda una imagen PNG con fondo transparente.',
+    )
     meta_descripcion = models.TextField(
         blank=True,
         default='STA Muebles y Terminaciones - Calidad en cada detalle',

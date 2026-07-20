@@ -12,7 +12,7 @@ class OrdenCompraForm(forms.ModelForm):
         fields = [
             'fecha', 'proyecto', 'centro_costo', 'proveedor', 'descuento',
             'observaciones', 'condiciones_comerciales',
-            'firma_solicitante', 'firma_aprobador',
+            'firma_aprobador',
         ]
         widgets = {
             'fecha': forms.DateInput(attrs={'type': 'date'}),

@@ -2,6 +2,7 @@ from io import BytesIO
 from pathlib import Path
 
 from django.conf import settings
+from PIL import Image as PILImage, ImageChops
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_RIGHT
 from reportlab.lib.pagesizes import A4
@@ -22,12 +23,39 @@ def _pesos(valor):
     return f'$ {round(valor or 0):,}'.replace(',', '.')
 
 
-def _imagen(path, ancho, alto):
+def _imagen(path, ancho, alto, recortar=False):
     if not path:
         return ''
     try:
         p = Path(path)
-        return Image(str(p), width=ancho, height=alto, kind='proportional') if p.exists() else ''
+        if not p.exists():
+            return ''
+        if recortar:
+            with PILImage.open(p) as original:
+                imagen = original.convert('RGBA')
+                alpha = imagen.getchannel('A')
+                if alpha.getextrema()[0] < 255:
+                    bbox = alpha.getbbox()
+                else:
+                    rgb = imagen.convert('RGB')
+                    fondo = PILImage.new('RGB', rgb.size, 'white')
+                    diferencia = ImageChops.difference(rgb, fondo).convert('L')
+                    mascara = diferencia.point(lambda valor: 255 if valor > 12 else 0)
+                    bbox = mascara.getbbox()
+                if bbox:
+                    margen_x = max(4, int((bbox[2] - bbox[0]) * .04))
+                    margen_y = max(4, int((bbox[3] - bbox[1]) * .08))
+                    bbox = (
+                        max(0, bbox[0] - margen_x), max(0, bbox[1] - margen_y),
+                        min(imagen.width, bbox[2] + margen_x),
+                        min(imagen.height, bbox[3] + margen_y),
+                    )
+                    imagen = imagen.crop(bbox)
+                memoria = BytesIO()
+                imagen.save(memoria, format='PNG')
+                memoria.seek(0)
+                return Image(memoria, width=ancho, height=alto, kind='proportional')
+        return Image(str(p), width=ancho, height=alto, kind='proportional')
     except (ValueError, OSError):
         return ''
 
@@ -35,7 +63,7 @@ def _imagen(path, ancho, alto):
 def generar_orden_compra_pdf(orden):
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=14*mm, leftMargin=14*mm,
-                            topMargin=12*mm, bottomMargin=43*mm)
+                            topMargin=12*mm, bottomMargin=59*mm)
     styles = getSampleStyleSheet()
     small = ParagraphStyle('small', parent=styles['Normal'], fontSize=8, leading=10)
     right = ParagraphStyle('right', parent=small, alignment=TA_RIGHT)
@@ -45,6 +73,7 @@ def generar_orden_compra_pdf(orden):
     rut_empresa = getattr(config, 'rut_empresa', '') or EMPRESA_RUT
     direccion_empresa = getattr(config, 'direccion_empresa', '') or EMPRESA_DIRECCION
     giro_empresa = getattr(config, 'giro_empresa', '') or EMPRESA_GIRO
+    representante_legal = getattr(config, 'representante_legal', '') or 'Representante legal'
     logo_path = None
     if config and config.logo:
         try:
@@ -92,8 +121,9 @@ def generar_orden_compra_pdf(orden):
     def dibujar_pie_firmas(canvas, documento):
         canvas.saveState()
         firma_sol = _imagen(
-            orden.firma_solicitante.path if orden.firma_solicitante else None,
-            32*mm, 12*mm,
+            config.firma_representante_legal.path
+            if config and config.firma_representante_legal else None,
+            70*mm, 28*mm, recortar=True,
         )
         firma_apr = _imagen(
             orden.firma_aprobador.path if orden.firma_aprobador else None,
@@ -102,15 +132,16 @@ def generar_orden_compra_pdf(orden):
         firmas = Table([
             [firma_sol, firma_apr],
             ['____________________________', '____________________________'],
-            [razon_social,
+            [representante_legal,
              orden.aprobado_por.nombre_display if orden.aprobado_por else 'Aprobador'],
-            ['Empresa solicitante', 'Aprobado por'],
+            ['Representante legal', 'Aprobado por'],
+            [razon_social, ''],
         ], colWidths=[82*mm, 82*mm])
         firmas.setStyle(TableStyle([
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
             ('VALIGN', (0, 0), (-1, -1), 'BOTTOM'),
             ('FONTSIZE', (0, 1), (-1, -1), 8),
-            ('TEXTCOLOR', (0, 3), (-1, 3), colors.HexColor('#6C757D')),
+            ('TEXTCOLOR', (0, 3), (-1, -1), colors.HexColor('#6C757D')),
             ('TOPPADDING', (0, 0), (-1, 0), 0),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
         ]))

@@ -86,7 +86,10 @@ class ConfiguracionSitioAdmin(ImagenPreviewMixin, admin.ModelAdmin):
             'fields': ('nombre_sitio', 'meta_descripcion', 'vista_previa', 'logo')
         }),
         ('Datos legales de la empresa', {
-            'fields': ('razon_social', 'rut_empresa', 'giro_empresa', 'direccion_empresa')
+            'fields': (
+                'razon_social', 'rut_empresa', 'giro_empresa', 'direccion_empresa',
+                'representante_legal', 'firma_representante_legal',
+            )
         }),
         ('Contacto', {
             'fields': ('telefono', 'email', 'ubicacion', 'horario_atencion', 'whatsapp')
