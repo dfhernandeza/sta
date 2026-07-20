@@ -4,6 +4,14 @@ from . import views
 app_name = 'proveedores'
 
 urlpatterns = [
+    # Órdenes de compra
+    path('ordenes-compra/', views.OrdenCompraListView.as_view(), name='orden_compra_list'),
+    path('ordenes-compra/crear/', views.OrdenCompraCreateView.as_view(), name='orden_compra_create'),
+    path('ordenes-compra/<int:pk>/', views.OrdenCompraDetailView.as_view(), name='orden_compra_detail'),
+    path('ordenes-compra/<int:pk>/editar/', views.OrdenCompraUpdateView.as_view(), name='orden_compra_update'),
+    path('ordenes-compra/<int:pk>/pdf/', views.OrdenCompraPDFView.as_view(), name='orden_compra_pdf'),
+    path('ordenes-compra/<int:pk>/recepcion/', views.RecepcionOrdenCompraCreateView.as_view(), name='orden_compra_recepcion'),
+    path('ordenes-compra/<int:pk>/estado/<str:estado>/', views.OrdenCompraTransicionView.as_view(), name='orden_compra_transicion'),
     # Proveedores
     path('', views.ProveedorListView.as_view(), name='proveedor_list'),
     path('crear/', views.ProveedorCreateView.as_view(), name='proveedor_create'),

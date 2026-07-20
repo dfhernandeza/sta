@@ -18,7 +18,79 @@ from .models import (
     FacturaRecibida,
     NotaCreditoRecibida,
     Proveedor,
+    OrdenCompra,
+    DetalleOrdenCompra,
+    RecepcionOrdenCompra,
 )
+
+
+@override_settings(SECURE_SSL_REDIRECT=False)
+class OrdenCompraTests(TestCase):
+    def setUp(self):
+        self.usuario = CustomUser.objects.create_superuser('admin_oc', 'oc@example.com', 'test1234')
+        self.proveedor = Proveedor.objects.create(
+            rut='76.471.912-3', razon_social='Proveedor OC Desarrollo',
+            direccion='Calle Uno 123', telefono='912345678', email='compras@example.com',
+        )
+        self.client.force_login(self.usuario)
+
+    def _crear_orden(self, estado='borrador'):
+        orden = OrdenCompra.objects.create(
+            fecha=date(2026, 7, 20), proveedor=self.proveedor,
+            solicitante=self.usuario, descuento=Decimal('1000'), estado=estado,
+        )
+        DetalleOrdenCompra.objects.create(
+            orden=orden, codigo='MAT-01', descripcion='Material de prueba',
+            cantidad=Decimal('2'), unidad_medida='un', precio_unitario=Decimal('10000'),
+        )
+        orden.recalcular_totales()
+        return orden
+
+    def test_correlativo_y_totales(self):
+        orden = self._crear_orden()
+        segunda = OrdenCompra.objects.create(
+            fecha=date(2026, 7, 21), proveedor=self.proveedor, solicitante=self.usuario,
+        )
+        self.assertEqual(orden.numero, 'OC-2026-0001')
+        self.assertEqual(segunda.numero, 'OC-2026-0002')
+        self.assertEqual(orden.subtotal, Decimal('20000.00'))
+        self.assertEqual(orden.neto, Decimal('19000.00'))
+        self.assertEqual(orden.iva, Decimal('3610.00'))
+        self.assertEqual(orden.total, Decimal('22610.00'))
+
+    def test_crear_desde_formulario(self):
+        response = self.client.post(reverse('proveedores:orden_compra_create'), {
+            'fecha': '2026-07-20', 'proveedor': self.proveedor.pk, 'descuento': '0',
+            'observaciones': 'Prueba', 'condiciones_comerciales': '30 días',
+            'detalles-TOTAL_FORMS': '1', 'detalles-INITIAL_FORMS': '0',
+            'detalles-MIN_NUM_FORMS': '1', 'detalles-MAX_NUM_FORMS': '1000',
+            'detalles-0-codigo': 'SERV-01', 'detalles-0-descripcion': 'Servicio de prueba',
+            'detalles-0-cantidad': '3', 'detalles-0-unidad_medida': 'serv',
+            'detalles-0-precio_unitario': '15000',
+        })
+        self.assertEqual(response.status_code, 302)
+        orden = OrdenCompra.objects.get()
+        self.assertEqual(orden.total, Decimal('53550.00'))
+        self.assertEqual(orden.detalles.count(), 1)
+
+    def test_flujo_aprobacion_recepcion_y_pdf(self):
+        orden = self._crear_orden()
+        for estado in ('pendiente_aprobacion', 'aprobada', 'enviada'):
+            response = self.client.post(reverse('proveedores:orden_compra_transicion', args=[orden.pk, estado]))
+            self.assertEqual(response.status_code, 302)
+            orden.refresh_from_db()
+            self.assertEqual(orden.estado, estado)
+        detalle = orden.detalles.get()
+        response = self.client.post(reverse('proveedores:orden_compra_recepcion', args=[orden.pk]), {
+            'fecha': '2026-07-20', f'cantidad_{detalle.pk}': '1',
+        })
+        self.assertEqual(response.status_code, 302)
+        orden.refresh_from_db()
+        self.assertEqual(orden.estado, 'recepcion_parcial')
+        self.assertEqual(RecepcionOrdenCompra.objects.count(), 1)
+        pdf = self.client.get(reverse('proveedores:orden_compra_pdf', args=[orden.pk]))
+        self.assertEqual(pdf.status_code, 200)
+        self.assertTrue(pdf.content.startswith(b'%PDF'))
 
 
 class FacturaRecibidaIndiceTests(TestCase):

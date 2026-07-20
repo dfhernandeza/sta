@@ -4,6 +4,22 @@ from apps.core.models import TimeStampedModel
 
 class ConfiguracionSitio(TimeStampedModel):
     nombre_sitio = models.CharField(max_length=150, default='STA Muebles y Terminaciones', verbose_name='Nombre del sitio')
+    razon_social = models.CharField(
+        max_length=200, default='SOLUCIONES TERMO ACUSTICAS SPA',
+        verbose_name='Razón social',
+    )
+    rut_empresa = models.CharField(
+        max_length=15, default='76.471.912-3', verbose_name='RUT empresa',
+    )
+    giro_empresa = models.CharField(
+        max_length=250,
+        default='Soluciones termoacústicas, muebles y terminaciones',
+        verbose_name='Giro',
+    )
+    direccion_empresa = models.CharField(
+        max_length=300, default='SIMPSON 46, CHILLÁN',
+        verbose_name='Dirección empresa',
+    )
     meta_descripcion = models.TextField(
         blank=True,
         default='STA Muebles y Terminaciones - Calidad en cada detalle',

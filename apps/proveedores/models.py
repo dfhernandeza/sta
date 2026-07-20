@@ -1,7 +1,8 @@
 from decimal import Decimal
 from django.db import models
-from django.db.models import Sum
-from django.db.models.signals import post_delete
+from django.core.exceptions import ValidationError
+from django.db.models import Sum, Max
+from django.db.models.signals import post_delete, post_save
 from django.dispatch import receiver
 from apps.tesoreria.models import Banco, TIPO_CHOICES
 from apps.core.models import TimeStampedModel
@@ -36,6 +37,165 @@ class Proveedor(TimeStampedModel):
         return f'{self.razon_social} ({self.rut})'
 
 
+class OrdenCompra(TimeStampedModel):
+    ESTADO_CHOICES = [
+        ('borrador', 'Borrador'),
+        ('pendiente_aprobacion', 'Pendiente de Aprobación'),
+        ('aprobada', 'Aprobada'),
+        ('enviada', 'Enviada'),
+        ('recepcion_parcial', 'Recepción Parcial'),
+        ('recepcion_completa', 'Recepción Completa'),
+        ('facturada', 'Facturada'),
+        ('pagada', 'Pagada'),
+        ('anulada', 'Anulada'),
+    ]
+    TRANSICIONES = {
+        'borrador': {'pendiente_aprobacion', 'anulada'},
+        'pendiente_aprobacion': {'borrador', 'aprobada', 'anulada'},
+        'aprobada': {'enviada', 'anulada'},
+        'enviada': {'recepcion_parcial', 'recepcion_completa', 'anulada'},
+        'recepcion_parcial': {'recepcion_completa', 'anulada'},
+        'recepcion_completa': {'facturada', 'anulada'},
+        'facturada': {'pagada', 'anulada'},
+        'pagada': set(),
+        'anulada': set(),
+    }
+
+    numero = models.CharField(max_length=20, unique=True, blank=True, editable=False, verbose_name='N° OC')
+    fecha = models.DateField(verbose_name='Fecha')
+    proyecto = models.ForeignKey('proyectos.Proyecto', null=True, blank=True, on_delete=models.SET_NULL,
+                                 related_name='ordenes_compra', verbose_name='Proyecto')
+    centro_costo = models.ForeignKey('contabilidad.CentroCosto', null=True, blank=True, on_delete=models.SET_NULL,
+                                     related_name='ordenes_compra', verbose_name='Centro de Costo')
+    solicitante = models.ForeignKey('accounts.CustomUser', on_delete=models.PROTECT,
+                                    related_name='ordenes_compra_solicitadas', verbose_name='Solicitante')
+    aprobado_por = models.ForeignKey('accounts.CustomUser', null=True, blank=True, on_delete=models.PROTECT,
+                                     related_name='ordenes_compra_aprobadas', verbose_name='Aprobado por')
+    proveedor = models.ForeignKey(Proveedor, on_delete=models.PROTECT, related_name='ordenes_compra',
+                                  verbose_name='Proveedor')
+    proveedor_razon_social = models.CharField(max_length=200, blank=True)
+    proveedor_rut = models.CharField(max_length=15, blank=True)
+    proveedor_direccion = models.CharField(max_length=300, blank=True)
+    proveedor_telefono = models.CharField(max_length=20, blank=True)
+    proveedor_email = models.EmailField(blank=True)
+    subtotal = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+    descuento = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+    neto = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+    iva = models.DecimalField(max_digits=15, decimal_places=2, default=0, verbose_name='IVA')
+    total = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+    estado = models.CharField(max_length=25, choices=ESTADO_CHOICES, default='borrador')
+    observaciones = models.TextField(blank=True)
+    condiciones_comerciales = models.TextField(blank=True)
+    firma_solicitante = models.ImageField(upload_to='ordenes_compra/firmas/', null=True, blank=True)
+    firma_aprobador = models.ImageField(upload_to='ordenes_compra/firmas/', null=True, blank=True)
+    fecha_solicitud_aprobacion = models.DateTimeField(null=True, blank=True, editable=False)
+    fecha_aprobacion = models.DateTimeField(null=True, blank=True, editable=False)
+    fecha_envio = models.DateTimeField(null=True, blank=True, editable=False)
+    fecha_anulacion = models.DateTimeField(null=True, blank=True, editable=False)
+
+    class Meta:
+        ordering = ['-fecha', '-id']
+        verbose_name = 'Orden de Compra'
+        verbose_name_plural = 'Órdenes de Compra'
+
+    def __str__(self):
+        return f'{self.numero} - {self.proveedor_razon_social or self.proveedor.razon_social}'
+
+    def save(self, *args, **kwargs):
+        if self.proveedor_id and (not self.pk or not self.proveedor_razon_social):
+            self.proveedor_razon_social = self.proveedor.razon_social
+            self.proveedor_rut = self.proveedor.rut
+            self.proveedor_direccion = self.proveedor.direccion
+            self.proveedor_telefono = self.proveedor.telefono
+            self.proveedor_email = self.proveedor.email
+        if not self.numero:
+            anio = self.fecha.year
+            prefijo = f'OC-{anio}-'
+            ultimo = OrdenCompra.objects.filter(numero__startswith=prefijo).aggregate(Max('numero'))['numero__max']
+            secuencia = int(ultimo.rsplit('-', 1)[1]) + 1 if ultimo else 1
+            self.numero = f'{prefijo}{secuencia:04d}'
+        super().save(*args, **kwargs)
+
+    def recalcular_totales(self):
+        subtotal = self.detalles.aggregate(total=Sum(models.F('cantidad') * models.F('precio_unitario')))['total'] or Decimal('0')
+        self.subtotal = subtotal.quantize(Decimal('0.01'))
+        self.descuento = min(max(self.descuento or Decimal('0'), Decimal('0')), self.subtotal)
+        self.neto = (self.subtotal - self.descuento).quantize(Decimal('0.01'))
+        self.iva = (self.neto * Decimal('0.19')).quantize(Decimal('0.01'))
+        self.total = self.neto + self.iva
+        self.save(update_fields=['subtotal', 'descuento', 'neto', 'iva', 'total', 'actualizado_en'])
+
+    def puede_transicionar(self, nuevo_estado):
+        return nuevo_estado in self.TRANSICIONES.get(self.estado, set())
+
+    def sincronizar_estado(self):
+        if self.estado == 'anulada':
+            return
+        facturas = self.facturas.exclude(estado='anulada')
+        monto_facturado = facturas.aggregate(total=Sum('total'))['total'] or Decimal('0')
+        if facturas.exists() and monto_facturado >= self.total:
+            if all(f.estado == 'pagada' for f in facturas):
+                nuevo = 'pagada'
+            else:
+                nuevo = 'facturada'
+        else:
+            cantidades = list(self.detalles.values_list('cantidad', flat=True))
+            recibidas = list(self.detalles.annotate(r=Sum('recepciones__cantidad_recibida')).values_list('r', flat=True))
+            total_recibido = sum((r or Decimal('0')) for r in recibidas)
+            if cantidades and all((r or Decimal('0')) >= c for r, c in zip(recibidas, cantidades)):
+                nuevo = 'recepcion_completa'
+            elif total_recibido > 0:
+                nuevo = 'recepcion_parcial'
+            else:
+                return
+        if self.estado != nuevo:
+            self.estado = nuevo
+            self.save(update_fields=['estado', 'actualizado_en'])
+
+    @property
+    def monto_facturado(self):
+        return self.facturas.exclude(estado='anulada').aggregate(total=Sum('total'))['total'] or Decimal('0')
+
+    @property
+    def saldo_por_facturar(self):
+        return max(self.total - self.monto_facturado, Decimal('0'))
+
+
+class DetalleOrdenCompra(models.Model):
+    UNIDAD_CHOICES = [('un', 'Unidad'), ('kg', 'Kilogramo'), ('m', 'Metro'), ('m2', 'Metro cuadrado'),
+                      ('m3', 'Metro cúbico'), ('lt', 'Litro'), ('hr', 'Hora'), ('serv', 'Servicio'), ('gl', 'Global')]
+    orden = models.ForeignKey(OrdenCompra, on_delete=models.CASCADE, related_name='detalles')
+    codigo = models.CharField(max_length=50, blank=True)
+    descripcion = models.CharField(max_length=300)
+    cantidad = models.DecimalField(max_digits=12, decimal_places=4)
+    unidad_medida = models.CharField(max_length=10, choices=UNIDAD_CHOICES, default='un')
+    precio_unitario = models.DecimalField(max_digits=15, decimal_places=4)
+
+    @property
+    def total(self):
+        return self.cantidad * self.precio_unitario
+
+    @property
+    def cantidad_recibida(self):
+        return self.recepciones.aggregate(total=Sum('cantidad_recibida'))['total'] or Decimal('0')
+
+
+class RecepcionOrdenCompra(TimeStampedModel):
+    orden = models.ForeignKey(OrdenCompra, on_delete=models.PROTECT, related_name='recepciones')
+    fecha = models.DateField()
+    recibido_por = models.ForeignKey('accounts.CustomUser', on_delete=models.PROTECT, related_name='recepciones_oc')
+    observaciones = models.TextField(blank=True)
+
+
+class DetalleRecepcionOrdenCompra(models.Model):
+    recepcion = models.ForeignKey(RecepcionOrdenCompra, on_delete=models.CASCADE, related_name='detalles')
+    detalle_orden = models.ForeignKey(DetalleOrdenCompra, on_delete=models.PROTECT, related_name='recepciones')
+    cantidad_recibida = models.DecimalField(max_digits=12, decimal_places=4)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['recepcion', 'detalle_orden'], name='uniq_recepcion_detalle_oc')]
+
+
 class FacturaRecibida(TimeStampedModel):
     ESTADO_CHOICES = [
         ('pendiente', 'Pendiente'),
@@ -54,6 +214,10 @@ class FacturaRecibida(TimeStampedModel):
     proveedor = models.ForeignKey(
         Proveedor, on_delete=models.PROTECT,
         related_name='facturas', verbose_name='Proveedor'
+    )
+    orden_compra = models.ForeignKey(
+        OrdenCompra, null=True, blank=True, on_delete=models.PROTECT,
+        related_name='facturas', verbose_name='Orden de Compra'
     )
     proyecto = models.ForeignKey(
         'proyectos.Proyecto', null=True, blank=True,
@@ -113,6 +277,13 @@ class FacturaRecibida(TimeStampedModel):
         if self.pago_por_trabajador:
             return f'Factura {self.numero} - Reembolso {self.pago_por_trabajador.nombre_completo}'
         return f'Factura {self.numero} - {self.proveedor.razon_social}'
+
+    def clean(self):
+        super().clean()
+        if self.orden_compra_id and self.proveedor_id != self.orden_compra.proveedor_id:
+            raise ValidationError({'orden_compra': 'La orden de compra debe pertenecer al mismo proveedor.'})
+        if self.orden_compra_id and self.orden_compra.estado in ('borrador', 'pendiente_aprobacion', 'anulada'):
+            raise ValidationError({'orden_compra': 'Solo se pueden asociar órdenes aprobadas y vigentes.'})
 
     @property
     def indice_libro_compras(self):
@@ -219,6 +390,12 @@ class FacturaRecibida(TimeStampedModel):
 @receiver(post_delete, sender=FacturaRecibida)
 def reindexar_facturas_recibidas_despues_de_eliminar(**kwargs):
     FacturaRecibida.reindexar_libro_compras()
+
+
+@receiver(post_save, sender=FacturaRecibida)
+def sincronizar_oc_despues_de_guardar_factura(sender, instance, **kwargs):
+    if instance.orden_compra_id:
+        instance.orden_compra.sincronizar_estado()
 
 
 class DetalleFacturaRecibida(models.Model):

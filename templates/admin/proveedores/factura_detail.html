@@ -44,6 +44,8 @@
         <dd class="col-sm-7 small">{{ factura.proveedor.rut }}</dd>
         <dt class="col-sm-5 text-muted small">Proyecto</dt>
         <dd class="col-sm-7 small">{{ factura.proyecto|default:"—" }}</dd>
+        <dt class="col-sm-5 text-muted small">Orden de compra</dt>
+        <dd class="col-sm-7 small">{% if factura.orden_compra %}<a href="{% url 'proveedores:orden_compra_detail' factura.orden_compra.pk %}">{{ factura.orden_compra.numero }}</a>{% else %}—{% endif %}</dd>
         <dt class="col-sm-5 text-muted small">Fecha emisión</dt>
         <dd class="col-sm-7 small">{{ factura.fecha_emision }}</dd>
         <dt class="col-sm-5 text-muted small">Libro compras</dt>

@@ -1,0 +1,10 @@
+{% extends 'base_admin.html' %}{% load custom_tags %}
+{% block title %}Órdenes de Compra{% endblock %}
+{% block content %}
+<div class="page-header"><div><h4 class="page-title">Órdenes de Compra</h4><p class="page-subtitle">Control de compras, recepción y facturación</p></div>
+<a class="btn btn-sta rounded-pill px-4" href="{% url 'proveedores:orden_compra_create' %}"><i class="bi bi-plus-lg"></i> Nueva OC</a></div>
+<div class="card-sta p-4 mb-4"><form class="row g-2"><div class="col-md-7"><input class="form-control" name="q" value="{{ request.GET.q }}" placeholder="Buscar N° OC, proveedor o proyecto"></div><div class="col-md-3"><select class="form-select" name="estado"><option value="">Todos los estados</option>{% for value,label in estados %}<option value="{{ value }}" {% if request.GET.estado == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div><div class="col-md-2"><button class="btn btn-outline-secondary w-100">Filtrar</button></div></form></div>
+<div class="card-sta p-0 overflow-hidden"><div class="table-responsive"><table class="table table-hover mb-0"><thead class="table-light"><tr><th>N° OC</th><th>Fecha</th><th>Proveedor</th><th>Proyecto</th><th>Solicitante</th><th class="text-end">Total</th><th>Estado</th><th></th></tr></thead><tbody>
+{% for orden in ordenes %}<tr><td class="fw-bold font-monospace">{{ orden.numero }}</td><td>{{ orden.fecha|date:'d/m/Y' }}</td><td>{{ orden.proveedor_razon_social }}</td><td>{{ orden.proyecto|default:'—' }}</td><td>{{ orden.solicitante.nombre_display }}</td><td class="text-end">{{ orden.total|moneda_chilena }}</td><td><span class="badge bg-secondary">{{ orden.get_estado_display }}</span></td><td><a class="btn btn-sm btn-outline-secondary" href="{% url 'proveedores:orden_compra_detail' orden.pk %}"><i class="bi bi-eye"></i></a></td></tr>
+{% empty %}<tr><td colspan="8" class="text-center text-muted py-5">No hay órdenes de compra.</td></tr>{% endfor %}</tbody></table></div></div>
+{% endblock %}

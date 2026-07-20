@@ -1,0 +1,46 @@
+{% extends 'base_admin.html' %}{% load custom_tags %}
+{% block title %}{% if object %}Editar {{ object.numero }}{% else %}Nueva Orden de Compra{% endif %}{% endblock %}
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/css/tom-select.bootstrap5.min.css" rel="stylesheet">
+{% endblock %}
+{% block content %}
+<div class="page-header"><div><h4 class="page-title">{% if object %}Editar {{ object.numero }}{% else %}Nueva Orden de Compra{% endif %}</h4></div></div>
+<form method="post" enctype="multipart/form-data" id="oc-form">{% csrf_token %}
+<div class="card-sta p-4 mb-4"><div class="row g-3">
+{% for field in form %}<div class="col-md-{% if field.name == 'observaciones' or field.name == 'condiciones_comerciales' %}6{% else %}4{% endif %}"><label class="form-label">{{ field.label }}</label>{{ field }}{% for e in field.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}</div>{% endfor %}
+</div></div>
+<div class="card-sta p-4 mb-4"><div class="d-flex justify-content-between mb-3"><h6 class="fw-bold">Productos y servicios</h6><button type="button" class="btn btn-outline-primary btn-sm" id="add-line"><i class="bi bi-plus"></i> Agregar línea</button></div>
+{{ detalle_formset.management_form }}{% if detalle_formset.non_form_errors %}<div class="alert alert-danger">{{ detalle_formset.non_form_errors }}</div>{% endif %}
+<div class="table-responsive"><table class="table table-sm align-middle"><thead><tr><th>Código</th><th>Descripción</th><th style="width:120px">Cantidad</th><th style="width:150px">Unidad</th><th style="width:160px">Precio unitario</th><th class="text-end">Total</th><th></th></tr></thead><tbody id="lines">
+{% for f in detalle_formset %}<tr class="line">{% for hidden in f.hidden_fields %}{{ hidden }}{% endfor %}<td>{{ f.codigo }}{{ f.codigo.errors }}</td><td>{{ f.descripcion }}{{ f.descripcion.errors }}</td><td>{{ f.cantidad }}{{ f.cantidad.errors }}</td><td>{{ f.unidad_medida }}</td><td>{{ f.precio_unitario }}{{ f.precio_unitario.errors }}</td><td class="line-total text-end">$ 0</td><td>{% if f.instance.pk %}<span class="d-none">{{ f.DELETE }}</span>{% endif %}<button type="button" class="btn btn-sm btn-outline-danger remove-line"><i class="bi bi-trash"></i></button></td></tr>{% endfor %}
+</tbody></table></div>
+<template id="empty-line"><tr class="line">{% with f=detalle_formset.empty_form %}{% for hidden in f.hidden_fields %}{{ hidden }}{% endfor %}<td>{{ f.codigo }}</td><td>{{ f.descripcion }}</td><td>{{ f.cantidad }}</td><td>{{ f.unidad_medida }}</td><td>{{ f.precio_unitario }}</td><td class="line-total text-end">$ 0</td><td><button type="button" class="btn btn-sm btn-outline-danger remove-line"><i class="bi bi-trash"></i></button></td>{% endwith %}</tr></template>
+<div class="row justify-content-end"><div class="col-md-4"><table class="table table-sm"><tr><th>Subtotal</th><td id="sum-sub" class="text-end"></td></tr><tr><th>Descuento</th><td id="sum-discount" class="text-end"></td></tr><tr><th>Neto</th><td id="sum-net" class="text-end"></td></tr><tr><th>IVA 19%</th><td id="sum-iva" class="text-end"></td></tr><tr class="fw-bold"><th>Total</th><td id="sum-total" class="text-end"></td></tr></table></div></div></div>
+<div class="d-flex justify-content-end gap-2"><a href="{% if object %}{% url 'proveedores:orden_compra_detail' object.pk %}{% else %}{% url 'proveedores:orden_compra_list' %}{% endif %}" class="btn btn-outline-secondary">Cancelar</a><button class="btn btn-sta px-5">Guardar</button></div></form>
+<script src="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/js/tom-select.complete.min.js"></script>
+<script>
+const lines=document.getElementById('lines'), totalForms=document.getElementById('id_detalles-TOTAL_FORMS');
+const money=n=>'$ '+Math.round(n).toLocaleString('es-CL');
+function initTomSelect(select, placeholder, searchable=true){
+  if(!select || select.tomselect)return;
+  new TomSelect(select,{
+    allowEmptyOption:true,
+    create:false,
+    placeholder:placeholder,
+    maxOptions:null,
+    searchField:searchable?['text']:[],
+    sortField:searchable?{field:'text',direction:'asc'}:undefined,
+  });
+}
+function initLineSelects(scope=document){
+  scope.querySelectorAll('select[name$="-unidad_medida"]').forEach(select=>
+    initTomSelect(select,'Seleccione unidad',false));
+}
+function calc(){let s=0;lines.querySelectorAll('.line').forEach(r=>{if(r.querySelector('[name$="-DELETE"]')?.checked)return;let q=parseFloat(r.querySelector('[name$="-cantidad"]')?.value)||0,p=parseFloat(r.querySelector('[name$="-precio_unitario"]')?.value)||0;r.querySelector('.line-total').textContent=money(q*p);s+=q*p});let d=parseFloat(document.getElementById('id_descuento').value)||0,n=Math.max(0,s-d),i=n*.19;document.getElementById('sum-sub').textContent=money(s);document.getElementById('sum-discount').textContent=money(d);document.getElementById('sum-net').textContent=money(n);document.getElementById('sum-iva').textContent=money(i);document.getElementById('sum-total').textContent=money(n+i)}
+document.getElementById('add-line').onclick=()=>{let i=parseInt(totalForms.value),html=document.getElementById('empty-line').innerHTML.replaceAll('__prefix__',i);lines.insertAdjacentHTML('beforeend',html);totalForms.value=i+1;initLineSelects(lines.lastElementChild)};
+lines.addEventListener('click',e=>{let b=e.target.closest('.remove-line');if(!b)return;let r=b.closest('tr'),del=r.querySelector('[name$="-DELETE"]');if(del){del.checked=true;r.classList.add('d-none')}else r.remove();calc()});document.getElementById('oc-form').addEventListener('input',calc);calc();
+initTomSelect(document.getElementById('id_proveedor'),'Buscar proveedor');
+initTomSelect(document.getElementById('id_proyecto'),'Buscar proyecto');
+initTomSelect(document.getElementById('id_centro_costo'),'Buscar centro de costo');
+initLineSelects();
+</script>{% endblock %}

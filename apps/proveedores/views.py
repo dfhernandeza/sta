@@ -14,6 +14,10 @@ from django.forms import CheckboxInput, inlineformset_factory, ModelForm, TextIn
 from apps.contabilidad.utils import generar_asiento_factura_recibida, generar_asiento_nota_credito_recibida
 from apps.core.mixins import GestionMixin, AppPermisoMixin
 from django.db import transaction
+from django.http import HttpResponse
+from django.shortcuts import render
+from .models import OrdenCompra, DetalleOrdenCompra, RecepcionOrdenCompra, DetalleRecepcionOrdenCompra
+from .forms import OrdenCompraForm, DetalleOrdenCompraFormSet
 
 CXP_TOLERANCIA_SALDO_DECIMAL = Decimal('0.99')
 NOTA_CREDITO_TOLERANCIA_REDONDEO = Decimal('0.99')
@@ -23,11 +27,183 @@ class ProveedoresMixin(AppPermisoMixin):
     app_name = 'proveedores'
 
 
+class OrdenCompraListView(ProveedoresMixin, ListView):
+    model = OrdenCompra
+    template_name = 'admin/proveedores/orden_compra_list.html'
+    context_object_name = 'ordenes'
+    paginate_by = 25
+
+    def get_queryset(self):
+        qs = OrdenCompra.objects.select_related('proveedor', 'proyecto', 'centro_costo', 'solicitante')
+        if self.request.GET.get('estado'):
+            qs = qs.filter(estado=self.request.GET['estado'])
+        if self.request.GET.get('q'):
+            q = self.request.GET['q']
+            qs = qs.filter(Q(numero__icontains=q) | Q(proveedor_razon_social__icontains=q) |
+                           Q(proyecto__nombre__icontains=q))
+        return qs
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx['estados'] = OrdenCompra.ESTADO_CHOICES
+        return ctx
+
+
+class OrdenCompraCreateView(ProveedoresMixin, CreateView):
+    model = OrdenCompra
+    form_class = OrdenCompraForm
+    template_name = 'admin/proveedores/orden_compra_form.html'
+
+    def form_valid(self, form):
+        form.instance.solicitante = self.request.user
+        formset = DetalleOrdenCompraFormSet(self.request.POST, instance=form.instance)
+        if not formset.is_valid():
+            return self.render_to_response(self.get_context_data(form=form, detalle_formset=formset))
+        with transaction.atomic():
+            self.object = form.save()
+            formset.instance = self.object
+            formset.save()
+            self.object.recalcular_totales()
+        messages.success(self.request, f'Orden {self.object.numero} creada en borrador.')
+        return redirect('proveedores:orden_compra_detail', pk=self.object.pk)
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx['detalle_formset'] = kwargs.get('detalle_formset') or DetalleOrdenCompraFormSet(
+            self.request.POST or None
+        )
+        return ctx
+
+
+class OrdenCompraUpdateView(ProveedoresMixin, UpdateView):
+    model = OrdenCompra
+    form_class = OrdenCompraForm
+    template_name = 'admin/proveedores/orden_compra_form.html'
+
+    def dispatch(self, request, *args, **kwargs):
+        if self.get_object().estado != 'borrador':
+            messages.error(request, 'Solo las órdenes en borrador se pueden editar.')
+            return redirect('proveedores:orden_compra_detail', pk=self.kwargs['pk'])
+        return super().dispatch(request, *args, **kwargs)
+
+    def form_valid(self, form):
+        formset = DetalleOrdenCompraFormSet(self.request.POST, instance=self.object)
+        if not formset.is_valid():
+            return self.render_to_response(self.get_context_data(form=form, detalle_formset=formset))
+        with transaction.atomic():
+            self.object = form.save()
+            formset.save()
+            self.object.recalcular_totales()
+        messages.success(self.request, f'Orden {self.object.numero} actualizada.')
+        return redirect('proveedores:orden_compra_detail', pk=self.object.pk)
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx['detalle_formset'] = kwargs.get('detalle_formset') or DetalleOrdenCompraFormSet(
+            self.request.POST or None, instance=self.object
+        )
+        return ctx
+
+
+class OrdenCompraDetailView(ProveedoresMixin, DetailView):
+    model = OrdenCompra
+    template_name = 'admin/proveedores/orden_compra_detail.html'
+    context_object_name = 'orden'
+
+    def get_queryset(self):
+        return super().get_queryset().select_related(
+            'proveedor', 'proyecto', 'centro_costo', 'solicitante', 'aprobado_por'
+        ).prefetch_related('detalles__recepciones', 'facturas', 'recepciones__detalles')
+
+
+class OrdenCompraTransicionView(ProveedoresMixin, View):
+    def post(self, request, pk, estado):
+        orden = get_object_or_404(OrdenCompra, pk=pk)
+        if not orden.puede_transicionar(estado):
+            messages.error(request, 'La transición de estado solicitada no es válida.')
+            return redirect('proveedores:orden_compra_detail', pk=pk)
+        if estado == 'aprobada' and not (request.user.is_superuser or request.user.rol in ('admin', 'gerente')):
+            messages.error(request, 'Solo un administrador o gerente puede aprobar órdenes de compra.')
+            return redirect('proveedores:orden_compra_detail', pk=pk)
+        ahora = timezone.now()
+        orden.estado = estado
+        campos = ['estado', 'actualizado_en']
+        if estado == 'pendiente_aprobacion':
+            orden.fecha_solicitud_aprobacion = ahora
+            campos.append('fecha_solicitud_aprobacion')
+        elif estado == 'aprobada':
+            orden.aprobado_por = request.user
+            orden.fecha_aprobacion = ahora
+            campos.extend(['aprobado_por', 'fecha_aprobacion'])
+        elif estado == 'enviada':
+            orden.fecha_envio = ahora
+            campos.append('fecha_envio')
+        elif estado == 'anulada':
+            orden.fecha_anulacion = ahora
+            campos.append('fecha_anulacion')
+        orden.save(update_fields=campos)
+        messages.success(request, f'Orden actualizada a {orden.get_estado_display()}.')
+        return redirect('proveedores:orden_compra_detail', pk=pk)
+
+
+class RecepcionOrdenCompraCreateView(ProveedoresMixin, View):
+    template_name = 'admin/proveedores/orden_compra_recepcion.html'
+
+    def get(self, request, pk):
+        orden = get_object_or_404(OrdenCompra, pk=pk)
+        return render(request, self.template_name, {'orden': orden})
+
+    def post(self, request, pk):
+        from decimal import InvalidOperation
+        orden = get_object_or_404(OrdenCompra, pk=pk)
+        if orden.estado not in ('enviada', 'recepcion_parcial'):
+            messages.error(request, 'La orden debe estar enviada para registrar una recepción.')
+            return redirect('proveedores:orden_compra_detail', pk=pk)
+        cantidades = []
+        errores = []
+        for detalle in orden.detalles.all():
+            try:
+                cantidad = Decimal(request.POST.get(f'cantidad_{detalle.pk}', '0') or '0')
+            except InvalidOperation:
+                cantidad = Decimal('-1')
+            pendiente = detalle.cantidad - detalle.cantidad_recibida
+            if cantidad < 0 or cantidad > pendiente:
+                errores.append(f'Cantidad inválida para {detalle.descripcion}; pendiente: {pendiente}.')
+            if cantidad > 0:
+                cantidades.append((detalle, cantidad))
+        if errores or not cantidades:
+            for error in errores or ['Debe ingresar al menos una cantidad recibida.']:
+                messages.error(request, error)
+            return render(request, self.template_name, {'orden': orden})
+        with transaction.atomic():
+            recepcion = RecepcionOrdenCompra.objects.create(
+                orden=orden, fecha=request.POST.get('fecha') or timezone.localdate(),
+                recibido_por=request.user, observaciones=request.POST.get('observaciones', ''),
+            )
+            DetalleRecepcionOrdenCompra.objects.bulk_create([
+                DetalleRecepcionOrdenCompra(recepcion=recepcion, detalle_orden=d, cantidad_recibida=c)
+                for d, c in cantidades
+            ])
+            orden.sincronizar_estado()
+        messages.success(request, 'Recepción registrada correctamente.')
+        return redirect('proveedores:orden_compra_detail', pk=pk)
+
+
+class OrdenCompraPDFView(ProveedoresMixin, View):
+    def get(self, request, pk):
+        from .pdf import generar_orden_compra_pdf
+        orden = get_object_or_404(OrdenCompra, pk=pk)
+        response = HttpResponse(generar_orden_compra_pdf(orden), content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="{orden.numero}.pdf"'
+        return response
+
+
 from apps.web import forms
 from .models import (
     Proveedor, FacturaRecibida, DetalleFacturaRecibida,
     NotaCreditoRecibida, DetalleNotaCreditoRecibida,
     CuentaPorPagar, Anticipo, AplicacionAnticipoProveedor,
+    OrdenCompra, DetalleOrdenCompra, RecepcionOrdenCompra, DetalleRecepcionOrdenCompra,
 )
 from apps.tributario.models import DeclaracionIVA, FormularioF29, RegistroCompra
 
@@ -531,7 +707,7 @@ class FacturaRecibidaCreateView(ProveedoresMixin, CreateView):
     fields = [
         'numero', 'fecha_emision', 'fecha_vencimiento',
         'periodo_libro_compras_mes', 'periodo_libro_compras_anio',
-        'proveedor', 'proyecto', 'pago_por_trabajador',
+        'proveedor', 'orden_compra', 'proyecto', 'pago_por_trabajador',
         'neto', 'exento', 'iva', 'total', 'estado', 'origen', 'observaciones',
     ]
     success_url = reverse_lazy('proveedores:factura_list')
@@ -539,6 +715,10 @@ class FacturaRecibidaCreateView(ProveedoresMixin, CreateView):
     def get_form(self, form_class=None):
         from django.forms import DateInput, HiddenInput
         form = super().get_form(form_class)
+        if 'orden_compra' in form.fields:
+            form.fields['orden_compra'].queryset = OrdenCompra.objects.exclude(
+                estado__in=['borrador', 'pendiente_aprobacion', 'anulada']
+            ).select_related('proveedor')
         for fname in ['fecha_emision', 'fecha_vencimiento']:
             if fname in form.fields:
                 form.fields[fname].widget = DateInput(attrs={'class': 'form-control'}, format='%Y-%m-%d')
@@ -609,7 +789,7 @@ class FacturaRecibidaUpdateView(ProveedoresMixin, UpdateView):
     fields = [
         'numero', 'fecha_emision', 'fecha_vencimiento',
         'periodo_libro_compras_mes', 'periodo_libro_compras_anio',
-        'proveedor', 'proyecto', 'pago_por_trabajador',
+        'proveedor', 'orden_compra', 'proyecto', 'pago_por_trabajador',
         'neto', 'exento', 'iva', 'total', 'estado', 'origen', 'observaciones',
     ]
     success_url = reverse_lazy('proveedores:factura_list')
@@ -633,6 +813,10 @@ class FacturaRecibidaUpdateView(ProveedoresMixin, UpdateView):
     def get_form(self, form_class=None):
         from django.forms import DateInput, HiddenInput
         form = super().get_form(form_class)
+        if 'orden_compra' in form.fields:
+            form.fields['orden_compra'].queryset = OrdenCompra.objects.exclude(
+                estado__in=['borrador', 'pendiente_aprobacion', 'anulada']
+            ).select_related('proveedor')
         for fname in ['fecha_emision', 'fecha_vencimiento']:
             if fname in form.fields:
                 form.fields[fname].widget = DateInput(attrs={'class': 'form-control'}, format='%Y-%m-%d')

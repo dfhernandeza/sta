@@ -62,7 +62,9 @@ def _dibujar_liquidacion(c, remuneracion, config):
     azul = colors.HexColor('#163B5C')
     gris = colors.HexColor('#F0F2F4')
     trabajador = remuneracion.trabajador
-    empresa = 'SOLUCIONES TERMO ACUSTICAS SPA'
+    empresa = getattr(config, 'razon_social', '') or 'SOLUCIONES TERMO ACUSTICAS SPA'
+    rut_empresa = getattr(config, 'rut_empresa', '') or '76.471.912-3'
+    direccion_empresa = getattr(config, 'direccion_empresa', '') or 'SIMPSON 46, CHILLÁN'
 
     logo = _logo_path(config)
     if logo:
@@ -77,9 +79,8 @@ def _dibujar_liquidacion(c, remuneracion, config):
             pass
 
     _texto(c, empresa, width - margen, height - 39, 11, True, 'right')
-    _texto(c, '76.471.912-3', width - margen, height - 53, 8, False, 'right')
-    _texto(c, 'SIMPSON 46', width - margen, height - 67, 8, False, 'right')
-    _texto(c, 'Chillán', width - margen, height - 81, 8, False, 'right')
+    _texto(c, rut_empresa, width - margen, height - 53, 8, False, 'right')
+    _texto(c, direccion_empresa, width - margen, height - 67, 8, False, 'right')
 
     c.setFillColor(azul)
     c.roundRect(margen, height - 124, width - 2 * margen, 28, 5, fill=1, stroke=0)

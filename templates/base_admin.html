@@ -143,6 +143,9 @@
         <i class="bi bi-chevron-down nav-chevron ms-auto"></i>
       </a>
       <div class="collapse {% if request.resolver_match.namespace == 'proveedores' %}show{% endif %}" id="nav-proveedores">
+        <a href="{% url 'proveedores:orden_compra_list' %}" class="nav-link ps-4 {% if 'orden_compra' in request.resolver_match.url_name %}active{% endif %}" style="font-size:.82rem;">
+          <i class="bi bi-cart-check"></i> Órdenes de Compra
+        </a>
         <a href="{% url 'proveedores:proveedor_list' %}" class="nav-link ps-4 {% if request.resolver_match.url_name == 'proveedor_list' or request.resolver_match.url_name == 'proveedor_detail' %}active{% endif %}" style="font-size:.82rem;">
           <i class="bi bi-person-lines-fill"></i> Listado
         </a>

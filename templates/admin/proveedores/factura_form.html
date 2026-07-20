@@ -81,6 +81,12 @@
             {{ form.fecha_emision }}
             {% if form.fecha_emision.errors %}<div class="invalid-feedback d-block">{{ form.fecha_emision.errors.0 }}</div>{% endif %}
           </div>
+          <div class="col-sm-6">
+            <label class="form-label fw-600">Orden de Compra</label>
+            {{ form.orden_compra }}
+            <div class="form-text">Opcional. Debe corresponder al mismo proveedor.</div>
+            {% if form.orden_compra.errors %}<div class="invalid-feedback d-block">{{ form.orden_compra.errors.0 }}</div>{% endif %}
+          </div>
           <div class="col-sm-2">
             <label class="form-label fw-600">Fecha Vencimiento</label>
             {{ form.fecha_vencimiento }}
