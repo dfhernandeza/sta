@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from unittest.mock import patch
 
@@ -206,6 +206,35 @@ class FacturaRecibidaIndiceTests(TestCase):
         registro = RegistroCompra.objects.get(factura=factura)
         self.assertEqual(registro.periodo_mes, 7)
         self.assertEqual(registro.periodo_anio, 2026)
+
+    def test_filtro_vencida_incluye_factura_pendiente_con_fecha_vencida(self):
+        from apps.proveedores.views import FacturaRecibidaListView
+
+        hoy = date.today()
+        vencida = self.crear_factura('F-VENCIDA', hoy - timedelta(days=10))
+        vencida.fecha_vencimiento = hoy - timedelta(days=1)
+        vencida.save(update_fields=['fecha_vencimiento'])
+
+        vigente = self.crear_factura('F-VIGENTE', hoy - timedelta(days=1))
+        vigente.fecha_vencimiento = hoy + timedelta(days=1)
+        vigente.save(update_fields=['fecha_vencimiento'])
+
+        view = FacturaRecibidaListView()
+        view.request = type('Request', (), {'GET': {'estado': 'vencida'}})()
+
+        self.assertQuerySetEqual(view.get_queryset(), [vencida], transform=lambda factura: factura)
+
+    def test_filtro_vencida_conserva_registros_marcados_explicitamente(self):
+        from apps.proveedores.views import FacturaRecibidaListView
+
+        factura = self.crear_factura('F-VENCIDA-EXPLICITA', date.today())
+        factura.estado = 'vencida'
+        factura.save(update_fields=['estado'])
+
+        view = FacturaRecibidaListView()
+        view.request = type('Request', (), {'GET': {'estado': 'vencida'}})()
+
+        self.assertQuerySetEqual(view.get_queryset(), [factura], transform=lambda item: item)
 
 
 @override_settings(SECURE_SSL_REDIRECT=False)

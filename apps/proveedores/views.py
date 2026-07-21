@@ -687,7 +687,12 @@ class FacturaRecibidaListView(ProveedoresMixin, ListView):
     def get_queryset(self):
         qs = FacturaRecibida.objects.select_related('proveedor', 'proyecto', 'pago_por_trabajador').order_by('-fecha_emision')
         estado = self.request.GET.get('estado')
-        if estado:
+        if estado == 'vencida':
+            qs = qs.filter(
+                Q(estado='vencida') |
+                Q(estado='pendiente', fecha_vencimiento__lt=timezone.localdate())
+            )
+        elif estado:
             qs = qs.filter(estado=estado)
         q = self.request.GET.get('q')
         if q:
