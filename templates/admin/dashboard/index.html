@@ -148,6 +148,16 @@
           <span class="text-muted"><i class="bi bi-credit-card me-2 text-danger"></i>CxP Pendiente</span>
           <span class="fw-600">{{ total_cxp_pendiente|moneda_chilena }}</span>
         </li>
+        <li class="list-group-item d-flex justify-content-between align-items-center px-3 py-3 bg-danger-subtle border-start border-4 border-danger rounded-2 my-2">
+          <span class="fw-700 text-danger-emphasis">
+            <i class="bi bi-exclamation-triangle me-2 text-danger"></i>Facturas vencidas
+            <small class="d-block fw-normal">{{ facturas_vencidas_count }} factura{{ facturas_vencidas_count|pluralize }}</small>
+          </span>
+          <a href="{% url 'proveedores:factura_list' %}?estado=vencida"
+             class="fw-800 fs-6 text-danger-emphasis font-monospace text-decoration-none">
+            {{ total_facturas_vencidas|moneda_chilena }}
+          </a>
+        </li>
         <li class="list-group-item d-flex justify-content-between px-0">
           <span class="text-muted"><i class="bi bi-people me-2 text-warning"></i>Sueldos por Pagar</span>
           <span class="fw-600 text-warning">{{ sueldos_por_pagar|moneda_chilena }}</span>

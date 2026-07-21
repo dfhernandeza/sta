@@ -287,6 +287,55 @@ class DashboardPeriodoTest(TestCase):
             Decimal('100000'),
         )
 
+    def test_resumen_suma_totales_de_facturas_vencidas_al_cierre(self):
+        proveedor = Proveedor.objects.create(
+            rut='33.333.333-3',
+            razon_social='Proveedor Facturas Vencidas',
+        )
+        datos_base = {
+            'fecha_emision': date(2026, 6, 1),
+            'proveedor': proveedor,
+            'neto': Decimal('100'),
+            'iva': Decimal('0'),
+        }
+        FacturaRecibida.objects.create(
+            numero='VENCIDA-1',
+            fecha_vencimiento=date(2026, 6, 10),
+            total=Decimal('100'),
+            **datos_base,
+        )
+        FacturaRecibida.objects.create(
+            numero='VENCIDA-2',
+            fecha_vencimiento=date(2026, 6, 20),
+            total=Decimal('250'),
+            estado='vencida',
+            **datos_base,
+        )
+        FacturaRecibida.objects.create(
+            numero='VIGENTE-1',
+            fecha_vencimiento=date(2026, 7, 10),
+            total=Decimal('500'),
+            **datos_base,
+        )
+        FacturaRecibida.objects.create(
+            numero='PAGADA-1',
+            fecha_vencimiento=date(2026, 6, 5),
+            total=Decimal('1000'),
+            estado='pagada',
+            **datos_base,
+        )
+
+        response = self.client_http.get(
+            reverse('dashboard:index'),
+            {'periodo': '2026-06'},
+        )
+
+        self.assertEqual(response.context['facturas_vencidas_count'], 2)
+        self.assertEqual(
+            response.context['total_facturas_vencidas'],
+            Decimal('350'),
+        )
+
     def test_periodo_anterior_a_apertura_no_muestra_datos(self):
         self.crear_movimiento(
             date(2026, 5, 20), 'ingreso', Decimal('10000')

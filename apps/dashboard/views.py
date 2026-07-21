@@ -11,7 +11,7 @@ class DashboardMixin(AppPermisoMixin):
     app_name = 'dashboard'
 
 from apps.clientes.models import CuentaPorCobrar
-from apps.proveedores.models import CuentaPorPagar
+from apps.proveedores.models import CuentaPorPagar, FacturaRecibida
 from apps.tesoreria.models import CuentaBancaria, MovimientoBancario
 from apps.proyectos.models import Proyecto
 from apps.contabilidad.models import AsientoContable, ConfiguracionContable, LineaAsiento
@@ -175,6 +175,22 @@ class DashboardView(DashboardMixin, TemplateView):
             cxc_vencidas_qs = cxc_vencidas_qs.none()
         ctx['total_cxc_vencida'] = self._saldo_pendiente(cxc_vencidas_qs)
         ctx['cxc_vencidas'] = cxc_vencidas_qs[:10]
+
+        # Facturas de proveedores vencidas al cierre del período
+        facturas_vencidas_qs = FacturaRecibida.objects.filter(
+            estado__in=['pendiente', 'vencida'],
+            fecha_emision__lte=fin_mes,
+            fecha_vencimiento__lte=fin_mes,
+        )
+        if periodo_fuera_sistema:
+            facturas_vencidas_qs = facturas_vencidas_qs.none()
+        resumen_facturas_vencidas = facturas_vencidas_qs.aggregate(
+            total=Sum('total'),
+        )
+        ctx['facturas_vencidas_count'] = facturas_vencidas_qs.count()
+        ctx['total_facturas_vencidas'] = (
+            resumen_facturas_vencidas['total'] or Decimal('0')
+        )
 
         # Movimientos pendientes de conciliación al cierre
         movimientos_sin_conciliar = MovimientoBancario.objects.filter(
