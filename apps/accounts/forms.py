@@ -19,7 +19,7 @@ APPS_DISPONIBLES = [
 class CustomUserCreationForm(UserCreationForm):
     class Meta(UserCreationForm.Meta):
         model = CustomUser
-        fields = ('username', 'first_name', 'last_name', 'email', 'rol', 'cargo', 'telefono')
+        fields = ('username', 'first_name', 'last_name', 'email', 'rol', 'cargo', 'telefono', 'firma')
 
 
 class CustomUserChangeForm(UserChangeForm):
@@ -27,7 +27,7 @@ class CustomUserChangeForm(UserChangeForm):
 
     class Meta(UserChangeForm.Meta):
         model = CustomUser
-        fields = ('username', 'first_name', 'last_name', 'email', 'rol', 'cargo', 'telefono', 'avatar', 'is_active')
+        fields = ('username', 'first_name', 'last_name', 'email', 'rol', 'cargo', 'telefono', 'avatar', 'firma', 'is_active')
 
 
 class UsuarioPermisosForm(forms.ModelForm):

@@ -80,6 +80,10 @@ def generar_orden_compra_pdf(orden):
     direccion_empresa = getattr(config, 'direccion_empresa', '') or EMPRESA_DIRECCION
     giro_empresa = getattr(config, 'giro_empresa', '') or EMPRESA_GIRO
     representante_legal = getattr(config, 'representante_legal', '') or 'Representante legal'
+    nombre_aprobador = (
+        orden.aprobado_por.get_full_name().strip() or orden.aprobado_por.username
+        if orden.aprobado_por else 'Aprobador'
+    )
     logo_path = None
     if config and config.logo:
         try:
@@ -101,7 +105,7 @@ def generar_orden_compra_pdf(orden):
     datos = [
         ['Fecha', orden.fecha.strftime('%d/%m/%Y'), 'Proyecto', _truncar(orden.proyecto, 28)],
         ['Centro de Costo', _truncar(orden.centro_costo, 24), 'Solicitante', razon_social],
-        ['Aprobado por', orden.aprobado_por.nombre_display if orden.aprobado_por else '—', 'Estado', orden.get_estado_display()],
+        ['Aprobado por', nombre_aprobador if orden.aprobado_por else '—', 'Estado', orden.get_estado_display()],
     ]
     info = Table(datos, colWidths=[28*mm, 62*mm, 28*mm, 62*mm])
     info.setStyle(TableStyle([('GRID',(0,0),(-1,-1),.4,colors.HexColor('#BCC3C9')),('BACKGROUND',(0,0),(0,-1),colors.HexColor('#EEF1F3')),('BACKGROUND',(2,0),(2,-1),colors.HexColor('#EEF1F3')),('FONTNAME',(0,0),(-1,-1),'Helvetica'),('FONTNAME',(0,0),(0,-1),'Helvetica-Bold'),('FONTNAME',(2,0),(2,-1),'Helvetica-Bold'),('FONTSIZE',(0,0),(-1,-1),8),('VALIGN',(0,0),(-1,-1),'MIDDLE'),('PADDING',(0,0),(-1,-1),5)]))
@@ -132,14 +136,16 @@ def generar_orden_compra_pdf(orden):
             70*mm, 28*mm, recortar=True,
         )
         firma_apr = _imagen(
-            orden.firma_aprobador.path if orden.firma_aprobador else None,
-            32*mm, 12*mm,
+            orden.aprobado_por.firma.path
+            if orden.aprobado_por and orden.aprobado_por.firma
+            else (orden.firma_aprobador.path if orden.firma_aprobador else None),
+            58*mm, 22*mm, recortar=True,
         )
         firmas = Table([
             [firma_sol, firma_apr],
             ['____________________________', '____________________________'],
             [representante_legal,
-             orden.aprobado_por.nombre_display if orden.aprobado_por else 'Aprobador'],
+             nombre_aprobador],
             ['Representante legal', 'Aprobado por'],
             [razon_social, ''],
         ], colWidths=[82*mm, 82*mm])

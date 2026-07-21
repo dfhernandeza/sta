@@ -18,6 +18,11 @@ class CustomUser(AbstractUser):
     cargo = models.CharField(max_length=100, blank=True, verbose_name='Cargo')
     telefono = models.CharField(max_length=20, blank=True, verbose_name='Teléfono')
     avatar = models.ImageField(upload_to='avatars/', null=True, blank=True, verbose_name='Avatar')
+    firma = models.ImageField(
+        upload_to='usuarios/firmas/', null=True, blank=True,
+        verbose_name='Firma',
+        help_text='Se recomienda una imagen PNG con fondo transparente.',
+    )
     app_permisos = models.JSONField(default=list, blank=True, verbose_name='Permisos de aplicaciones')
 
     class Meta:

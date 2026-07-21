@@ -17,7 +17,7 @@
 <div class="row justify-content-center">
   <div class="col-lg-7">
     <div class="card-sta p-4">
-      <form method="post" novalidate>
+      <form method="post" enctype="multipart/form-data" novalidate>
         {% csrf_token %}
         <div class="row g-3">
           <div class="col-sm-6">
@@ -40,6 +40,15 @@
           <div class="col-12">
             <label class="form-label fw-600">Email</label>
             {{ form.email }}
+          </div>
+          <div class="col-12">
+            <label class="form-label fw-600">Firma del usuario</label>
+            {{ form.firma }}
+            <div class="form-text">Se recomienda una imagen PNG con fondo transparente.</div>
+            {% if form.firma.errors %}<div class="invalid-feedback d-block">{{ form.firma.errors.0 }}</div>{% endif %}
+            {% if form.instance.firma %}
+              <img src="{{ form.instance.firma.url }}" alt="Firma actual" class="mt-2 border rounded p-2" style="max-width:260px;max-height:100px;object-fit:contain;">
+            {% endif %}
           </div>
           {% if not form.instance.pk %}
           <div class="col-sm-6">
