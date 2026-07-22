@@ -23,7 +23,12 @@
 <div class="row g-3 mb-4">
   {% for cuenta in cuentas %}
   <div class="col-md-6 col-xl-4">
-    <div class="kpi-card">
+    <div class="kpi-card position-relative">
+      {% if cuenta.banco.logo %}
+      <img src="{{ cuenta.banco.logo.url }}" alt="Logo de {{ cuenta.banco.nombre }}"
+           class="position-absolute top-0 end-0 mt-3 me-3"
+           style="max-width: 100px; max-height: 45px; object-fit: contain;">
+      {% endif %}
       <div class="kpi-icon" style="background:linear-gradient(135deg,var(--sta-navy),var(--sta-steel));">
         <i class="bi bi-bank"></i>
       </div>
