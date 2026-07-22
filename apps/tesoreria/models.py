@@ -7,6 +7,13 @@ from apps.core.validators import validar_rut
 class Banco(TimeStampedModel):
     nombre = models.CharField(max_length=100, verbose_name='Nombre del Banco')
     codigo = models.CharField(max_length=10, unique=True, verbose_name='Código banco')
+    logo = models.ImageField(
+        upload_to='tesoreria/bancos/logos/',
+        null=True,
+        blank=True,
+        verbose_name='Logo',
+        help_text='Se recomienda una imagen PNG o WebP con fondo transparente.',
+    )
 
     class Meta:
         verbose_name = 'Banco'

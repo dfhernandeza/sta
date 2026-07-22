@@ -71,7 +71,7 @@ class BancoListView(TesoreriaMixin, ListView):
 class BancoCreateView(TesoreriaMixin, CreateView):
     model = Banco
     template_name = 'admin/tesoreria/banco_form.html'
-    fields = ['nombre', 'codigo']
+    fields = ['nombre', 'codigo', 'logo']
     success_url = reverse_lazy('tesoreria:banco_list')
 
     def form_valid(self, form):
@@ -86,7 +86,7 @@ class BancoCreateView(TesoreriaMixin, CreateView):
 class BancoUpdateView(TesoreriaMixin, UpdateView):
     model = Banco
     template_name = 'admin/tesoreria/banco_form.html'
-    fields = ['nombre', 'codigo']
+    fields = ['nombre', 'codigo', 'logo']
     success_url = reverse_lazy('tesoreria:banco_list')
 
     def form_valid(self, form):
