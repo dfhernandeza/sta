@@ -3,22 +3,65 @@ import logging
 from django.views.generic import ListView, CreateView, DetailView, DeleteView, View
 from django.urls import reverse, reverse_lazy
 from django.contrib import messages
+from django.core.exceptions import PermissionDenied
 from django.shortcuts import get_object_or_404, redirect
 from django.utils import timezone
 from django.db import transaction
 from datetime import timedelta
-from django.db.models import Sum
+from django.db.models import Sum, Value
+from django.db.models.functions import Replace, Upper
 from django.forms import inlineformset_factory, ModelForm, TextInput, Select, NumberInput
 
 from apps.core.mixins import AppPermisoMixin
 from .models import RendicionGastos, DetalleRendicion
 from apps.proveedores.models import CuentaPorPagar
+from apps.rrhh.models import Trabajador
 
 logger = logging.getLogger(__name__)
 
 
 class RendicionesMixin(AppPermisoMixin):
     app_name = 'rendiciones'
+
+    def acceso_solo_rendiciones(self):
+        """Indica si el usuario debe limitarse a sus propias rendiciones."""
+        permisos = set(self.request.user.app_permisos or [])
+        return not self.request.user.is_superuser and permisos == {'rendiciones'}
+
+    def get_trabajador_usuario(self):
+        """Relaciona al usuario con el trabajador usando su RUT como username."""
+        rut_usuario = ''.join(
+            caracter for caracter in self.request.user.username.upper()
+            if caracter.isalnum()
+        )
+        if not rut_usuario:
+            raise PermissionDenied('El usuario no estÃ¡ asociado a un trabajador.')
+
+        trabajador = (
+            Trabajador.objects
+            .annotate(
+                rut_normalizado=Upper(
+                    Replace(
+                        Replace(
+                            Replace('rut', Value('.'), Value('')),
+                            Value('-'), Value(''),
+                        ),
+                        Value(' '), Value(''),
+                    )
+                )
+            )
+            .filter(rut_normalizado=rut_usuario)
+            .first()
+        )
+        if trabajador is None:
+            raise PermissionDenied('El usuario no estÃ¡ asociado a un trabajador.')
+        return trabajador
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        if self.acceso_solo_rendiciones():
+            queryset = queryset.filter(trabajador=self.get_trabajador_usuario())
+        return queryset
 
 
 def _viernes_proxima_semana(fecha):
@@ -83,7 +126,15 @@ class RendicionGastosCreateView(RendicionesMixin, CreateView):
     fields = ['trabajador', 'proyecto', 'fecha', 'motivo_del_gasto']
     success_url = reverse_lazy('rendiciones:rendicion_list')
 
+    def get_form(self, form_class=None):
+        form = super().get_form(form_class)
+        if self.acceso_solo_rendiciones():
+            form.fields.pop('trabajador', None)
+        return form
+
     def form_valid(self, form):
+        if self.acceso_solo_rendiciones():
+            form.instance.trabajador = self.get_trabajador_usuario()
         formset = DetalleRendicionFormSet(self.request.POST)
         if not formset.is_valid():
             return self.form_invalid(form)
@@ -132,7 +183,7 @@ class RendicionGastosDetailView(RendicionesMixin, DetailView):
         return ctx
 
     def post(self, request, pk):
-        rendicion = get_object_or_404(RendicionGastos, pk=pk)
+        rendicion = get_object_or_404(self.get_queryset(), pk=pk)
         nuevo_estado = request.POST.get('estado')
         transiciones_validas = _TRANSICIONES_RENDICION.get(rendicion.estado, [])
         if nuevo_estado in transiciones_validas:
@@ -231,9 +282,15 @@ class RendicionGastosDeleteView(RendicionesMixin, DeleteView):
 
 
 class GenerarAsientoRendicionView(RendicionesMixin, View):
+    def get_queryset(self):
+        queryset = RendicionGastos.objects.all()
+        if self.acceso_solo_rendiciones():
+            queryset = queryset.filter(trabajador=self.get_trabajador_usuario())
+        return queryset
+
     def post(self, request, pk):
         from apps.contabilidad.utils import generar_asiento_rendicion_gastos_recibida, get_config
-        rendicion = get_object_or_404(RendicionGastos, pk=pk)
+        rendicion = get_object_or_404(self.get_queryset(), pk=pk)
         asiento_activo = rendicion.asientos.exclude(estado='anulado').first()
         if asiento_activo:
             messages.info(request, f'Esta rendición ya tiene un asiento: {asiento_activo.numero}.')

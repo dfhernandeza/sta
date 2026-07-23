@@ -14,6 +14,64 @@ from apps.tesoreria.models import Banco, CuentaBancaria
 from .models import DetalleRendicion, RendicionGastos
 
 
+class RendicionGastosAccesoPersonalTests(TestCase):
+    def setUp(self):
+        self.trabajador = Trabajador.objects.create(
+            rut='12.345.678-5',
+            nombres='Usuario',
+            apellidos='Personal',
+            fecha_ingreso=date(2025, 1, 1),
+            sueldo_base=Decimal('500000.00'),
+        )
+        self.otro_trabajador = Trabajador.objects.create(
+            rut='11.111.111-1',
+            nombres='Otro',
+            apellidos='Trabajador',
+            fecha_ingreso=date(2025, 1, 1),
+            sueldo_base=Decimal('500000.00'),
+        )
+        self.rendicion_propia = RendicionGastos.objects.create(
+            trabajador=self.trabajador,
+            fecha=date(2026, 7, 1),
+            motivo_del_gasto='RendiciÃ³n propia',
+        )
+        self.rendicion_ajena = RendicionGastos.objects.create(
+            trabajador=self.otro_trabajador,
+            fecha=date(2026, 7, 2),
+            motivo_del_gasto='RendiciÃ³n ajena',
+        )
+        self.user = CustomUser.objects.create_user(
+            username='12345678-5',
+            password='test-pass',
+            app_permisos=['rendiciones'],
+        )
+        self.client.force_login(self.user)
+
+    def test_lista_muestra_solo_rendiciones_propias(self):
+        response = self.client.get(reverse('rendiciones:rendicion_list'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'RendiciÃ³n propia')
+        self.assertNotContains(response, 'RendiciÃ³n ajena')
+
+    def test_no_puede_abrir_una_rendicion_ajena(self):
+        response = self.client.get(
+            reverse('rendiciones:rendicion_detail', kwargs={'pk': self.rendicion_ajena.pk})
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_usuario_con_otro_modulo_conserva_vista_global(self):
+        self.user.app_permisos = ['rendiciones', 'contabilidad']
+        self.user.save(update_fields=['app_permisos'])
+
+        response = self.client.get(reverse('rendiciones:rendicion_list'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'RendiciÃ³n propia')
+        self.assertContains(response, 'RendiciÃ³n ajena')
+
+
 class RendicionGastosIndiceTests(TestCase):
     def setUp(self):
         self.trabajador = Trabajador.objects.create(
