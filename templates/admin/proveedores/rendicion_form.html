@@ -30,7 +30,14 @@
 
           <div class="col-sm-5">
             <label class="form-label fw-600">Trabajador <span class="text-danger">*</span></label>
-            {{ form.trabajador }}
+            {% if trabajador_usuario %}
+              <input type="text" class="form-control" value="{{ trabajador_usuario.nombre_completo }}" disabled>
+            {% elif acceso_personal %}
+              <input type="text" class="form-control is-invalid" value="Sin trabajador asociado" disabled>
+              <div class="invalid-feedback">Solicite que vinculen su usuario a su ficha de trabajador.</div>
+            {% else %}
+              {{ form.trabajador }}
+            {% endif %}
             {% if form.trabajador.errors %}<div class="invalid-feedback d-block">{{ form.trabajador.errors.0 }}</div>{% endif %}
           </div>
           <div class="col-sm-4">
@@ -252,7 +259,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const fpOpts = { locale:'es', dateFormat:'Y-m-d', altInput:true, altFormat:'d/m/Y', allowInput:true };
   flatpickr('#id_fecha', { ...fpOpts, defaultDate: 'today' });
 
-  new TomSelect('#id_trabajador', { allowEmptyOption:true, placeholder:'Buscar trabajador…', sortField:{field:'text',direction:'asc'} });
+  if (document.getElementById('id_trabajador')) {
+    new TomSelect('#id_trabajador', { allowEmptyOption:true, placeholder:'Buscar trabajador…', sortField:{field:'text',direction:'asc'} });
+  }
   new TomSelect('#id_proyecto',   { allowEmptyOption:true, placeholder:'Buscar proyecto…',   sortField:{field:'text',direction:'asc'} });
 
   // Modal TomSelects — copiar opciones desde fuentes ocultas

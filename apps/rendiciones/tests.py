@@ -63,6 +63,38 @@ class RendicionGastosAccesoPersonalTests(TestCase):
 
         self.assertEqual(response.status_code, 404)
 
+    def test_puede_crear_una_rendicion_con_gasto(self):
+        response = self.client.post(
+            reverse('rendiciones:rendicion_create'),
+            {
+                'fecha': '2026-07-10',
+                'motivo_del_gasto': 'Traslado a terreno',
+                'detalles-TOTAL_FORMS': '1',
+                'detalles-INITIAL_FORMS': '0',
+                'detalles-MIN_NUM_FORMS': '0',
+                'detalles-MAX_NUM_FORMS': '1000',
+                'detalles-0-fecha_gasto': '2026-07-10',
+                'detalles-0-n_boleta_factura': 'B-123',
+                'detalles-0-descripcion': 'Combustible',
+                'detalles-0-monto': '25000',
+                'detalles-0-centro_costo': '',
+                'detalles-0-cuenta_contable': '',
+                'detalles-0-proveedor': '',
+            },
+        )
+
+        self.assertRedirects(response, reverse('rendiciones:rendicion_list'))
+        rendicion = RendicionGastos.objects.get(motivo_del_gasto='Traslado a terreno')
+        self.assertEqual(rendicion.trabajador, self.trabajador)
+        self.assertEqual(rendicion.detalles.get().monto, Decimal('25000'))
+
+    def test_formulario_muestra_nombre_del_trabajador_sin_selector_editable(self):
+        response = self.client.get(reverse('rendiciones:rendicion_create'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, self.trabajador.nombre_completo)
+        self.assertNotContains(response, 'name="trabajador"')
+
     def test_relacion_explicita_no_depende_del_username_o_email(self):
         self.trabajador.email = 'trabajador@example.com'
         self.trabajador.save(update_fields=['email'])
@@ -93,6 +125,10 @@ class RendicionGastosAccesoPersonalTests(TestCase):
             reverse('rendiciones:rendicion_detail', kwargs={'pk': self.rendicion_propia.pk})
         )
         self.assertEqual(response_detail.status_code, 404)
+
+        response_create = self.client.get(reverse('rendiciones:rendicion_create'))
+        self.assertEqual(response_create.status_code, 200)
+        self.assertContains(response_create, 'Sin trabajador asociado')
 
     def test_usuario_con_otro_modulo_conserva_vista_global(self):
         self.user.app_permisos = ['rendiciones', 'contabilidad']

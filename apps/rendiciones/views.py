@@ -138,6 +138,9 @@ class RendicionGastosCreateView(RendicionesMixin, CreateView):
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         ctx['titulo'] = 'Nueva Rendición de Gastos'
+        if self.acceso_solo_rendiciones():
+            ctx['acceso_personal'] = True
+            ctx['trabajador_usuario'] = self.get_trabajador_usuario(requerido=False)
         if self.request.POST:
             ctx['detalle_formset'] = DetalleRendicionFormSet(self.request.POST)
         else:
