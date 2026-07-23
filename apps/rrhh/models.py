@@ -2,6 +2,7 @@ from django.db import models
 from calendar import monthrange
 from datetime import date
 from decimal import Decimal
+from django.conf import settings
 from apps.core.models import TimeStampedModel
 from apps.core.validators import validar_rut
 from apps.tesoreria.models import Banco, TIPO_CHOICES
@@ -57,6 +58,15 @@ class Trabajador(TimeStampedModel):
     rut = models.CharField(
         max_length=15, unique=True, validators=[validar_rut],
         verbose_name='RUT', help_text='Formato: XX.XXX.XXX-X'
+    )
+    usuario = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='trabajador',
+        verbose_name='Usuario del sistema',
+        help_text='Usuario que podrá ver y crear las rendiciones de este trabajador.',
     )
     nombres = models.CharField(max_length=100, verbose_name='Nombres')
     apellidos = models.CharField(max_length=100, verbose_name='Apellidos')

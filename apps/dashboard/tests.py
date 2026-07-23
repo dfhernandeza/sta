@@ -1,5 +1,6 @@
 from datetime import date
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
@@ -334,6 +335,41 @@ class DashboardPeriodoTest(TestCase):
         self.assertEqual(
             response.context['total_facturas_vencidas'],
             Decimal('350'),
+        )
+
+    @patch('apps.dashboard.views.timezone.localdate', return_value=date(2026, 6, 15))
+    def test_periodo_actual_no_anticipa_facturas_que_vencen_despues(self, _localdate):
+        proveedor = Proveedor.objects.create(
+            rut='44.444.444-4',
+            razon_social='Proveedor Vencimientos Actuales',
+        )
+        datos_base = {
+            'fecha_emision': date(2026, 6, 1),
+            'proveedor': proveedor,
+            'neto': Decimal('100'),
+            'iva': Decimal('0'),
+            'total': Decimal('100'),
+        }
+        FacturaRecibida.objects.create(
+            numero='YA-VENCIDA',
+            fecha_vencimiento=date(2026, 6, 14),
+            **datos_base,
+        )
+        FacturaRecibida.objects.create(
+            numero='VENCE-DESPUES',
+            fecha_vencimiento=date(2026, 6, 20),
+            **datos_base,
+        )
+
+        response = self.client_http.get(
+            reverse('dashboard:index'),
+            {'periodo': '2026-06'},
+        )
+
+        self.assertEqual(response.context['facturas_vencidas_count'], 1)
+        self.assertEqual(
+            response.context['total_facturas_vencidas'],
+            Decimal('100'),
         )
 
     def test_periodo_anterior_a_apertura_no_muestra_datos(self):

@@ -8,8 +8,7 @@ from django.shortcuts import get_object_or_404, redirect
 from django.utils import timezone
 from django.db import transaction
 from datetime import timedelta
-from django.db.models import Sum, Value
-from django.db.models.functions import Replace, Upper
+from django.db.models import Sum
 from django.forms import inlineformset_factory, ModelForm, TextInput, Select, NumberInput
 
 from apps.core.mixins import AppPermisoMixin
@@ -28,39 +27,20 @@ class RendicionesMixin(AppPermisoMixin):
         permisos = set(self.request.user.app_permisos or [])
         return not self.request.user.is_superuser and permisos == {'rendiciones'}
 
-    def get_trabajador_usuario(self):
-        """Relaciona al usuario con el trabajador usando su RUT como username."""
-        rut_usuario = ''.join(
-            caracter for caracter in self.request.user.username.upper()
-            if caracter.isalnum()
-        )
-        if not rut_usuario:
-            raise PermissionDenied('El usuario no estÃ¡ asociado a un trabajador.')
-
-        trabajador = (
-            Trabajador.objects
-            .annotate(
-                rut_normalizado=Upper(
-                    Replace(
-                        Replace(
-                            Replace('rut', Value('.'), Value('')),
-                            Value('-'), Value(''),
-                        ),
-                        Value(' '), Value(''),
-                    )
-                )
-            )
-            .filter(rut_normalizado=rut_usuario)
-            .first()
-        )
-        if trabajador is None:
+    def get_trabajador_usuario(self, requerido=True):
+        """Obtiene el trabajador vinculado explícitamente al usuario autenticado."""
+        trabajador = Trabajador.objects.filter(usuario=self.request.user).first()
+        if trabajador is None and requerido:
             raise PermissionDenied('El usuario no estÃ¡ asociado a un trabajador.')
         return trabajador
 
     def get_queryset(self):
         queryset = super().get_queryset()
         if self.acceso_solo_rendiciones():
-            queryset = queryset.filter(trabajador=self.get_trabajador_usuario())
+            trabajador = self.get_trabajador_usuario(requerido=False)
+            if trabajador is None:
+                return queryset.none()
+            queryset = queryset.filter(trabajador=trabajador)
         return queryset
 
 

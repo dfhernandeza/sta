@@ -45,6 +45,8 @@ class RendicionGastosAccesoPersonalTests(TestCase):
             password='test-pass',
             app_permisos=['rendiciones'],
         )
+        self.trabajador.usuario = self.user
+        self.trabajador.save(update_fields=['usuario'])
         self.client.force_login(self.user)
 
     def test_lista_muestra_solo_rendiciones_propias(self):
@@ -60,6 +62,37 @@ class RendicionGastosAccesoPersonalTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 404)
+
+    def test_relacion_explicita_no_depende_del_username_o_email(self):
+        self.trabajador.email = 'trabajador@example.com'
+        self.trabajador.save(update_fields=['email'])
+        self.user.username = 'usuario.rendiciones'
+        self.user.email = 'TRABAJADOR@example.com'
+        self.user.save(update_fields=['username', 'email'])
+
+        response = self.client.get(reverse('rendiciones:rendicion_list'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'RendiciÃ³n propia')
+        self.assertNotContains(response, 'RendiciÃ³n ajena')
+
+    def test_usuario_sin_trabajador_puede_entrar_a_lista_vacia(self):
+        self.trabajador.usuario = None
+        self.trabajador.save(update_fields=['usuario'])
+        self.user.username = 'usuario.sin.trabajador'
+        self.user.email = 'sin-trabajador@example.com'
+        self.user.save(update_fields=['username', 'email'])
+
+        response = self.client.get(reverse('rendiciones:rendicion_list'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'RendiciÃ³n propia')
+        self.assertNotContains(response, 'RendiciÃ³n ajena')
+
+        response_detail = self.client.get(
+            reverse('rendiciones:rendicion_detail', kwargs={'pk': self.rendicion_propia.pk})
+        )
+        self.assertEqual(response_detail.status_code, 404)
 
     def test_usuario_con_otro_modulo_conserva_vista_global(self):
         self.user.app_permisos = ['rendiciones', 'contabilidad']

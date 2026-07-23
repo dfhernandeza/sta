@@ -373,7 +373,7 @@ class TrabajadorListView(RrhhMixin, ListView):
 class TrabajadorCreateView(RrhhMixin, CreateView):
     model = Trabajador
     template_name = 'admin/rrhh/trabajador_form.html'
-    fields = ['rut', 'nombres', 'apellidos', 'cargo', 'fecha_ingreso', 'fecha_termino', 'fecha_nacimiento', 'sueldo_base',
+    fields = ['rut', 'usuario', 'nombres', 'apellidos', 'cargo', 'fecha_ingreso', 'fecha_termino', 'fecha_nacimiento', 'sueldo_base',
               'afp', 'isapre', 'banco', 'tipo_cuenta', 'numero_cuenta', 'email', 'telefono', 'direccion',
               'tipo_costo', 'centro_costo', 'estado', 'exento_previsional']
     success_url = reverse_lazy('rrhh:trabajador_list')
@@ -391,7 +391,7 @@ class TrabajadorCreateView(RrhhMixin, CreateView):
 class TrabajadorUpdateView(RrhhMixin, UpdateView):
     model = Trabajador
     template_name = 'admin/rrhh/trabajador_form.html'
-    fields = ['rut', 'nombres', 'apellidos', 'cargo', 'fecha_ingreso', 'fecha_termino', 'fecha_nacimiento',
+    fields = ['rut', 'usuario', 'nombres', 'apellidos', 'cargo', 'fecha_ingreso', 'fecha_termino', 'fecha_nacimiento',
               'sueldo_base', 'afp', 'isapre', 'banco', 'tipo_cuenta', 'numero_cuenta',
               'email', 'telefono', 'direccion', 'estado', 'tipo_costo', 'centro_costo', 'exento_previsional']
     success_url = reverse_lazy('rrhh:trabajador_list')

@@ -177,10 +177,18 @@ class DashboardView(DashboardMixin, TemplateView):
         ctx['cxc_vencidas'] = cxc_vencidas_qs[:10]
 
         # Facturas de proveedores vencidas al cierre del período
+        # En el período actual no se deben anticipar vencimientos hasta fin de mes.
+        # Se usa la misma regla del listado: un vencimiento pasa a estar vencido
+        # al día siguiente, salvo que la factura ya esté marcada explícitamente.
+        fecha_corte_vencidas = min(fin_mes, timezone.localdate())
         facturas_vencidas_qs = FacturaRecibida.objects.filter(
-            estado__in=['pendiente', 'vencida'],
             fecha_emision__lte=fin_mes,
-            fecha_vencimiento__lte=fin_mes,
+        ).filter(
+            Q(estado='vencida') |
+            Q(
+                estado='pendiente',
+                fecha_vencimiento__lt=fecha_corte_vencidas,
+            )
         )
         if periodo_fuera_sistema:
             facturas_vencidas_qs = facturas_vencidas_qs.none()

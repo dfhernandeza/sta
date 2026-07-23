@@ -61,6 +61,12 @@
             <label class="form-label fw-600">Estado</label>
             {{ form.estado }}
           </div>
+          <div class="col-sm-5">
+            <label class="form-label fw-600">Usuario del sistema</label>
+            {{ form.usuario }}
+            {% if form.usuario.errors %}<div class="invalid-feedback d-block">{{ form.usuario.errors.0 }}</div>{% endif %}
+            <div class="form-text">Define qué usuario podrá acceder a las rendiciones de este trabajador.</div>
+          </div>
           <div class="col-sm-4">
             <label class="form-label fw-600">Sueldo Base</label>
             {{ form.sueldo_base }}
